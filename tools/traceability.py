@@ -42,6 +42,7 @@ V_SUFFIX_RE = re.compile(r"\s*\*V:[^*]*\*\s*$")
 
 CSV_FIELDS = (
     "req_id",
+    "defined_in",
     "statement_short",
     "sds_ref",
     "sdd_ref",
@@ -56,6 +57,7 @@ LEVELS = ("SRS", "SDS", "SDD", "CODE", "TEST")
 @dataclass
 class Row:
     req_id: str
+    defined_in: str = "SRS"
     statement_short: str = ""
     sds_ref: str = ""
     sdd_ref: str = ""
@@ -64,8 +66,15 @@ class Row:
     status: str = "SRS"
 
 
-def parse_srs(path: Path) -> dict[str, str]:
-    """Return {req_id: full_statement} for every requirement bullet in the SRS."""
+def parse_definitions(path: Path) -> dict[str, str]:
+    """Return {req_id: full_statement} for SRS-style requirement bullets in *path*.
+
+    Works on any markdown file using the bullet form
+    `- **REQ_xxx_yyy_NNN** — statement. *V: ...*`. Used to harvest definitions
+    from both the SRS and the SDS (which introduces its own design-level reqs).
+    """
+    if not path.exists():
+        return {}
     out: dict[str, str] = {}
     for raw in path.read_text(encoding="utf-8").splitlines():
         m = SRS_LINE_RE.match(raw)
@@ -121,27 +130,33 @@ def deepest(level: str, current: str) -> str:
 
 
 def build_rows(
-    srs: dict[str, str],
+    defs: dict[str, str],
+    defined_in: dict[str, str],
     existing: dict[str, Row],
     refs: dict[str, dict[str, list[str]]],
 ) -> tuple[list[Row], list[str]]:
     rows: list[Row] = []
     warnings: list[str] = []
 
-    for rid in sorted(srs):
+    for rid in sorted(defs):
         prev = existing.get(rid)
         # Preserve manually-curated short statement if present; otherwise derive.
-        stmt_short = prev.statement_short if prev and prev.statement_short else shorten(srs[rid])
+        stmt_short = prev.statement_short if prev and prev.statement_short else shorten(defs[rid])
 
         row = Row(
             req_id=rid,
+            defined_in=defined_in[rid],
             statement_short=stmt_short,
             sds_ref=";".join(refs["sds"].get(rid, [])),
             sdd_ref=";".join(refs["sdd"].get(rid, [])),
             code_ref=";".join(refs["code"].get(rid, [])),
             test_ref=";".join(refs["test"].get(rid, [])),
         )
-        status = "SRS"
+        # Status starts at the artifact where the requirement was defined; it
+        # advances only when the requirement is referenced by a *deeper*
+        # downstream artifact (so an SDS-defined req progresses to SDD/CODE/TEST,
+        # but its self-reference in the SDS does not "advance" it).
+        status = row.defined_in
         if row.sds_ref:
             status = deepest("SDS", status)
         if row.sdd_ref:
@@ -153,18 +168,18 @@ def build_rows(
         row.status = status
         rows.append(row)
 
-    # IDs are immutable: anything in the CSV must still appear in the SRS.
-    for rid in sorted(set(existing) - set(srs)):
+    # IDs are immutable: anything in the CSV must still appear in *some* spec.
+    for rid in sorted(set(existing) - set(defs)):
         warnings.append(
-            f"{rid} is in the CSV but missing from the SRS — IDs are immutable; "
-            "restore it in the SRS or treat this as a lifecycle change."
+            f"{rid} is in the CSV but missing from both SRS and SDS — IDs are "
+            "immutable; restore the definition or treat this as a lifecycle change."
         )
 
-    # References pointing at IDs the SRS does not define.
+    # References pointing at IDs no spec defines.
     referenced: set[str] = set()
     for d in refs.values():
         referenced.update(d)
-    for rid in sorted(referenced - set(srs)):
+    for rid in sorted(referenced - set(defs)):
         warnings.append(f"unknown REQ id {rid} referenced in artifacts")
 
     return rows, warnings
@@ -218,20 +233,32 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: SRS not found at {srs_path}", file=sys.stderr)
         return 2
 
-    srs = parse_srs(srs_path)
-    if not srs:
+    sds_path = resolve(args.sds)
+    srs_defs = parse_definitions(srs_path)
+    sds_defs = parse_definitions(sds_path)
+
+    if not srs_defs:
         print(f"error: no requirements parsed from {srs_path} — check the bullet format", file=sys.stderr)
         return 2
 
+    defs = {**srs_defs, **sds_defs}
+    defined_in = {rid: "SRS" for rid in srs_defs}
+    overlap_warnings: list[str] = []
+    for rid in sds_defs:
+        if rid in srs_defs:
+            overlap_warnings.append(f"{rid} is defined in BOTH the SRS and SDS — IDs must be unique")
+        defined_in[rid] = "SDS"
+
     existing = load_existing(csv_path)
     refs = {
-        "sds": scan_refs([resolve(args.sds)], (".md",)),
+        "sds": scan_refs([sds_path], (".md",)),
         "sdd": scan_refs([resolve(args.sdd)], (".md",)),
         "code": scan_refs([resolve(args.code)], (".py",)),
         "test": scan_refs([resolve(args.tests)], (".py",)),
     }
 
-    rows, warnings = build_rows(srs, existing, refs)
+    rows, warnings = build_rows(defs, defined_in, existing, refs)
+    warnings = overlap_warnings + warnings
     for w in warnings:
         print(f"warning: {w}", file=sys.stderr)
 

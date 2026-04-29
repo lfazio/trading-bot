@@ -1,109 +1,146 @@
-req_id,statement_short,sds_ref,sdd_ref,code_ref,test_ref,status
-REQ_C_BHV_001,Prefer stocks over turbos,,,,,SRS
-REQ_C_BHV_002,Avoid overtrading,,,,,SRS
-REQ_C_BHV_003,Auto-reject marginal trades,,,,,SRS
-REQ_C_BHV_004,Survival > return,,,,,SRS
-REQ_C_BHV_005,Forbidden behaviors,,,,,SRS
-REQ_C_CLA_001,Claude allowed actions,,,,,SRS
-REQ_C_CLA_002,Claude forbidden actions,,,,,SRS
-REQ_C_TAX_001,France CTO PFU only,,,,,SRS
-REQ_F_BCT_001,Deterministic backtest,,,,,SRS
-REQ_F_BCT_002,Simulate broker fees,,,,,SRS
-REQ_F_BCT_003,Simulate slippage,,,,,SRS
-REQ_F_BCT_004,Simulate turbo knockouts,,,,,SRS
-REQ_F_BCT_005,Simulate dividends,,,,,SRS
-REQ_F_BCT_006,Apply 30% tax,,,,,SRS
-REQ_F_BCT_007,Simulate injection timeline,,,,,SRS
-REQ_F_BCT_008,Walk-forward required,,,,,SRS
-REQ_F_BCT_009,Phase 5+ extended walk-forward,,,,,SRS
-REQ_F_BRK_001,BrokerAdapter interface,,,,,SRS
-REQ_F_BRK_002,Mock adapter end-to-end,,,,,SRS
-REQ_F_BRK_003,XTB XAPI reference adapter,,,,,SRS
-REQ_F_BRK_004,Adapter selected by config,,,,,SRS
-REQ_F_BRK_005,Non-execution modules broker-agnostic,,,,,SRS
-REQ_F_CAP_001,Starting capital from config,,,,,SRS
-REQ_F_CAP_002,Phase engine selects from equity+injections,,,,,SRS
-REQ_F_CAP_003,Six phases defined,,,,,SRS
-REQ_F_CAP_004,Phase thresholds configurable,,,,,SRS
-REQ_F_CAP_005,Hysteresis on phase downgrades,,,,,SRS
-REQ_F_CAP_006,Phase 1 constraints,,,,,SRS
-REQ_F_CAP_007,Phase 2 constraints,,,,,SRS
-REQ_F_CAP_008,Phase 3 constraints,,,,,SRS
-REQ_F_CAP_009,Phase 4 constraints,,,,,SRS
-REQ_F_CAP_010,Phase 5 constraints,,,,,SRS
-REQ_F_CAP_011,Phase 6 constraints,,,,,SRS
-REQ_F_CAP_012,Phase 5+ portfolio vol cap,,,,,SRS
-REQ_F_CAP_013,Risk per trade per phase,,,,,SRS
-REQ_F_CAP_014,Stop-loss mandatory,,,,,SRS
-REQ_F_CFL_001,Track initial+injections+deployed+equity,,,,,SRS
-REQ_F_CFL_002,Performance excludes injections,,,,,SRS
-REQ_F_CFL_003,Risk sizing scales with total capital,,,,,SRS
-REQ_F_CFL_004,Backtests simulate injection timeline,,,,,SRS
-REQ_F_DSH_001,Dashboard fields,,,,,SRS
-REQ_F_MIL_001,Configurable milestone list,,,,,SRS
-REQ_F_MIL_002,Milestone validation conditions,,,,,SRS
-REQ_F_MIL_003,Gradual scaling at milestone,,,,,SRS
-REQ_F_MIL_004,Reject fake growth,,,,,SRS
-REQ_F_MTO_001,Bounded research engine,,,,,SRS
-REQ_F_MTO_002,8-step pipeline,,,,,SRS
-REQ_F_MTO_003,Score formula,,,,,SRS
-REQ_F_MTO_004,Walk-forward gate,,,,,SRS
-REQ_F_MTO_005,Registry versioning,,,,,SRS
-REQ_F_MTO_006,Self-improvement rule,,,,,SRS
-REQ_F_MTO_007,ImprovementReport per cycle,,,,,SRS
-REQ_F_MTO_008,Regime evaluation,,,,,SRS
-REQ_F_PRT_001,Track cash/positions/gains/dividends/equity,,,,,SRS
-REQ_F_PRT_002,Phase 6 NAV+attribution,,,,,SRS
-REQ_F_PRT_003,Diversification enforced,,,,,SRS
-REQ_F_RSK_001,Per-phase max drawdown,,,,,SRS
-REQ_F_RSK_002,Single-asset exposure cap,,,,,SRS
-REQ_F_RSK_003,Correlation monitoring,,,,,SRS
-REQ_F_RSK_004,Phase 5+ vol cap,,,,,SRS
-REQ_F_RSK_005,Risk engine failure trips kill switch,,,,,SRS
-REQ_F_SCR_001,EU dividend screener criteria,,,,,SRS
-REQ_F_SCR_002,Scored ranking output,,,,,SRS
-REQ_F_STP_001,Structured products <=10%,,,,,SRS
-REQ_F_STP_002,Decomposition mandatory,,,,,SRS
-REQ_F_STP_003,Allowed regimes only,,,,,SRS
-REQ_F_STP_004,Forbidden regimes block,,,,,SRS
-REQ_F_STP_005,Stress + liquidity tests,,,,,SRS
-REQ_F_STP_006,Issuer diversification,,,,,SRS
-REQ_F_STP_007,No turbo+SP stacking on same underlying,,,,,SRS
-REQ_F_STR_001,Core strategy long-term/dividend,,,,,SRS
-REQ_F_STR_002,Tactical strategy trend/breakout/pullback,,,,,SRS
-REQ_F_STR_003,Walk-forward validation required,,,,,SRS
-REQ_F_STR_004,Phase 6 multi-strategy ensemble,,,,,SRS
-REQ_F_TAX_001,30% tax on realized gains,,,,,SRS
-REQ_F_TAX_002,30% tax on dividends,,,,,SRS
-REQ_F_TAX_003,Trade gate: net_profit > 5x fees after tax,,,,,SRS
-REQ_F_TAX_004,Optimize after-tax never gross,,,,,SRS
-REQ_F_TAX_005,Backtests apply taxes,,,,,SRS
-REQ_F_TAX_006,Phase 5+ tax-loss harvesting,,,,,SRS
-REQ_F_TRB_001,Turbo 3-step pipeline,,,,,SRS
-REQ_F_TRB_002,Turbo filter criteria,,,,,SRS
-REQ_F_TRB_003,Turbo scoring formula,,,,,SRS
-REQ_F_TRB_004,No-trade if score below threshold,,,,,SRS
-REQ_F_TRB_005,Turbo risk = invested capital only,,,,,SRS
-REQ_F_TRB_006,Turbo candidate fields required,,,,,SRS
-REQ_NF_AUD_001,Snapshot on KS event,,,,,SRS
-REQ_NF_DET_001,Deterministic backtest engine,,,,,SRS
-REQ_NF_LIF_001,DO-178C lifecycle,,,,,SRS
-REQ_NF_LIF_002,Changes restart lifecycle,,,,,SRS
-REQ_NF_LOG_001,Logging trades/KS/reports,,,,,SRS
-REQ_NF_REP_001,Strategy reproducibility,,,,,SRS
-REQ_NF_TRC_001,Full traceability,,,,,SRS
-REQ_O_001,The repository SHALL deliver a runnable Python project with no pseudo…,,,,,SRS
-REQ_O_002,`main.py` SHALL demonstrate end-to-end: connect (mock or selected bro…,,,,,SRS
-REQ_O_003,"Starting capital, broker selection, and phase thresholds SHALL be rea…",,,,,SRS
-REQ_S_KS_001,Three states,,,,,SRS
-REQ_S_KS_002,Override priority,,,,,SRS
-REQ_S_KS_003,Financial triggers,,,,,SRS
-REQ_S_KS_004,Strategy instability triggers,,,,,SRS
-REQ_S_KS_005,Execution anomaly triggers,,,,,SRS
-REQ_S_KS_006,System integrity triggers,,,,,SRS
-REQ_S_KS_007,Kill actions,,,,,SRS
-REQ_S_KS_008,Degraded mode behavior,,,,,SRS
-REQ_S_KS_009,Recovery requires manual confirmation,,,,,SRS
-REQ_S_KS_010,Conditions immutable at runtime,,,,,SRS
-REQ_S_KS_011,No trading during KILL,,,,,SRS
-REQ_S_KS_012,Prefer stopping incorrectly,,,,,SRS
+req_id,defined_in,statement_short,sds_ref,sdd_ref,code_ref,test_ref,status
+REQ_C_BHV_001,SRS,Prefer stocks over turbos,docs/sds.md,,,,SDS
+REQ_C_BHV_002,SRS,Avoid overtrading,docs/sds.md,,,,SDS
+REQ_C_BHV_003,SRS,Auto-reject marginal trades,docs/sds.md,,,,SDS
+REQ_C_BHV_004,SRS,Survival > return,docs/sds.md,,,,SDS
+REQ_C_BHV_005,SRS,Forbidden behaviors,docs/sds.md,,,,SDS
+REQ_C_CLA_001,SRS,Claude allowed actions,docs/sds.md,,,,SDS
+REQ_C_CLA_002,SRS,Claude forbidden actions,docs/sds.md,,,,SDS
+REQ_C_TAX_001,SRS,France CTO PFU only,docs/sds.md,,,,SDS
+REQ_F_BCT_001,SRS,Deterministic backtest,docs/sds.md,,,,SDS
+REQ_F_BCT_002,SRS,Simulate broker fees,docs/sds.md,,,,SDS
+REQ_F_BCT_003,SRS,Simulate slippage,docs/sds.md,,,,SDS
+REQ_F_BCT_004,SRS,Simulate turbo knockouts,docs/sds.md,,,,SDS
+REQ_F_BCT_005,SRS,Simulate dividends,docs/sds.md,,,,SDS
+REQ_F_BCT_006,SRS,Apply 30% tax,docs/sds.md,,,,SDS
+REQ_F_BCT_007,SRS,Simulate injection timeline,docs/sds.md,,,,SDS
+REQ_F_BCT_008,SRS,Walk-forward required,docs/sds.md,,,,SDS
+REQ_F_BCT_009,SRS,Phase 5+ extended walk-forward,docs/sds.md,,,,SDS
+REQ_F_BRK_001,SRS,BrokerAdapter interface,docs/sds.md,,,,SDS
+REQ_F_BRK_002,SRS,Mock adapter end-to-end,docs/sds.md,,,,SDS
+REQ_F_BRK_003,SRS,XTB XAPI reference adapter,docs/sds.md,,,,SDS
+REQ_F_BRK_004,SRS,Adapter selected by config,docs/sds.md,,,,SDS
+REQ_F_BRK_005,SRS,Non-execution modules broker-agnostic,docs/sds.md,,,,SDS
+REQ_F_CAP_001,SRS,Starting capital from config,docs/sds.md,,,,SDS
+REQ_F_CAP_002,SRS,Phase engine selects from equity+injections,docs/sds.md,,,,SDS
+REQ_F_CAP_003,SRS,Six phases defined,docs/sds.md,,,,SDS
+REQ_F_CAP_004,SRS,Phase thresholds configurable,docs/sds.md,,,,SDS
+REQ_F_CAP_005,SRS,Hysteresis on phase downgrades,docs/sds.md,,,,SDS
+REQ_F_CAP_006,SRS,Phase 1 constraints,docs/sds.md,,,,SDS
+REQ_F_CAP_007,SRS,Phase 2 constraints,docs/sds.md,,,,SDS
+REQ_F_CAP_008,SRS,Phase 3 constraints,docs/sds.md,,,,SDS
+REQ_F_CAP_009,SRS,Phase 4 constraints,docs/sds.md,,,,SDS
+REQ_F_CAP_010,SRS,Phase 5 constraints,docs/sds.md,,,,SDS
+REQ_F_CAP_011,SRS,Phase 6 constraints,docs/sds.md,,,,SDS
+REQ_F_CAP_012,SRS,Phase 5+ portfolio vol cap,docs/sds.md,,,,SDS
+REQ_F_CAP_013,SRS,Risk per trade per phase,docs/sds.md,,,,SDS
+REQ_F_CAP_014,SRS,Stop-loss mandatory,docs/sds.md,,,,SDS
+REQ_F_CFL_001,SRS,Track initial+injections+deployed+equity,docs/sds.md,,,,SDS
+REQ_F_CFL_002,SRS,Performance excludes injections,docs/sds.md,,,,SDS
+REQ_F_CFL_003,SRS,Risk sizing scales with total capital,docs/sds.md,,,,SDS
+REQ_F_CFL_004,SRS,Backtests simulate injection timeline,docs/sds.md,,,,SDS
+REQ_F_DSH_001,SRS,Dashboard fields,docs/sds.md,,,,SDS
+REQ_F_MIL_001,SRS,Configurable milestone list,docs/sds.md,,,,SDS
+REQ_F_MIL_002,SRS,Milestone validation conditions,docs/sds.md,,,,SDS
+REQ_F_MIL_003,SRS,Gradual scaling at milestone,docs/sds.md,,,,SDS
+REQ_F_MIL_004,SRS,Reject fake growth,docs/sds.md,,,,SDS
+REQ_F_MTO_001,SRS,Bounded research engine,docs/sds.md,,,,SDS
+REQ_F_MTO_002,SRS,8-step pipeline,docs/sds.md,,,,SDS
+REQ_F_MTO_003,SRS,Score formula,docs/sds.md,,,,SDS
+REQ_F_MTO_004,SRS,Walk-forward gate,docs/sds.md,,,,SDS
+REQ_F_MTO_005,SRS,Registry versioning,docs/sds.md,,,,SDS
+REQ_F_MTO_006,SRS,Self-improvement rule,docs/sds.md,,,,SDS
+REQ_F_MTO_007,SRS,ImprovementReport per cycle,docs/sds.md,,,,SDS
+REQ_F_MTO_008,SRS,Regime evaluation,docs/sds.md,,,,SDS
+REQ_F_PRT_001,SRS,Track cash/positions/gains/dividends/equity,docs/sds.md,,,,SDS
+REQ_F_PRT_002,SRS,Phase 6 NAV+attribution,docs/sds.md,,,,SDS
+REQ_F_PRT_003,SRS,Diversification enforced,docs/sds.md,,,,SDS
+REQ_F_RSK_001,SRS,Per-phase max drawdown,docs/sds.md,,,,SDS
+REQ_F_RSK_002,SRS,Single-asset exposure cap,docs/sds.md,,,,SDS
+REQ_F_RSK_003,SRS,Correlation monitoring,docs/sds.md,,,,SDS
+REQ_F_RSK_004,SRS,Phase 5+ vol cap,docs/sds.md,,,,SDS
+REQ_F_RSK_005,SRS,Risk engine failure trips kill switch,docs/sds.md,,,,SDS
+REQ_F_SCR_001,SRS,EU dividend screener criteria,docs/sds.md,,,,SDS
+REQ_F_SCR_002,SRS,Scored ranking output,docs/sds.md,,,,SDS
+REQ_F_STP_001,SRS,Structured products <=10%,docs/sds.md,,,,SDS
+REQ_F_STP_002,SRS,Decomposition mandatory,docs/sds.md,,,,SDS
+REQ_F_STP_003,SRS,Allowed regimes only,docs/sds.md,,,,SDS
+REQ_F_STP_004,SRS,Forbidden regimes block,docs/sds.md,,,,SDS
+REQ_F_STP_005,SRS,Stress + liquidity tests,docs/sds.md,,,,SDS
+REQ_F_STP_006,SRS,Issuer diversification,docs/sds.md,,,,SDS
+REQ_F_STP_007,SRS,No turbo+SP stacking on same underlying,docs/sds.md,,,,SDS
+REQ_F_STR_001,SRS,Core strategy long-term/dividend,docs/sds.md,,,,SDS
+REQ_F_STR_002,SRS,Tactical strategy trend/breakout/pullback,docs/sds.md,,,,SDS
+REQ_F_STR_003,SRS,Walk-forward validation required,docs/sds.md,,,,SDS
+REQ_F_STR_004,SRS,Phase 6 multi-strategy ensemble,docs/sds.md,,,,SDS
+REQ_F_TAX_001,SRS,30% tax on realized gains,docs/sds.md,,,,SDS
+REQ_F_TAX_002,SRS,30% tax on dividends,docs/sds.md,,,,SDS
+REQ_F_TAX_003,SRS,Trade gate: net_profit > 5x fees after tax,docs/sds.md,,,,SDS
+REQ_F_TAX_004,SRS,Optimize after-tax never gross,docs/sds.md,,,,SDS
+REQ_F_TAX_005,SRS,Backtests apply taxes,docs/sds.md,,,,SDS
+REQ_F_TAX_006,SRS,Phase 5+ tax-loss harvesting,docs/sds.md,,,,SDS
+REQ_F_TRB_001,SRS,Turbo 3-step pipeline,docs/sds.md,,,,SDS
+REQ_F_TRB_002,SRS,Turbo filter criteria,docs/sds.md,,,,SDS
+REQ_F_TRB_003,SRS,Turbo scoring formula,docs/sds.md,,,,SDS
+REQ_F_TRB_004,SRS,No-trade if score below threshold,docs/sds.md,,,,SDS
+REQ_F_TRB_005,SRS,Turbo risk = invested capital only,docs/sds.md,,,,SDS
+REQ_F_TRB_006,SRS,Turbo candidate fields required,docs/sds.md,,,,SDS
+REQ_NF_AUD_001,SRS,Snapshot on KS event,docs/sds.md,,,,SDS
+REQ_NF_DET_001,SRS,Deterministic backtest engine,docs/sds.md,,,,SDS
+REQ_NF_LIF_001,SRS,DO-178C lifecycle,docs/sds.md,,,,SDS
+REQ_NF_LIF_002,SRS,Changes restart lifecycle,docs/sds.md,,,,SDS
+REQ_NF_LOG_001,SRS,Logging trades/KS/reports,docs/sds.md,,,,SDS
+REQ_NF_REP_001,SRS,Strategy reproducibility,docs/sds.md,,,,SDS
+REQ_NF_TRC_001,SRS,Full traceability,docs/sds.md,,,,SDS
+REQ_O_001,SRS,The repository SHALL deliver a runnable Python project with no pseudo…,docs/sds.md,,,,SDS
+REQ_O_002,SRS,`main.py` SHALL demonstrate end-to-end: connect (mock or selected bro…,docs/sds.md,,,,SDS
+REQ_O_003,SRS,"Starting capital, broker selection, and phase thresholds SHALL be rea…",docs/sds.md,,,,SDS
+REQ_SDS_ARC_001,SDS,The system SHALL be organized into eight layers (L0–L7) with strict d…,docs/sds.md,,,,SDS
+REQ_SDS_ARC_002,SDS,"Engines (tax, risk, phase, screener, turbo, scoring, backtest) SHALL…",docs/sds.md,,,,SDS
+REQ_SDS_ARC_003,SDS,The safety layer SHALL act as a veto over execution; every call to `B…,docs/sds.md,,,,SDS
+REQ_SDS_ARC_004,SDS,The runtime SHALL be a single-process event-driven loop; the same loo…,docs/sds.md,,,,SDS
+REQ_SDS_ARC_005,SDS,All randomness SHALL be seeded; the seed SHALL be part of `Config` so…,docs/sds.md,,,,SDS
+REQ_SDS_ARC_006,SDS,Time SHALL be abstracted via a `Clock` interface; no module outside `…,docs/sds.md,,,,SDS
+REQ_SDS_CFG_001,SDS,"Configuration SHALL be split across eight YAML files (`system`, `phas…",docs/sds.md,,,,SDS
+REQ_SDS_CFG_002,SDS,Schema validation SHALL run before any decisioning module initializes…,docs/sds.md,,,,SDS
+REQ_SDS_CFG_003,SDS,Kill-switch trigger thresholds SHALL be loaded once at startup and SH…,docs/sds.md,,,,SDS
+REQ_SDS_CRS_001,SDS,"All logs SHALL be JSON-line records with categories (`trade`, `decisi…",docs/sds.md,,,,SDS
+REQ_SDS_CRS_002,SDS,Every kill-switch state transition SHALL persist a snapshot artifact…,docs/sds.md,,,,SDS
+REQ_SDS_CRS_003,SDS,"The strategy registry SHALL store, for every validated entry: code re…",docs/sds.md,,,,SDS
+REQ_SDS_CRS_004,SDS,"Behavioral defaults (preferring stocks, rejecting marginal trades, bl…",docs/sds.md,,,,SDS
+REQ_SDS_FLO_001,SDS,Every trade decision SHALL traverse the order: tax-aware gate → risk…,docs/sds.md,,,,SDS
+REQ_SDS_FLO_002,SDS,"`phase_engine` SHALL distribute `PhaseConstraints` to `risk/`, `strat…",docs/sds.md,,,,SDS
+REQ_SDS_FLO_003,SDS,"Backtests SHALL use the same trade-decision pipeline as live runs, sw…",docs/sds.md,,,,SDS
+REQ_SDS_FLO_004,SDS,The runtime SHALL never invoke `strategy_lab/` modules other than the…,docs/sds.md,,,,SDS
+REQ_SDS_FLO_005,SDS,"Kill-switch monitors (financial, strategy, execution, integrity) SHAL…",docs/sds.md,,,,SDS
+REQ_SDS_INT_001,SDS,"The `BrokerAdapter` interface SHALL specify `submit`, `cancel`, `posi…",docs/sds.md,,,,SDS
+REQ_SDS_INT_002,SDS,"The `MarketDataProvider` interface SHALL specify `bars`, `latest`, `d…",docs/sds.md,,,,SDS
+REQ_SDS_INT_003,SDS,The `AlertChannel` interface SHALL deliver kill-switch state-change n…,docs/sds.md,,,,SDS
+REQ_SDS_INT_004,SDS,"`Config` SHALL be a frozen, dependency-injected object; no runtime mo…",docs/sds.md,,,,SDS
+REQ_SDS_MOD_001,SDS,`config/` SHALL run schema validation at startup including cross-fiel…,docs/sds.md,,,,SDS
+REQ_SDS_MOD_002,SDS,`models/` SHALL contain only data types with input validation; it SHA…,docs/sds.md,,,,SDS
+REQ_SDS_MOD_003,SDS,"The tax module's public functions (`net_gain`, `net_dividend`, `trade…",docs/sds.md,,,,SDS
+REQ_SDS_MOD_004,SDS,The phase engine's state machine SHALL be monotone-up by default and…,docs/sds.md,,,,SDS
+REQ_SDS_MOD_005,SDS,"`capital_flow/` SHALL expose an ""equity excluding injections"" series…",docs/sds.md,,,,SDS
+REQ_SDS_MOD_006,SDS,Every concrete strategy SHALL implement a single `evaluate(state) ->…,docs/sds.md,,,,SDS
+REQ_SDS_MOD_007,SDS,"The turbo selector SHALL emit ""no trade"" when the best candidate's sc…",docs/sds.md,,,,SDS
+REQ_SDS_MOD_008,SDS,Structured products that cannot be decomposed into equity-equiv expos…,docs/sds.md,,,,SDS
+REQ_SDS_MOD_009,SDS,"Risk-engine internal inconsistencies (e.g., contradictory limit evalu…",docs/sds.md,,,,SDS
+REQ_SDS_MOD_010,SDS,`safety/state_manager` SHALL be the single writer for `KillSwitchStat…,docs/sds.md,,,,SDS
+REQ_SDS_MOD_011,SDS,The portfolio's primary equity curve SHALL be after-tax; any gross vi…,docs/sds.md,,,,SDS
+REQ_SDS_MOD_012,SDS,The milestone controller SHALL include a fake-growth detector that re…,docs/sds.md,,,,SDS
+REQ_SDS_MOD_013,SDS,The backtesting engine SHALL accept an explicit seed and SHALL produc…,docs/sds.md,,,,SDS
+REQ_SDS_MOD_014,SDS,`strategy_lab/` SHALL be offline-only; runtime modules SHALL import o…,docs/sds.md,,,,SDS
+REQ_SDS_MOD_015,SDS,`dashboard/` SHALL be a read-only view over `analytics/`; it SHALL NO…,docs/sds.md,,,,SDS
+REQ_S_KS_001,SRS,Three states,docs/sds.md,,,,SDS
+REQ_S_KS_002,SRS,Override priority,docs/sds.md,,,,SDS
+REQ_S_KS_003,SRS,Financial triggers,docs/sds.md,,,,SDS
+REQ_S_KS_004,SRS,Strategy instability triggers,docs/sds.md,,,,SDS
+REQ_S_KS_005,SRS,Execution anomaly triggers,docs/sds.md,,,,SDS
+REQ_S_KS_006,SRS,System integrity triggers,docs/sds.md,,,,SDS
+REQ_S_KS_007,SRS,Kill actions,docs/sds.md,,,,SDS
+REQ_S_KS_008,SRS,Degraded mode behavior,docs/sds.md,,,,SDS
+REQ_S_KS_009,SRS,Recovery requires manual confirmation,docs/sds.md,,,,SDS
+REQ_S_KS_010,SRS,Conditions immutable at runtime,docs/sds.md,,,,SDS
+REQ_S_KS_011,SRS,No trading during KILL,docs/sds.md,,,,SDS
+REQ_S_KS_012,SRS,Prefer stopping incorrectly,docs/sds.md,,,,SDS
