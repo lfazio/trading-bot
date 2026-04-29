@@ -23,7 +23,7 @@ Legend: `[ ]` open · `[~]` in progress · `[x]` done · `(REQ_xxx)` traceabilit
 
 ---
 
-## Phase 1 — SRS (Software Requirements Specification)
+## Phase 1 — SRS (Software Requirements Specification) ✅ APPROVED 2026-04-29 @ 7424909
 
 Output: `docs/srs.md`. **No design or code allowed.**
 

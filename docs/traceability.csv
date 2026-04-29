@@ -92,6 +92,9 @@ REQ_NF_LIF_002,Changes restart lifecycle,,,,,SRS
 REQ_NF_LOG_001,Logging trades/KS/reports,,,,,SRS
 REQ_NF_REP_001,Strategy reproducibility,,,,,SRS
 REQ_NF_TRC_001,Full traceability,,,,,SRS
+REQ_O_001,The repository SHALL deliver a runnable Python project with no pseudo…,,,,,SRS
+REQ_O_002,`main.py` SHALL demonstrate end-to-end: connect (mock or selected bro…,,,,,SRS
+REQ_O_003,"Starting capital, broker selection, and phase thresholds SHALL be rea…",,,,,SRS
 REQ_S_KS_001,Three states,,,,,SRS
 REQ_S_KS_002,Override priority,,,,,SRS
 REQ_S_KS_003,Financial triggers,,,,,SRS

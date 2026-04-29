@@ -2,7 +2,7 @@
 
 **Project:** trading-bot
 **Lifecycle phase:** Phase 1 — SRS
-**Status:** Draft (awaiting review/approval before SDS)
+**Status:** Approved — Phase 2 (SDS) gate is open
 **References:** [`trading-bot.md`](../trading-bot.md) (original spec), [`CLAUDE.md`](../CLAUDE.md), [`tasks.md`](../tasks.md)
 
 > **Lifecycle rule.** No design or code is permitted at this stage. Each requirement
@@ -240,10 +240,11 @@ Each requirement is verified by one or more of:
 
 ## 8. Approval
 
-This document is **DRAFT**. The Phase 1 → Phase 2 (SDS) gate is not opened until
-the operator reviews and approves this SRS. Approval SHALL be recorded in this
-section with a date, reviewer name, and a hash of the approved revision.
+This document is **APPROVED**. The Phase 1 → Phase 2 (SDS) gate is open. Per
+`REQ_NF_LIF_002`, any change to a requirement after this point restarts the
+lifecycle from the affected phase; new requirements are appended (never
+renumbered) and re-approved.
 
-| Date | Reviewer | Revision (git SHA) | Outcome |
-|---|---|---|---|
-| 29/04/2026 | Laurent Fazio | _pending_ | OK |
+| Date       | Reviewer       | Revision (git SHA) | Outcome  |
+|------------|----------------|--------------------|----------|
+| 2026-04-29 | Laurent Fazio  | 7424909            | Approved |
