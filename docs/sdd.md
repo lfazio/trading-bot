@@ -1127,6 +1127,68 @@ specified, and the test plan SHALL verify each.
 - **REQ_SDD_LOG_002** — Kill-switch event log entries SHALL include `(snapshot_id, state_from, state_to, trigger_category, trigger_code, severity, message, raised_at)`. *Derives from: REQ_NF_AUD_001, REQ_SDS_CRS_002.* *V: T*
 - **REQ_SDD_LOG_003** — `ImprovementReport` log entries SHALL include `(cycle_id, best_strategy_id, deltas, risk_assessment, rejected_ids, rejection_reasons, generated_at)`. *Derives from: REQ_F_MTO_007.* *V: T*
 
+### 13.7 Module structure & implementation — `REQ_SDD_IMP`
+
+- **REQ_SDD_IMP_001** — Source-tree layout SHALL match the SDS module decomposition exactly: every module named in SDS §3 SHALL exist as a top-level package directory under `trading_system/`, and no directory outside that list SHALL appear in the runtime tree. *Derives from: REQ_NF_TRC_001, REQ_SDS_ARC_001.* *V: T*
+- **REQ_SDD_IMP_002** — Each module SHALL declare an `__all__` listing its public surface; symbols not in `__all__` SHALL be considered internal and SHALL NOT be imported by other modules. *Derives from: REQ_NF_TRC_001, REQ_SDS_ARC_001.* *V: T*
+- **REQ_SDD_IMP_003** — The dependency graph between top-level packages SHALL be acyclic; an automated check (`tools/check_imports.py`) SHALL run in CI and fail on any cycle. *Derives from: REQ_SDS_ARC_001.* *V: T*
+- **REQ_SDD_IMP_004** — Each module's package docstring SHALL list the SRS / SDS / SDD requirement IDs it implements; the traceability tool SHALL fail if a module exists with no REQ references in its source. *Derives from: REQ_NF_TRC_001.* *V: T*
+- **REQ_SDD_IMP_005** — The runtime tree (`trading_system/`) SHALL NOT import from `strategy_lab/` outside of `strategy_lab/registry/` (read-only); the import-graph check SHALL enforce this. *Derives from: REQ_SDS_MOD_014, REQ_SDS_FLO_004.* *V: T*
+- **REQ_SDD_IMP_006** — Engine modules (`tax/`, `risk/`, `phase_engine/`, `screener/`, `turbo_selector/`, `structured_products/`, `capital_flow/`, `safety/`) SHALL contain no top-level I/O calls and no module-level mutable state. *Derives from: REQ_SDS_ARC_002.* *V: T*
+
+### 13.8 Error handling — `REQ_SDD_ERR`
+
+- **REQ_SDD_ERR_001** — Validation failures at type construction SHALL raise `ValueError`; all other module-boundary failures SHALL return `Result[T, E]`. Exceptions SHALL NOT be used for control flow inside the engine layer. *Derives from: REQ_NF_DET_001, REQ_SDS_MOD_002.* *V: T*
+- **REQ_SDD_ERR_002** — `BrokerAdapter` and `MarketDataProvider` errors SHALL be mapped to `Result[T, str]` with a category prefix (`broker:`, `data:`, `network:`, `auth:`); raw third-party exceptions SHALL NOT escape the adapter layer. *Derives from: REQ_F_BRK_005, REQ_S_KS_005.* *V: T*
+- **REQ_SDD_ERR_003** — Any internal inconsistency in `risk/` (e.g., contradictory verdicts on the same proposal) SHALL raise a kill-switch INTEGRITY trigger — silent recovery is forbidden. *Derives from: REQ_F_RSK_005, REQ_S_KS_006, REQ_SDS_MOD_009.* *V: T*
+- **REQ_SDD_ERR_004** — Configuration validation errors SHALL include the file path, the offending key path, and a human-readable reason; the process SHALL exit with code 2 (config error) without entering DEGRADED mode. *Derives from: REQ_SDS_CFG_002.* *V: T*
+- **REQ_SDD_ERR_005** — A failed `AlertChannel.deliver` SHALL retry with exponential backoff up to 3 attempts; failure after 3 SHALL be logged and SHALL NOT block the calling module. *Derives from: REQ_SDS_INT_003.* *V: T*
+
+### 13.9 Performance & complexity — `REQ_SDD_PER`
+
+- **REQ_SDD_PER_001** — `SafetyLayer.must_halt()` SHALL execute in O(1) time and SHALL NOT acquire locks or perform I/O; benchmarked to < 1µs on commodity hardware. *Derives from: REQ_SDS_MOD_010, REQ_SDD_API_003.* *V: T*
+- **REQ_SDD_PER_002** — `PhaseEngine.resolve()` SHALL execute in O(N) where N is the number of phases (6 by default), i.e., effectively O(1). *Derives from: REQ_F_CAP_002.* *V: T*
+- **REQ_SDD_PER_003** — `RiskEngine.pre_trade()` SHALL execute in O(P) where P is the number of open positions; correlation lookup SHALL be cached per tick. *Derives from: REQ_F_RSK_003.* *V: T*
+- **REQ_SDD_PER_004** — Backtest throughput on the mock provider SHALL achieve ≥ 10,000 ticks/second per strategy on a single CPU core for the deterministic seeded path. *Derives from: REQ_F_BCT_001, REQ_SDS_FLO_003.* *V: T*
+- **REQ_SDD_PER_005** — Portfolio mutation paths (`apply()`, equity recording) SHALL be O(1) amortized; the equity curve SHALL be append-only. *Derives from: REQ_F_PRT_001.* *V: T*
+
+### 13.10 Testability & fixtures — `REQ_SDD_TST`
+
+- **REQ_SDD_TST_001** — A shared `BrokerAdapter` conformance test suite (`tests/adapters/conformance.py`) SHALL parameterize over every concrete adapter; the `MockBrokerAdapter` and `XTBAdapter` SHALL pass identical scenarios. *Derives from: REQ_F_BRK_002, REQ_F_BRK_003, REQ_SDS_INT_001.* *V: T*
+- **REQ_SDD_TST_002** — `MockMarketDataProvider` SHALL produce identical bar series for identical (seed, symbol, timeframe, range) tuples; this SHALL be verified by a property test. *Derives from: REQ_NF_DET_001, REQ_SDS_INT_002.* *V: T*
+- **REQ_SDD_TST_003** — Tax-engine tests SHALL include boundary cases: zero gain, exact gate threshold (`5 × fees`), one cent above and below threshold, and round-half-up tie-breakers. *Derives from: REQ_F_TAX_003, REQ_SDD_ALG_001.* *V: T*
+- **REQ_SDD_TST_004** — Phase-engine tests SHALL include a hysteresis-flapping fixture that traverses each boundary in both directions; no boundary SHALL produce more than one transition per traversal. *Derives from: REQ_F_CAP_005, REQ_SDD_ALG_002.* *V: T*
+- **REQ_SDD_TST_005** — Kill-switch tests SHALL cover every trigger code (financial, strategy, execution, integrity); every state transition SHALL produce a non-empty audit snapshot. *Derives from: REQ_S_KS_003, REQ_S_KS_004, REQ_S_KS_005, REQ_S_KS_006, REQ_NF_AUD_001.* *V: T*
+- **REQ_SDD_TST_006** — Backtest reproducibility SHALL be asserted by running each shipped strategy twice with the same `(seed, config_hash, data)` and diffing trade logs and equity curves; any difference SHALL fail the build. *Derives from: REQ_NF_REP_001, REQ_F_MTO_005, REQ_SDS_CRS_003.* *V: T*
+
+### 13.11 Naming & conventions — `REQ_SDD_NAM`
+
+- **REQ_SDD_NAM_001** — Type names SHALL be `PascalCase`; function and variable names SHALL be `snake_case`; constants SHALL be `UPPER_SNAKE_CASE`. Linter (`ruff`) configured to enforce. *Derives from: REQ_NF_TRC_001.* *V: T*
+- **REQ_SDD_NAM_002** — Concrete adapter classes SHALL end in `Adapter` (e.g., `XTBAdapter`); abstract / protocol equivalents SHALL be the unsuffixed name (`BrokerAdapter` is the protocol). *Derives from: REQ_SDS_INT_001.* *V: I*
+- **REQ_SDD_NAM_003** — Configuration record types SHALL end in `Config` (e.g., `ScreenerConfig`, `RiskConfig`); the loaded root object SHALL be the singleton `Config`. *Derives from: REQ_SDS_INT_004, REQ_SDD_API_004.* *V: I*
+- **REQ_SDD_NAM_004** — Result-returning function names SHALL describe the outcome (`trade_passes_gate`, `must_halt`, `decompose`); functions returning `Result` SHALL NOT be named with side-effect verbs. *Derives from: REQ_SDD_ERR_001.* *V: I*
+
+### 13.12 Additional algorithmic decisions — `REQ_SDD_ALG` (continued)
+
+- **REQ_SDD_ALG_016** — `RiskEngine.pre_trade` SHALL evaluate gates in this order and SHALL short-circuit on the first failure: kill-switch → risk-per-trade-band → stop-loss-presence → class-cap → correlation → regime. *Derives from: REQ_F_RSK_001, REQ_S_KS_011, REQ_SDS_FLO_001.* *V: T*
+- **REQ_SDD_ALG_017** — `CapitalFlow.observe` SHALL maintain `injections` sorted by `at` ascending; out-of-order insertion SHALL re-sort, never silently corrupt, the timeline. *Derives from: REQ_F_CFL_001, REQ_F_CFL_004.* *V: T*
+- **REQ_SDD_ALG_018** — `Screener` SHALL evaluate filters in this order (cheapest first): yield band → payout ratio → free cash flow → debt/equity → dividend history; this is observable in test traces. *Derives from: REQ_F_SCR_001.* *V: T*
+- **REQ_SDD_ALG_019** — `Backtest` tick ordering SHALL be deterministic by `(timestamp ASC, instrument_id ASC, sequence_id ASC)`; replays with the same seed and inputs SHALL produce bit-identical orderings. *Derives from: REQ_NF_DET_001, REQ_F_BCT_001.* *V: T*
+- **REQ_SDD_ALG_020** — `PhaseConstraints.allocation_targets` SHALL sum to `1.0 ± 1e-9`; deviations SHALL fail config validation. *Derives from: REQ_F_CAP_006, REQ_F_CAP_007, REQ_F_CAP_008, REQ_F_CAP_009, REQ_F_CAP_010, REQ_F_CAP_011, REQ_SDS_MOD_001.* *V: T*
+
+### 13.13 Additional data-structure rules — `REQ_SDD_DAT` (continued)
+
+- **REQ_SDD_DAT_005** — `Trade.fees` SHALL be the executed fee amount returned by the adapter, never an estimate; estimates live on `TradeProposal.expected_fees` only. *Derives from: REQ_F_BCT_002.* *V: T*
+- **REQ_SDD_DAT_006** — `Order.quantity` and `Position.quantity` magnitude SHALL be strictly positive at construction; zero or negative magnitudes SHALL raise `ValueError`. *Derives from: REQ_F_RSK_001.* *V: T*
+- **REQ_SDD_DAT_007** — `Phase` enum values SHALL be the integers 1..6; constructors SHALL reject any other value. *Derives from: REQ_F_CAP_003.* *V: T*
+- **REQ_SDD_DAT_008** — `KillSwitchTrigger.snapshot_id` SHALL be a non-empty string referencing an existing audit-log artifact; transitions SHALL refuse to advance state without one. *Derives from: REQ_NF_AUD_001, REQ_S_KS_007.* *V: T*
+
+### 13.14 Additional API contracts — `REQ_SDD_API` (continued)
+
+- **REQ_SDD_API_005** — `Strategy.id` SHALL be unique within the registry; attempting to store a second validated entry under the same id SHALL raise. *Derives from: REQ_F_MTO_005.* *V: T*
+- **REQ_SDD_API_006** — `BrokerAdapter.submit` and `BrokerAdapter.cancel` SHALL be idempotent for at-most-once semantics: re-submission with the same client-side order id SHALL return the original `OrderId`. *Derives from: REQ_F_BRK_001, REQ_S_KS_005.* *V: T*
+- **REQ_SDD_API_007** — `MarketDataProvider.bars` SHALL return bars in strictly ascending `at` order; out-of-order data SHALL be flagged as a corrupted-feed kill-switch trigger. *Derives from: REQ_S_KS_005, REQ_SDS_INT_002.* *V: T*
+
 ---
 
 ## 14. Coverage

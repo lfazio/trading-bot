@@ -110,10 +110,18 @@ REQ_SDD_ALG_012,SDD,Structured-product decomposition rules SHALL map: AUTOCALL �
 REQ_SDD_ALG_013,SDD,"Structured-product stress scenarios SHALL include −20% crash, vol×3,…",,docs/sdd.md,,,SDD
 REQ_SDD_ALG_014,SDD,Structured-product issuer concentration SHALL be capped at 25% of the…,,docs/sdd.md,,,SDD
 REQ_SDD_ALG_015,SDD,Fake-growth detection SHALL trip on any of: 30-day cumulative gain >…,,docs/sdd.md,,,SDD
+REQ_SDD_ALG_016,SDD,`RiskEngine.pre_trade` SHALL evaluate gates in this order and SHALL s…,,docs/sdd.md,,,SDD
+REQ_SDD_ALG_017,SDD,`CapitalFlow.observe` SHALL maintain `injections` sorted by `at` asce…,,docs/sdd.md,,,SDD
+REQ_SDD_ALG_018,SDD,`Screener` SHALL evaluate filters in this order (cheapest first): yie…,,docs/sdd.md,,,SDD
+REQ_SDD_ALG_019,SDD,"`Backtest` tick ordering SHALL be deterministic by `(timestamp ASC, i…",,docs/sdd.md,,,SDD
+REQ_SDD_ALG_020,SDD,`PhaseConstraints.allocation_targets` SHALL sum to `1.0 ± 1e-9`; devi…,,docs/sdd.md,,,SDD
 REQ_SDD_API_001,SDD,`Strategy.evaluate(state)` SHALL be read-only over `state`; mutation…,,docs/sdd.md,,,SDD
 REQ_SDD_API_002,SDD,"Adapter contracts (`BrokerAdapter`, `MarketDataProvider`, `AlertChann…",,docs/sdd.md,,,SDD
 REQ_SDD_API_003,SDD,`SafetyLayer.must_halt()` SHALL be O(1) — a single atomic read of the…,,docs/sdd.md,,,SDD
 REQ_SDD_API_004,SDD,`Config` SHALL be a `@dataclass(frozen=True)` value; runtime mutation…,,docs/sdd.md,,,SDD
+REQ_SDD_API_005,SDD,`Strategy.id` SHALL be unique within the registry; attempting to stor…,,docs/sdd.md,,,SDD
+REQ_SDD_API_006,SDD,`BrokerAdapter.submit` and `BrokerAdapter.cancel` SHALL be idempotent…,,docs/sdd.md,,,SDD
+REQ_SDD_API_007,SDD,`MarketDataProvider.bars` SHALL return bars in strictly ascending `at…,,docs/sdd.md,,,SDD
 REQ_SDD_CFG_001,SDD,Default tax rate SHALL be `0.30` in `tax.yaml`. *Derives from: REQ_F_…,,docs/sdd.md,,,SDD
 REQ_SDD_CFG_002,SDD,Default trade-gate multiplier SHALL be `5` in `tax.yaml`. *Derives fr…,,docs/sdd.md,,,SDD
 REQ_SDD_CFG_003,SDD,"Default phase boundaries SHALL be `[3000, 10000, 50000, 200000, 10000…",,docs/sdd.md,,,SDD
@@ -123,9 +131,39 @@ REQ_SDD_DAT_001,SDD,`Order` and `Position` SHALL carry a non-optional `StopLoss`
 REQ_SDD_DAT_002,SDD,`Position.opened_at` and `Position.avg_price` SHALL be set at constru…,,docs/sdd.md,,,SDD
 REQ_SDD_DAT_003,SDD,"`EquityPoint` SHALL store `(at, equity_gross, equity_after_tax, drawd…",,docs/sdd.md,,,SDD
 REQ_SDD_DAT_004,SDD,"`RegistryEntry` SHALL store `(strategy_id, git_sha, config_hash, seed…",,docs/sdd.md,,,SDD
+REQ_SDD_DAT_005,SDD,`Trade.fees` SHALL be the executed fee amount returned by the adapter…,,docs/sdd.md,,,SDD
+REQ_SDD_DAT_006,SDD,`Order.quantity` and `Position.quantity` magnitude SHALL be strictly…,,docs/sdd.md,,,SDD
+REQ_SDD_DAT_007,SDD,`Phase` enum values SHALL be the integers 1..6; constructors SHALL re…,,docs/sdd.md,,,SDD
+REQ_SDD_DAT_008,SDD,`KillSwitchTrigger.snapshot_id` SHALL be a non-empty string referenci…,,docs/sdd.md,,,SDD
+REQ_SDD_ERR_001,SDD,Validation failures at type construction SHALL raise `ValueError`; al…,,docs/sdd.md,,,SDD
+REQ_SDD_ERR_002,SDD,`BrokerAdapter` and `MarketDataProvider` errors SHALL be mapped to `R…,,docs/sdd.md,,,SDD
+REQ_SDD_ERR_003,SDD,"Any internal inconsistency in `risk/` (e.g., contradictory verdicts o…",,docs/sdd.md,,,SDD
+REQ_SDD_ERR_004,SDD,"Configuration validation errors SHALL include the file path, the offe…",,docs/sdd.md,,,SDD
+REQ_SDD_ERR_005,SDD,A failed `AlertChannel.deliver` SHALL retry with exponential backoff…,,docs/sdd.md,,,SDD
+REQ_SDD_IMP_001,SDD,Source-tree layout SHALL match the SDS module decomposition exactly:…,,docs/sdd.md,,,SDD
+REQ_SDD_IMP_002,SDD,Each module SHALL declare an `__all__` listing its public surface; sy…,,docs/sdd.md,,,SDD
+REQ_SDD_IMP_003,SDD,The dependency graph between top-level packages SHALL be acyclic; an…,,docs/sdd.md,,,SDD
+REQ_SDD_IMP_004,SDD,Each module's package docstring SHALL list the SRS / SDS / SDD requir…,,docs/sdd.md,,,SDD
+REQ_SDD_IMP_005,SDD,The runtime tree (`trading_system/`) SHALL NOT import from `strategy_…,,docs/sdd.md,,,SDD
+REQ_SDD_IMP_006,SDD,"Engine modules (`tax/`, `risk/`, `phase_engine/`, `screener/`, `turbo…",,docs/sdd.md,,,SDD
 REQ_SDD_LOG_001,SDD,"Trade log entries SHALL include `(trade_id, order_id, strategy_id, in…",,docs/sdd.md,,,SDD
 REQ_SDD_LOG_002,SDD,"Kill-switch event log entries SHALL include `(snapshot_id, state_from…",,docs/sdd.md,,,SDD
 REQ_SDD_LOG_003,SDD,"`ImprovementReport` log entries SHALL include `(cycle_id, best_strate…",,docs/sdd.md,,,SDD
+REQ_SDD_NAM_001,SDD,Type names SHALL be `PascalCase`; function and variable names SHALL b…,,docs/sdd.md,,,SDD
+REQ_SDD_NAM_002,SDD,"Concrete adapter classes SHALL end in `Adapter` (e.g., `XTBAdapter`);…",,docs/sdd.md,,,SDD
+REQ_SDD_NAM_003,SDD,"Configuration record types SHALL end in `Config` (e.g., `ScreenerConf…",,docs/sdd.md,,,SDD
+REQ_SDD_NAM_004,SDD,Result-returning function names SHALL describe the outcome (`trade_pa…,,docs/sdd.md,,,SDD
+REQ_SDD_PER_001,SDD,`SafetyLayer.must_halt()` SHALL execute in O(1) time and SHALL NOT ac…,,docs/sdd.md,,,SDD
+REQ_SDD_PER_002,SDD,`PhaseEngine.resolve()` SHALL execute in O(N) where N is the number o…,,docs/sdd.md,,,SDD
+REQ_SDD_PER_003,SDD,`RiskEngine.pre_trade()` SHALL execute in O(P) where P is the number…,,docs/sdd.md,,,SDD
+REQ_SDD_PER_004,SDD,"Backtest throughput on the mock provider SHALL achieve ≥ 10,000 ticks…",,docs/sdd.md,,,SDD
+REQ_SDD_PER_005,SDD,"Portfolio mutation paths (`apply()`, equity recording) SHALL be O(1)…",,docs/sdd.md,,,SDD
+REQ_SDD_TST_001,SDD,A shared `BrokerAdapter` conformance test suite (`tests/adapters/conf…,,docs/sdd.md,,,SDD
+REQ_SDD_TST_002,SDD,`MockMarketDataProvider` SHALL produce identical bar series for ident…,,docs/sdd.md,,,SDD
+REQ_SDD_TST_003,SDD,"Tax-engine tests SHALL include boundary cases: zero gain, exact gate…",,docs/sdd.md,,,SDD
+REQ_SDD_TST_004,SDD,Phase-engine tests SHALL include a hysteresis-flapping fixture that t…,,docs/sdd.md,,,SDD
+REQ_SDD_TST_005,SDD,"Kill-switch tests SHALL cover every trigger code (financial, strategy…",,docs/sdd.md,,,SDD
+REQ_SDD_TST_006,SDD,Backtest reproducibility SHALL be asserted by running each shipped st…,,docs/sdd.md,,,SDD
 REQ_SDD_TYP_001,SDD,All monetary and percentage-of-capital quantities SHALL use `decimal.…,,docs/sdd.md,,,SDD
 REQ_SDD_TYP_002,SDD,"Domain identifiers (`OrderId`, `TradeId`, `InstrumentId`, `StrategyId…",,docs/sdd.md,,,SDD
 REQ_SDD_TYP_003,SDD,"Enumerations (`Currency`, `Side`, `OrderType`, `OrderStatus`, `Phase`…",,docs/sdd.md,,,SDD
