@@ -234,25 +234,31 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     sds_path = resolve(args.sds)
+    sdd_path = resolve(args.sdd)
     srs_defs = parse_definitions(srs_path)
     sds_defs = parse_definitions(sds_path)
+    sdd_defs = parse_definitions(sdd_path)
 
     if not srs_defs:
         print(f"error: no requirements parsed from {srs_path} — check the bullet format", file=sys.stderr)
         return 2
 
-    defs = {**srs_defs, **sds_defs}
+    defs = {**srs_defs, **sds_defs, **sdd_defs}
     defined_in = {rid: "SRS" for rid in srs_defs}
     overlap_warnings: list[str] = []
     for rid in sds_defs:
         if rid in srs_defs:
             overlap_warnings.append(f"{rid} is defined in BOTH the SRS and SDS — IDs must be unique")
         defined_in[rid] = "SDS"
+    for rid in sdd_defs:
+        if rid in srs_defs or rid in sds_defs:
+            overlap_warnings.append(f"{rid} is defined in BOTH an upstream spec and the SDD — IDs must be unique")
+        defined_in[rid] = "SDD"
 
     existing = load_existing(csv_path)
     refs = {
         "sds": scan_refs([sds_path], (".md",)),
-        "sdd": scan_refs([resolve(args.sdd)], (".md",)),
+        "sdd": scan_refs([sdd_path], (".md",)),
         "code": scan_refs([resolve(args.code)], (".py",)),
         "test": scan_refs([resolve(args.tests)], (".py",)),
     }
