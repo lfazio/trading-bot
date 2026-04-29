@@ -1,0 +1,106 @@
+req_id,statement_short,sds_ref,sdd_ref,code_ref,test_ref,status
+REQ_C_BHV_001,Prefer stocks over turbos,,,,,SRS
+REQ_C_BHV_002,Avoid overtrading,,,,,SRS
+REQ_C_BHV_003,Auto-reject marginal trades,,,,,SRS
+REQ_C_BHV_004,Survival > return,,,,,SRS
+REQ_C_BHV_005,Forbidden behaviors,,,,,SRS
+REQ_C_CLA_001,Claude allowed actions,,,,,SRS
+REQ_C_CLA_002,Claude forbidden actions,,,,,SRS
+REQ_C_TAX_001,France CTO PFU only,,,,,SRS
+REQ_F_BCT_001,Deterministic backtest,,,,,SRS
+REQ_F_BCT_002,Simulate broker fees,,,,,SRS
+REQ_F_BCT_003,Simulate slippage,,,,,SRS
+REQ_F_BCT_004,Simulate turbo knockouts,,,,,SRS
+REQ_F_BCT_005,Simulate dividends,,,,,SRS
+REQ_F_BCT_006,Apply 30% tax,,,,,SRS
+REQ_F_BCT_007,Simulate injection timeline,,,,,SRS
+REQ_F_BCT_008,Walk-forward required,,,,,SRS
+REQ_F_BCT_009,Phase 5+ extended walk-forward,,,,,SRS
+REQ_F_BRK_001,BrokerAdapter interface,,,,,SRS
+REQ_F_BRK_002,Mock adapter end-to-end,,,,,SRS
+REQ_F_BRK_003,XTB XAPI reference adapter,,,,,SRS
+REQ_F_BRK_004,Adapter selected by config,,,,,SRS
+REQ_F_BRK_005,Non-execution modules broker-agnostic,,,,,SRS
+REQ_F_CAP_001,Starting capital from config,,,,,SRS
+REQ_F_CAP_002,Phase engine selects from equity+injections,,,,,SRS
+REQ_F_CAP_003,Six phases defined,,,,,SRS
+REQ_F_CAP_004,Phase thresholds configurable,,,,,SRS
+REQ_F_CAP_005,Hysteresis on phase downgrades,,,,,SRS
+REQ_F_CAP_006,Phase 1 constraints,,,,,SRS
+REQ_F_CAP_007,Phase 2 constraints,,,,,SRS
+REQ_F_CAP_008,Phase 3 constraints,,,,,SRS
+REQ_F_CAP_009,Phase 4 constraints,,,,,SRS
+REQ_F_CAP_010,Phase 5 constraints,,,,,SRS
+REQ_F_CAP_011,Phase 6 constraints,,,,,SRS
+REQ_F_CAP_012,Phase 5+ portfolio vol cap,,,,,SRS
+REQ_F_CAP_013,Risk per trade per phase,,,,,SRS
+REQ_F_CAP_014,Stop-loss mandatory,,,,,SRS
+REQ_F_CFL_001,Track initial+injections+deployed+equity,,,,,SRS
+REQ_F_CFL_002,Performance excludes injections,,,,,SRS
+REQ_F_CFL_003,Risk sizing scales with total capital,,,,,SRS
+REQ_F_CFL_004,Backtests simulate injection timeline,,,,,SRS
+REQ_F_DSH_001,Dashboard fields,,,,,SRS
+REQ_F_MIL_001,Configurable milestone list,,,,,SRS
+REQ_F_MIL_002,Milestone validation conditions,,,,,SRS
+REQ_F_MIL_003,Gradual scaling at milestone,,,,,SRS
+REQ_F_MIL_004,Reject fake growth,,,,,SRS
+REQ_F_MTO_001,Bounded research engine,,,,,SRS
+REQ_F_MTO_002,8-step pipeline,,,,,SRS
+REQ_F_MTO_003,Score formula,,,,,SRS
+REQ_F_MTO_004,Walk-forward gate,,,,,SRS
+REQ_F_MTO_005,Registry versioning,,,,,SRS
+REQ_F_MTO_006,Self-improvement rule,,,,,SRS
+REQ_F_MTO_007,ImprovementReport per cycle,,,,,SRS
+REQ_F_MTO_008,Regime evaluation,,,,,SRS
+REQ_F_PRT_001,Track cash/positions/gains/dividends/equity,,,,,SRS
+REQ_F_PRT_002,Phase 6 NAV+attribution,,,,,SRS
+REQ_F_PRT_003,Diversification enforced,,,,,SRS
+REQ_F_RSK_001,Per-phase max drawdown,,,,,SRS
+REQ_F_RSK_002,Single-asset exposure cap,,,,,SRS
+REQ_F_RSK_003,Correlation monitoring,,,,,SRS
+REQ_F_RSK_004,Phase 5+ vol cap,,,,,SRS
+REQ_F_RSK_005,Risk engine failure trips kill switch,,,,,SRS
+REQ_F_SCR_001,EU dividend screener criteria,,,,,SRS
+REQ_F_SCR_002,Scored ranking output,,,,,SRS
+REQ_F_STP_001,Structured products <=10%,,,,,SRS
+REQ_F_STP_002,Decomposition mandatory,,,,,SRS
+REQ_F_STP_003,Allowed regimes only,,,,,SRS
+REQ_F_STP_004,Forbidden regimes block,,,,,SRS
+REQ_F_STP_005,Stress + liquidity tests,,,,,SRS
+REQ_F_STP_006,Issuer diversification,,,,,SRS
+REQ_F_STP_007,No turbo+SP stacking on same underlying,,,,,SRS
+REQ_F_STR_001,Core strategy long-term/dividend,,,,,SRS
+REQ_F_STR_002,Tactical strategy trend/breakout/pullback,,,,,SRS
+REQ_F_STR_003,Walk-forward validation required,,,,,SRS
+REQ_F_STR_004,Phase 6 multi-strategy ensemble,,,,,SRS
+REQ_F_TAX_001,30% tax on realized gains,,,,,SRS
+REQ_F_TAX_002,30% tax on dividends,,,,,SRS
+REQ_F_TAX_003,Trade gate: net_profit > 5x fees after tax,,,,,SRS
+REQ_F_TAX_004,Optimize after-tax never gross,,,,,SRS
+REQ_F_TAX_005,Backtests apply taxes,,,,,SRS
+REQ_F_TAX_006,Phase 5+ tax-loss harvesting,,,,,SRS
+REQ_F_TRB_001,Turbo 3-step pipeline,,,,,SRS
+REQ_F_TRB_002,Turbo filter criteria,,,,,SRS
+REQ_F_TRB_003,Turbo scoring formula,,,,,SRS
+REQ_F_TRB_004,No-trade if score below threshold,,,,,SRS
+REQ_F_TRB_005,Turbo risk = invested capital only,,,,,SRS
+REQ_F_TRB_006,Turbo candidate fields required,,,,,SRS
+REQ_NF_AUD_001,Snapshot on KS event,,,,,SRS
+REQ_NF_DET_001,Deterministic backtest engine,,,,,SRS
+REQ_NF_LIF_001,DO-178C lifecycle,,,,,SRS
+REQ_NF_LIF_002,Changes restart lifecycle,,,,,SRS
+REQ_NF_LOG_001,Logging trades/KS/reports,,,,,SRS
+REQ_NF_REP_001,Strategy reproducibility,,,,,SRS
+REQ_NF_TRC_001,Full traceability,,,,,SRS
+REQ_S_KS_001,Three states,,,,,SRS
+REQ_S_KS_002,Override priority,,,,,SRS
+REQ_S_KS_003,Financial triggers,,,,,SRS
+REQ_S_KS_004,Strategy instability triggers,,,,,SRS
+REQ_S_KS_005,Execution anomaly triggers,,,,,SRS
+REQ_S_KS_006,System integrity triggers,,,,,SRS
+REQ_S_KS_007,Kill actions,,,,,SRS
+REQ_S_KS_008,Degraded mode behavior,,,,,SRS
+REQ_S_KS_009,Recovery requires manual confirmation,,,,,SRS
+REQ_S_KS_010,Conditions immutable at runtime,,,,,SRS
+REQ_S_KS_011,No trading during KILL,,,,,SRS
+REQ_S_KS_012,Prefer stopping incorrectly,,,,,SRS
