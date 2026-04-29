@@ -2,7 +2,7 @@
 
 **Project:** trading-bot
 **Lifecycle phase:** Phase 2 — SDS
-**Status:** Draft (awaiting review/approval before SDD)
+**Status:** Approved — Phase 3 (SDD) gate is open
 **SRS revision under design:** 7424909 (approved 2026-04-29)
 **References:** [`srs.md`](./srs.md), [`CLAUDE.md`](../CLAUDE.md), [`tasks.md`](../tasks.md)
 
@@ -635,9 +635,11 @@ SDS itself contributes 37 design-level requirements (`REQ_SDS_*` defined in
 
 ## 10. Approval
 
-This document is **DRAFT**. The Phase 2 → Phase 3 (SDD) gate is not opened
-until the operator reviews and approves this SDS against SRS traceability.
+This document is **APPROVED**. The Phase 2 → Phase 3 (SDD) gate is open. Per
+REQ_NF_LIF_002, any change to a design decision after this point restarts the
+lifecycle from this phase; new SDS-level requirements are appended (never
+renumbered) and re-approved.
 
-| Date       | Reviewer      | Revision (git SHA) | Outcome  |
-|------------|---------------|--------------------|----------|
-| _pending_  | _pending_     | _pending_          | _pending_ |
+| Date       | Reviewer       | Revision (git SHA) | Outcome  |
+|------------|----------------|--------------------|----------|
+| 2026-04-29 | Laurent Fazio  | 26ce913            | Approved |

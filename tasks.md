@@ -59,7 +59,7 @@ Output: `docs/srs.md`. **No design or code allowed.**
 
 ---
 
-## Phase 2 — SDS (System Design Specification)
+## Phase 2 — SDS (System Design Specification) ✅ APPROVED 2026-04-29 @ 26ce913
 
 Output: `docs/sds.md`. **No low-level code allowed.**
 
