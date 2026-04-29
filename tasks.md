@@ -80,7 +80,7 @@ Output: `docs/sds.md`. **No low-level code allowed.**
 
 ---
 
-## Phase 3 — SDD (Software Design Description)
+## Phase 3 — SDD (Software Design Description) ✅ APPROVED 2026-04-29 @ 9ee11d5
 
 Output: `docs/sdd.md`. Pseudo-code only; map 1:1 to SDS.
 

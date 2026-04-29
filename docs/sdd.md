@@ -2,7 +2,7 @@
 
 **Project:** trading-bot
 **Lifecycle phase:** Phase 3 — SDD
-**Status:** Draft (awaiting review/approval before Test Plan)
+**Status:** Approved — Phase 4 (Test Plan) gate is open
 **SRS revision under design:** 7424909 (approved 2026-04-29)
 **SDS revision under design:** 26ce913 (approved 2026-04-29)
 **References:** [`srs.md`](./srs.md), [`sds.md`](./sds.md), [`tasks.md`](../tasks.md)
@@ -1251,10 +1251,11 @@ one as covered.
 
 ## 15. Approval
 
-This document is **DRAFT**. The Phase 3 → Phase 4 (Test Plan) gate is not
-opened until the operator reviews and approves this SDD against SRS+SDS
-traceability.
+This document is **APPROVED**. The Phase 3 → Phase 4 (Test Plan) gate is
+open. Per REQ_NF_LIF_002, any change to a detailed-design decision after
+this point restarts the lifecycle from this phase; new SDD-level
+requirements are appended (never renumbered) and re-approved.
 
 | Date       | Reviewer       | Revision (git SHA) | Outcome   |
 |------------|----------------|--------------------|-----------|
-| _pending_  | _pending_      | _pending_          | _pending_ |
+| 2026-04-29 | Laurent Fazio  | 9ee11d5            | Approved  |
