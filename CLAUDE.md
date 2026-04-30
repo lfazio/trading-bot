@@ -45,6 +45,55 @@ for engineering decisions — read them before making non-trivial changes.
    backtest engine — Python code does the simulation, not the model.
 7. **Safe self-improvement.** A new strategy is accepted only if
    `new_risk ≤ baseline_risk` AND `new_return/risk > baseline`. Otherwise discard.
+8. **Option / Result, not exceptions.** Following Rust's discipline:
+   - Fallible operations return `Result[T, E]` (`Ok(value)` | `Err(error)`).
+   - Possibly-absent values return `Option[T]` (`Some(value)` | `Nothing()`).
+   - `try`/`except` is forbidden for control flow at module boundaries;
+     `raise` is reserved for **panics** — programmer-error invariants
+     ("this can never happen") via `assert` or `RuntimeError` only.
+   - At third-party boundaries that *do* raise (file I/O, JSON parsing,
+     network), wrap the call once at the adapter and return a `Result`.
+   - Pattern-match on the union (`match res: case Ok(v): ... case Err(e): ...`),
+     never `try: x.unwrap()`. `unwrap()` is permitted only when the call
+     site has already proved the variant.
+
+## Coding conventions
+
+### Error handling — `Option[T]` and `Result[T, E]`
+Implemented in `trading_system/result.py` (stdlib only, frozen dataclasses).
+The two unions are:
+
+```python
+Result[T, E] = Ok[T] | Err[E]
+Option[T]    = Some[T] | Nothing
+```
+
+Methods that the implementation MUST provide on both unions:
+`is_ok` / `is_err` (resp. `is_some` / `is_none`), `map`, `and_then`,
+`unwrap_or`, `unwrap_or_else`, `unwrap` (panics on the wrong variant —
+use only when the variant is statically known).
+
+Adapter modules (`execution/`, `data/`) wrap third-party exceptions:
+
+```python
+def submit(self, order: Order) -> Result[OrderId, BrokerError]:
+    try:
+        oid = self._client.submit(order.to_wire())
+    except SomeBrokerLib.RejectedError as e:
+        return Err(BrokerError("broker:rejected", str(e)))
+    except SomeBrokerLib.NetworkError as e:
+        return Err(BrokerError("network:timeout", str(e)))
+    return Ok(OrderId(oid))
+```
+
+Engine modules (`tax/`, `risk/`, `phase_engine/`, etc.) never see those
+exceptions; they consume `Result` and propagate via `and_then`.
+
+`raise` in production code is reserved for two cases only:
+1. `assert` / `RuntimeError` for programmer-error invariants (panic).
+2. Type-construction validators where the input is *already known* to
+   come from trusted internal code (still rare — prefer a `try_new`
+   classmethod returning `Result`).
 
 ## Phase scaling (capital-driven)
 

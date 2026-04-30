@@ -18,6 +18,11 @@ Legend: `[ ]` open · `[~]` in progress · `[x]` done · `(REQ_xxx)` traceabilit
 - [ ] Add `config/` defaults: `starting_capital`, `currency`, `phase_thresholds`,
       `broker.adapter` (selects which `BrokerAdapter` implementation to use)
 - [ ] Initialize traceability matrix file (`docs/traceability.csv` — REQ ↔ SDS ↔ SDD ↔ code ↔ test)
+- [ ] Implement `trading_system/result.py` — Rust-style `Option[T]` (`Some` |
+      `Nothing`) and `Result[T, E]` (`Ok` | `Err`) tagged unions, frozen
+      dataclasses, with `is_ok` / `is_err` / `map` / `and_then` /
+      `unwrap_or` / `unwrap_or_else` / `unwrap`. Stdlib only. No exception
+      handling for control flow anywhere downstream.
 
 **Gate:** repo skeleton reviewed; no business logic yet.
 
@@ -194,3 +199,8 @@ Cross-cutting (build alongside):
 - **Starting capital and broker are not hardcoded.** Starting capital comes from
   config; the broker is selected via the `BrokerAdapter` interface. The system must
   run end-to-end against the mock adapter without any concrete broker configured.
+- **Option / Result, not exceptions.** Module-boundary fallible operations return
+  `Result[T, E]`; possibly-absent values return `Option[T]`. `try` / `except` is
+  forbidden for control flow; `raise` is reserved for panics on programmer-error
+  invariants. Third-party exceptions are wrapped at the adapter and converted to
+  `Result`. See CLAUDE.md → "Coding conventions" for the full discipline.
