@@ -153,4 +153,6 @@ Changes follow the lifecycle:
 
 ## License
 
-Personal-use project. All rights reserved.
+Released under the BSD 3-Clause License — see [`LICENSE`](./LICENSE) for
+the full text. The license applies to all files in this repository and
+to the documentation in the `Documentations/` submodule.
