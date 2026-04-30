@@ -25,7 +25,7 @@ Legend: `[ ]` open · `[~]` in progress · `[x]` done · `(REQ_xxx)` traceabilit
 
 ## Phase 1 — SRS (Software Requirements Specification) ✅ APPROVED 2026-04-29 @ 7424909
 
-Output: `docs/srs.md`. **No design or code allowed.**
+Output: `Documentations/SRS.md` (in wiki submodule). **No design or code allowed.**
 
 - [ ] Functional requirements (REQ_F_xxx)
   - [ ] Capital lifecycle: configurable starting capital; six-phase scaling
@@ -61,7 +61,7 @@ Output: `docs/srs.md`. **No design or code allowed.**
 
 ## Phase 2 — SDS (System Design Specification) ✅ APPROVED 2026-04-29 @ 26ce913
 
-Output: `docs/sds.md`. **No low-level code allowed.**
+Output: `Documentations/SDS.md` (in wiki submodule). **No low-level code allowed.**
 
 - [ ] High-level architecture diagram (modules + data flows)
 - [ ] Module decomposition (must match spec layout)
@@ -82,7 +82,7 @@ Output: `docs/sds.md`. **No low-level code allowed.**
 
 ## Phase 3 — SDD (Software Design Description) ✅ APPROVED 2026-04-29 @ 9ee11d5
 
-Output: `docs/sdd.md`. Pseudo-code only; map 1:1 to SDS.
+Output: `Documentations/SDD.md` (in wiki submodule). Pseudo-code only; map 1:1 to SDS.
 
 - [ ] Class/data-structure design per module
 - [ ] Algorithms
@@ -107,7 +107,7 @@ Output: `docs/sdd.md`. Pseudo-code only; map 1:1 to SDS.
 
 ## Phase 4 — Test Plan Design
 
-Output: `docs/test_plan.md`. **No implementation allowed.**
+Output: `Documentations/Test-Plan.md` (in wiki submodule). **No implementation allowed.**
 
 - [ ] Unit test plan per module
 - [ ] Integration test plan (screener → strategy → risk → execution)

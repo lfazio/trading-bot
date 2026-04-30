@@ -218,11 +218,12 @@ def resolve(p: Path) -> Path:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--srs", default=Path("docs/srs.md"), type=Path)
-    ap.add_argument("--csv", default=Path("docs/traceability.csv"), type=Path)
-    ap.add_argument("--sds", default=Path("docs/sds.md"), type=Path)
-    ap.add_argument("--sdd", default=Path("docs/sdd.md"), type=Path)
-    ap.add_argument("--tp", default=Path("docs/test_plan.md"), type=Path,
+    ap.add_argument("--srs", default=Path("Documentations/SRS.md"), type=Path)
+    ap.add_argument("--csv", default=Path("docs/traceability.csv"), type=Path,
+                    help="Traceability CSV output (kept in main repo as a build artifact)")
+    ap.add_argument("--sds", default=Path("Documentations/SDS.md"), type=Path)
+    ap.add_argument("--sdd", default=Path("Documentations/SDD.md"), type=Path)
+    ap.add_argument("--tp", default=Path("Documentations/Test-Plan.md"), type=Path,
                     help="Test plan markdown (skipped if missing)")
     ap.add_argument("--code", default=Path("trading_system"), type=Path,
                     help="Code directory (skipped if missing)")

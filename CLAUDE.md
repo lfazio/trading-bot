@@ -172,34 +172,73 @@ Work is tracked as GitHub Issues alongside `tasks.md`:
   or close issues without operator confirmation; do not auto-close on
   commit messages without explicit instruction.
 
-### Documentation — GitHub Wiki
-The `docs/` directory is **mirrored** to the GitHub Wiki:
+### Documentation — GitHub Wiki (submodule)
+The lifecycle documents live **inside the wiki submodule**, not in the
+main repo. The wiki repo (`<repo>.wiki.git`) is mounted at
+`Documentations/` via `.gitmodules`:
 
-| Repo file | Wiki page |
-|---|---|
-| `docs/srs.md` | `SRS` |
-| `docs/sds.md` | `SDS` |
-| `docs/sdd.md` | `SDD` |
-| `docs/test_plan.md` | `Test-Plan` |
-| `docs/traceability.csv` | attached to a `Traceability` wiki page (artifact, regenerated from `tools/traceability.py --report`) |
-
-The wiki is a **separate git repo** at `<repo>.wiki.git`. Workflow:
-
-```bash
-# clone alongside the main repo
-git clone git@github.com:<owner>/<repo>.wiki.git ../trading-bot.wiki
-
-# sync (script TBD: tools/sync_wiki.py)
-python tools/sync_wiki.py ../trading-bot.wiki
-
-# review and push
-cd ../trading-bot.wiki && git diff --stat && git push
+```
+trading-bot/
+├── Documentations/         ← submodule → trading-bot.wiki.git
+│   ├── Home.md             ← wiki landing page
+│   ├── SRS.md              ← Software Requirements Specification
+│   ├── SDS.md              ← System Design Specification
+│   ├── SDD.md              ← Software Design Description
+│   └── Test-Plan.md        ← Test Plan
+├── docs/
+│   └── traceability.csv    ← build artifact (regenerated)
+├── tools/traceability.py   ← reads from Documentations/, writes to docs/
+└── ...
 ```
 
-`docs/` remains the **source of truth** — the wiki is a publish-only
-mirror. Edit in `docs/`, then sync; never edit the wiki directly. The
-sync script does not yet exist; when needed, it must preserve the
-approval tables and section IDs verbatim.
+`Documentations/` is a separate git repo with its own `master` branch
+(GitHub wiki convention) and its own commit history. The main repo
+records a **gitlink** (160000 mode) pointing to a specific commit in
+the wiki repo; advancing the wiki updates that pointer.
+
+**Initial bootstrap** (one-time, by operator):
+1. Visit `https://github.com/<owner>/<repo>/wiki` and create one wiki
+   page in the GitHub UI — any title and content. This provisions the
+   `<repo>.wiki.git` repository on GitHub's side.
+2. From `Documentations/`, force-push the local content to overwrite
+   the placeholder page:
+   ```bash
+   cd Documentations
+   git push --force-with-lease origin master
+   ```
+3. From the main repo, push to GitHub:
+   ```bash
+   git push -u origin main
+   ```
+
+**Daily workflow** (editing docs):
+1. Edit pages in `Documentations/` as a normal markdown file.
+2. Commit inside the submodule:
+   ```bash
+   cd Documentations && git add . && git commit -m "..." && git push
+   ```
+3. Update the submodule pointer in the main repo:
+   ```bash
+   cd .. && git add Documentations && git commit -m "Bump wiki to <sha>"
+   ```
+
+**Cloning the project** (fresh checkout):
+```bash
+git clone --recurse-submodules git@github.com:<owner>/<repo>.git
+# or, after a plain clone:
+git submodule update --init --recursive
+```
+
+**Cross-references inside wiki pages** use the GitHub wiki link form
+`[Title](Page-Name)` (e.g., `[SRS](SRS)`, not `./srs.md`). Links from
+wiki pages to files in the main repo use absolute GitHub blob URLs
+(e.g., `https://github.com/<owner>/<repo>/blob/main/CLAUDE.md`).
+
+**Tooling** — `tools/traceability.py` reads `Documentations/SRS.md`,
+`Documentations/SDS.md`, `Documentations/SDD.md`, and
+`Documentations/Test-Plan.md` by default; CSV output stays in
+`docs/traceability.csv` as a build artifact (regenerated, do not edit
+by hand).
 
 ### Safety rules for GitHub operations
 - No `git push`, `gh issue create`, `gh pr create`, wiki commits, or

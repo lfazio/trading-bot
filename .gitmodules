@@ -1,0 +1,4 @@
+[submodule "Documentations"]
+	path = Documentations
+	url = git@github.com:lfazio/trading-bot.wiki.git
+	branch = master
