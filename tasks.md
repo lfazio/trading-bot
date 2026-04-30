@@ -39,7 +39,7 @@ Output: `Documentations/SRS.md` (in wiki submodule). **No design or code allowed
   - [ ] EU dividend + swing stock investing
   - [ ] Tactical trading (weeks–months)
   - [ ] Turbo / CFD trading with strict, phase-capped selection
-  - [ ] Generic broker adapter interface; XTB (XAPI) as reference implementation
+  - [ ] Generic broker adapter interface with `LocalBrokerAdapter` as the in-process reference implementation; live-broker adapters deferred until a broker is selected
   - [ ] Capital flow tracking (initial + injections, performance net of inflows)
   - [ ] Structured products overlay (max 10%, regime-gated)
   - [ ] Meta-optimization loop (bounded strategy research, not autonomous trading)
@@ -75,7 +75,7 @@ Output: `Documentations/SDS.md` (in wiki submodule). **No low-level code allowed
     `dashboard/`, `safety/`, `strategy_lab/`, `milestone_controller/`, `analytics/`
 - [ ] External interfaces
   - [ ] Generic `BrokerAdapter` interface (orders, positions, leveraged instruments, account state)
-  - [ ] XTB (XAPI) reference adapter contract — first concrete implementation
+  - [ ] `LocalBrokerAdapter` reference adapter contract — in-process, deterministic, simulates fills / fees / slippage; the only concrete adapter shipped through this lifecycle
   - [ ] Market data source(s); pluggable behind a `MarketDataProvider` interface
 - [ ] Phase engine design (auto-detect by `equity + injected_capital`; thresholds from config; six phases)
 - [ ] Kill switch override hierarchy: `KillSwitch > RiskEngine > Strategy > Execution`
@@ -136,7 +136,7 @@ docstring.
 1. [ ] `models/` — domain entities (Position, Trade, Order, Instrument, Turbo, ...)
 2. [ ] `data/` — market data layer (cache, feeds, validation)
 3. [ ] `tax/` — France CTO tax engine + tax-aware trade gate
-4. [ ] `execution/` — generic `BrokerAdapter` interface + mock + XTB (XAPI) reference adapter (orders, positions, turbos/CFDs)
+4. [ ] `execution/` — generic `BrokerAdapter` interface + `LocalBrokerAdapter` (in-process deterministic broker simulating orders, fills, positions, turbos/CFDs, fees, slippage); live-broker adapters deferred
 5. [ ] `phase_engine/` — phase detection + constraint enforcement
 6. [ ] `screener/` — EU dividend/stock screener (yield 3–7%, payout <70%, FCF>0, D/E<1.5, ≥5y history)
 7. [ ] `strategies/` — core (long-term/dividend) + tactical (trend, breakout, pullback)
@@ -169,7 +169,7 @@ Cross-cutting (build alongside):
 - [ ] Phase-5 drills: tax-loss harvest correctness, currency-hedge P&L attribution
 - [ ] Phase-6 drills: vol-target tracking error, risk-parity weights stability, ensemble decorrelation
 - [ ] Edge-case tests (crash, knockout, broker rejection, feed corruption)
-- [ ] Broker-adapter conformance tests run against mock adapter and every concrete adapter (XTB first)
+- [ ] Broker-adapter conformance tests run against `LocalBrokerAdapter` (and any future live-broker adapter once added)
 - [ ] Kill switch trip/recovery drill
 - [ ] Structured product stress + liquidity drill
 

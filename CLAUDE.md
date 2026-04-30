@@ -13,10 +13,14 @@ scaling capital through gated phases.
 engine determines the active phase from current equity + injected capital — there is
 no privileged starting amount.
 
-**Broker is abstracted** behind a `BrokerAdapter` interface. XTB (XAPI) is the
-reference adapter and the one shipped first, but any adapter implementing the
-interface (orders, positions, leveraged instruments, market data) is acceptable. The
-rest of the system must not depend on broker-specific details.
+**Broker is abstracted** behind a `BrokerAdapter` interface. The lifecycle
+ships a single concrete adapter — `LocalBrokerAdapter` — which is an
+in-process deterministic broker that simulates fills, fees, and slippage.
+**Live-broker adapters are deferred** until a broker is selected; when a
+broker is chosen, the corresponding adapter goes through the full lifecycle
+(SRS amendment → SDS → SDD → Test Plan → implementation) and must pass the
+same conformance suite as `LocalBrokerAdapter`. The rest of the system
+must not depend on any concrete broker.
 
 The full specification lives in [`trading-bot.md`](./trading-bot.md) — note that the
 imported spec names XTB and 1000€ explicitly; this CLAUDE.md generalizes those. The
@@ -142,7 +146,7 @@ bounded research engine (generator → backtester → evaluator → risk_guard �
 
 ## Implementation order (mandatory)
 
-models → data → tax → broker adapter (XTB first) → phase_engine → screener →
+models → data → tax → broker adapter (`LocalBrokerAdapter`) → phase_engine → screener →
 strategy engine → turbo selector → risk engine → backtesting → portfolio → dashboard.
 Cross-cutting modules (`safety/`, `strategy_lab/`, `milestone_controller/`,
 `structured_products/`, `capital_flow/`, `analytics/`) are built alongside.

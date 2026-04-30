@@ -4,8 +4,10 @@ Production-grade Python trading system optimizing **after-tax** returns under
 French CTO / PFU taxation (30 % flat). Manages EU dividend & swing stocks,
 tactical positions, and turbo / CFD leveraged instruments — scaling capital
 through six gated phases, from a configurable starting amount up to
-multi-million portfolios. **Broker-agnostic** by design; XTB (XAPI) ships
-as the reference adapter.
+multi-million portfolios. **Broker-agnostic** by design; the lifecycle ships
+an in-process `LocalBrokerAdapter` (deterministic simulation of fills, fees,
+slippage) as the reference baseline. Live-broker adapters are deferred until
+a broker is selected.
 
 The repository is structured for engineering discipline first
 (DO-178C-inspired lifecycle, full requirement traceability) and trading
