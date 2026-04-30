@@ -46,12 +46,13 @@ CSV_FIELDS = (
     "statement_short",
     "sds_ref",
     "sdd_ref",
+    "tp_ref",
     "code_ref",
     "test_ref",
     "status",
 )
 
-LEVELS = ("SRS", "SDS", "SDD", "CODE", "TEST")
+LEVELS = ("SRS", "SDS", "SDD", "TP", "CODE", "TEST")
 
 
 @dataclass
@@ -61,6 +62,7 @@ class Row:
     statement_short: str = ""
     sds_ref: str = ""
     sdd_ref: str = ""
+    tp_ref: str = ""
     code_ref: str = ""
     test_ref: str = ""
     status: str = "SRS"
@@ -149,18 +151,21 @@ def build_rows(
             statement_short=stmt_short,
             sds_ref=";".join(refs["sds"].get(rid, [])),
             sdd_ref=";".join(refs["sdd"].get(rid, [])),
+            tp_ref=";".join(refs["tp"].get(rid, [])),
             code_ref=";".join(refs["code"].get(rid, [])),
             test_ref=";".join(refs["test"].get(rid, [])),
         )
         # Status starts at the artifact where the requirement was defined; it
         # advances only when the requirement is referenced by a *deeper*
-        # downstream artifact (so an SDS-defined req progresses to SDD/CODE/TEST,
+        # downstream artifact (so an SDS-defined req progresses to SDD/TP/CODE/TEST,
         # but its self-reference in the SDS does not "advance" it).
         status = row.defined_in
         if row.sds_ref:
             status = deepest("SDS", status)
         if row.sdd_ref:
             status = deepest("SDD", status)
+        if row.tp_ref:
+            status = deepest("TP", status)
         if row.code_ref:
             status = deepest("CODE", status)
         if row.test_ref:
@@ -217,6 +222,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--csv", default=Path("docs/traceability.csv"), type=Path)
     ap.add_argument("--sds", default=Path("docs/sds.md"), type=Path)
     ap.add_argument("--sdd", default=Path("docs/sdd.md"), type=Path)
+    ap.add_argument("--tp", default=Path("docs/test_plan.md"), type=Path,
+                    help="Test plan markdown (skipped if missing)")
     ap.add_argument("--code", default=Path("trading_system"), type=Path,
                     help="Code directory (skipped if missing)")
     ap.add_argument("--tests", default=Path("tests"), type=Path,
@@ -235,15 +242,17 @@ def main(argv: list[str] | None = None) -> int:
 
     sds_path = resolve(args.sds)
     sdd_path = resolve(args.sdd)
+    tp_path  = resolve(args.tp)
     srs_defs = parse_definitions(srs_path)
     sds_defs = parse_definitions(sds_path)
     sdd_defs = parse_definitions(sdd_path)
+    tp_defs  = parse_definitions(tp_path)
 
     if not srs_defs:
         print(f"error: no requirements parsed from {srs_path} — check the bullet format", file=sys.stderr)
         return 2
 
-    defs = {**srs_defs, **sds_defs, **sdd_defs}
+    defs = {**srs_defs, **sds_defs, **sdd_defs, **tp_defs}
     defined_in = {rid: "SRS" for rid in srs_defs}
     overlap_warnings: list[str] = []
     for rid in sds_defs:
@@ -254,11 +263,16 @@ def main(argv: list[str] | None = None) -> int:
         if rid in srs_defs or rid in sds_defs:
             overlap_warnings.append(f"{rid} is defined in BOTH an upstream spec and the SDD — IDs must be unique")
         defined_in[rid] = "SDD"
+    for rid in tp_defs:
+        if rid in srs_defs or rid in sds_defs or rid in sdd_defs:
+            overlap_warnings.append(f"{rid} is defined in BOTH an upstream spec and the test plan — IDs must be unique")
+        defined_in[rid] = "TP"
 
     existing = load_existing(csv_path)
     refs = {
         "sds": scan_refs([sds_path], (".md",)),
         "sdd": scan_refs([sdd_path], (".md",)),
+        "tp":  scan_refs([tp_path],  (".md",)),
         "code": scan_refs([resolve(args.code)], (".py",)),
         "test": scan_refs([resolve(args.tests)], (".py",)),
     }
