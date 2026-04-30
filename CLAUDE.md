@@ -135,6 +135,80 @@ registry; experimental ones are flagged.
 - Reject marginal trades automatically.
 - Survival > return. Stopping incorrectly > trading incorrectly.
 
+## Repository workflow (GitHub)
+
+This repository is hosted on GitHub. Three GitHub primitives are used in
+addition to the local design docs:
+
+### Origin
+The canonical remote is `origin` on GitHub. The operator configures it once:
+
+```bash
+git remote add origin git@github.com:<owner>/<repo>.git
+git push -u origin main
+```
+
+Claude **must not** configure remotes, force-push, push to `main`, or run
+any other publishing command without explicit per-action operator
+confirmation (this is a hard-to-reverse, shared-state action — see
+"Executing actions with care" in the system instructions).
+
+### Tasks / tickets — GitHub Issues
+Work is tracked as GitHub Issues alongside `tasks.md`:
+
+- One **parent issue per lifecycle phase** ("Phase 5 — Implementation",
+  "Phase 6 — Test Execution", …) with a checkbox sublist for the
+  module-level tasks already enumerated in `tasks.md`.
+- **Module / feature work** uses child issues linked back to the parent;
+  tag with labels `phase-N`, `module-<name>`, `enhancement`.
+- **Bugs** use the `bug` label and reference any failing TC ids
+  (e.g., `TC_TAX_004`) and REQ ids (e.g., `REQ_F_TAX_003`) so
+  traceability survives across the issue tracker.
+- `tasks.md` stays the authoritative engineering plan; issues are the
+  *operational* tracker. The two must not drift — every issue references
+  the relevant section in `tasks.md`, and closing a task in `tasks.md`
+  closes its issue.
+- CLI: use `gh issue create / list / view / edit`. Do not create, edit,
+  or close issues without operator confirmation; do not auto-close on
+  commit messages without explicit instruction.
+
+### Documentation — GitHub Wiki
+The `docs/` directory is **mirrored** to the GitHub Wiki:
+
+| Repo file | Wiki page |
+|---|---|
+| `docs/srs.md` | `SRS` |
+| `docs/sds.md` | `SDS` |
+| `docs/sdd.md` | `SDD` |
+| `docs/test_plan.md` | `Test-Plan` |
+| `docs/traceability.csv` | attached to a `Traceability` wiki page (artifact, regenerated from `tools/traceability.py --report`) |
+
+The wiki is a **separate git repo** at `<repo>.wiki.git`. Workflow:
+
+```bash
+# clone alongside the main repo
+git clone git@github.com:<owner>/<repo>.wiki.git ../trading-bot.wiki
+
+# sync (script TBD: tools/sync_wiki.py)
+python tools/sync_wiki.py ../trading-bot.wiki
+
+# review and push
+cd ../trading-bot.wiki && git diff --stat && git push
+```
+
+`docs/` remains the **source of truth** — the wiki is a publish-only
+mirror. Edit in `docs/`, then sync; never edit the wiki directly. The
+sync script does not yet exist; when needed, it must preserve the
+approval tables and section IDs verbatim.
+
+### Safety rules for GitHub operations
+- No `git push`, `gh issue create`, `gh pr create`, wiki commits, or
+  release tags without explicit per-action operator confirmation.
+- `tools/traceability.py --check` is read-only and safe to run anytime.
+- Approval entries (Section *Approval* in each design doc) are recorded
+  as **new commits**, never as amends, so the lifecycle history is
+  immutable on `main`.
+
 ## Notes on the spec file
 
 `trading-bot.md` is a Google Docs markdown export and is the **original imported
