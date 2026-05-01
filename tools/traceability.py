@@ -17,6 +17,7 @@ Usage:
 
 Stdlib only. Run from anywhere — paths resolve against the repo root.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -92,8 +93,7 @@ def load_existing(path: Path) -> dict[str, Row]:
         return {}
     with path.open(newline="", encoding="utf-8") as f:
         return {
-            r["req_id"]: Row(**{k: r.get(k, "") for k in CSV_FIELDS})
-            for r in csv.DictReader(f)
+            r["req_id"]: Row(**{k: r.get(k, "") for k in CSV_FIELDS}) for r in csv.DictReader(f)
         }
 
 
@@ -103,10 +103,11 @@ def scan_refs(roots: list[Path], extensions: tuple[str, ...]) -> dict[str, list[
     for root in roots:
         if not root.exists():
             continue
-        files = [root] if root.is_file() else [
-            p for p in root.rglob("*")
-            if p.is_file() and p.suffix in extensions
-        ]
+        files = (
+            [root]
+            if root.is_file()
+            else [p for p in root.rglob("*") if p.is_file() and p.suffix in extensions]
+        )
         for f in files:
             try:
                 text = f.read_text(encoding="utf-8")
@@ -208,7 +209,8 @@ def report(rows: list[Row]) -> str:
     # Coverage is cumulative downward: anything at TEST is also at CODE, etc.
     for level in reversed(LEVELS):
         cumulative += counts.get(level, 0)
-        lines.append(f"  reached {level:5s}: {cumulative} ({cumulative * 100 // max(len(rows), 1)}%)")
+        pct = cumulative * 100 // max(len(rows), 1)
+        lines.append(f"  reached {level:5s}: {cumulative} ({pct}%)")
     return "\n".join(lines)
 
 
@@ -216,21 +218,47 @@ def resolve(p: Path) -> Path:
     return p if p.is_absolute() else REPO / p
 
 
-def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912, PLR0915
+    # The CLI main aggregates argparse setup, four-source definition parsing,
+    # uniqueness checking, ref scanning, drift-mode handling, and reporting.
+    # Splitting it would not improve clarity, so the branch/statement
+    # complexity gates are explicitly suppressed here.
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     ap.add_argument("--srs", default=Path("Documentations/SRS.md"), type=Path)
-    ap.add_argument("--csv", default=Path("docs/traceability.csv"), type=Path,
-                    help="Traceability CSV output (kept in main repo as a build artifact)")
+    ap.add_argument(
+        "--csv",
+        default=Path("docs/traceability.csv"),
+        type=Path,
+        help="Traceability CSV output (kept in main repo as a build artifact)",
+    )
     ap.add_argument("--sds", default=Path("Documentations/SDS.md"), type=Path)
     ap.add_argument("--sdd", default=Path("Documentations/SDD.md"), type=Path)
-    ap.add_argument("--tp", default=Path("Documentations/Test-Plan.md"), type=Path,
-                    help="Test plan markdown (skipped if missing)")
-    ap.add_argument("--code", default=Path("trading_system"), type=Path,
-                    help="Code directory (skipped if missing)")
-    ap.add_argument("--tests", default=Path("tests"), type=Path,
-                    help="Tests directory (skipped if missing)")
-    ap.add_argument("--check", action="store_true",
-                    help="Verify the CSV matches what would be generated; do not write. Exit 1 on drift.")
+    ap.add_argument(
+        "--tp",
+        default=Path("Documentations/Test-Plan.md"),
+        type=Path,
+        help="Test plan markdown (skipped if missing)",
+    )
+    ap.add_argument(
+        "--code",
+        default=Path("trading_system"),
+        type=Path,
+        help="Code directory (skipped if missing)",
+    )
+    ap.add_argument(
+        "--tests",
+        default=Path("tests"),
+        type=Path,
+        help="Tests directory (skipped if missing)",
+    )
+    ap.add_argument(
+        "--check",
+        action="store_true",
+        help="Verify the CSV matches what would be generated; do not write. Exit 1 on drift.",
+    )
     ap.add_argument("--report", action="store_true", help="Print a coverage summary")
     args = ap.parse_args(argv)
 
@@ -243,14 +271,17 @@ def main(argv: list[str] | None = None) -> int:
 
     sds_path = resolve(args.sds)
     sdd_path = resolve(args.sdd)
-    tp_path  = resolve(args.tp)
+    tp_path = resolve(args.tp)
     srs_defs = parse_definitions(srs_path)
     sds_defs = parse_definitions(sds_path)
     sdd_defs = parse_definitions(sdd_path)
-    tp_defs  = parse_definitions(tp_path)
+    tp_defs = parse_definitions(tp_path)
 
     if not srs_defs:
-        print(f"error: no requirements parsed from {srs_path} — check the bullet format", file=sys.stderr)
+        print(
+            f"error: no requirements parsed from {srs_path} - check the bullet format",
+            file=sys.stderr,
+        )
         return 2
 
     defs = {**srs_defs, **sds_defs, **sdd_defs, **tp_defs}
@@ -258,22 +289,28 @@ def main(argv: list[str] | None = None) -> int:
     overlap_warnings: list[str] = []
     for rid in sds_defs:
         if rid in srs_defs:
-            overlap_warnings.append(f"{rid} is defined in BOTH the SRS and SDS — IDs must be unique")
+            overlap_warnings.append(
+                f"{rid} is defined in BOTH the SRS and SDS - IDs must be unique"
+            )
         defined_in[rid] = "SDS"
     for rid in sdd_defs:
         if rid in srs_defs or rid in sds_defs:
-            overlap_warnings.append(f"{rid} is defined in BOTH an upstream spec and the SDD — IDs must be unique")
+            overlap_warnings.append(
+                f"{rid} is defined in BOTH an upstream spec and the SDD - IDs must be unique"
+            )
         defined_in[rid] = "SDD"
     for rid in tp_defs:
         if rid in srs_defs or rid in sds_defs or rid in sdd_defs:
-            overlap_warnings.append(f"{rid} is defined in BOTH an upstream spec and the test plan — IDs must be unique")
+            overlap_warnings.append(
+                f"{rid} is defined in BOTH an upstream spec and the test plan - IDs must be unique"
+            )
         defined_in[rid] = "TP"
 
     existing = load_existing(csv_path)
     refs = {
         "sds": scan_refs([sds_path], (".md",)),
         "sdd": scan_refs([sdd_path], (".md",)),
-        "tp":  scan_refs([tp_path],  (".md",)),
+        "tp": scan_refs([tp_path], (".md",)),
         "code": scan_refs([resolve(args.code)], (".py",)),
         "test": scan_refs([resolve(args.tests)], (".py",)),
     }
@@ -292,7 +329,11 @@ def main(argv: list[str] | None = None) -> int:
                 print(report(rows))
             return 0
         if current != new_csv:
-            print(f"error: {csv_path.relative_to(REPO)} is stale — run `python tools/traceability.py`", file=sys.stderr)
+            print(
+                f"error: {csv_path.relative_to(REPO)} is stale - "
+                "run `python tools/traceability.py`",
+                file=sys.stderr,
+            )
         return 1
 
     csv_path.write_text(new_csv, encoding="utf-8")

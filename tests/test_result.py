@@ -46,7 +46,8 @@ class TestResult:
         assert err.unwrap_or_else(lambda e: len(e)) == 4
 
     def test_map_ok(self) -> None:
-        assert Ok(2).map(lambda x: x * 3) == Ok(6)
+        ok: Result[int, str] = Ok(2)
+        assert ok.map(lambda x: x * 3) == Ok(6)
 
     def test_map_err_branch_unchanged(self) -> None:
         err: Result[int, str] = Err("boom")
@@ -96,7 +97,10 @@ class TestResult:
     def test_equality(self) -> None:
         assert Ok(1) == Ok(1)
         assert Err("x") == Err("x")
-        assert Ok(1) != Err(1)
+        # Ok and Err are distinct dataclasses; equality is False at runtime.
+        ok: Result[int, int] = Ok(1)
+        err: Result[int, int] = Err(1)
+        assert ok != err
 
 
 # ---------------------------------------------------------------------------
@@ -133,7 +137,8 @@ class TestOption:
         assert n.unwrap_or_else(lambda: 99) == 99
 
     def test_map_some(self) -> None:
-        assert Some(2).map(lambda x: x * 3) == Some(6)
+        opt: Option[int] = Some(2)
+        assert opt.map(lambda x: x * 3) == Some(6)
 
     def test_map_nothing_unchanged(self) -> None:
         n: Option[int] = Nothing()

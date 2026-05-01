@@ -71,6 +71,17 @@ no_implicit_optional = true
 warn_no_return = true
 warn_unreachable = true
 
+# Tests intentionally exercise runtime behaviors that the static type
+# system rejects on purpose: comparing distinct NewType aliases that
+# share a runtime base, multiplying through generic combinators where
+# mypy cannot infer the inner TypeVar from a lambda body, and using
+# parametrized fixtures whose builder kwargs are loose. Relax the
+# matching error codes only inside `tests/`.
+[[tool.mypy.overrides]]
+module = "tests.*"
+warn_unused_ignores = false
+disable_error_code = ["operator", "comparison-overlap", "arg-type"]
+
 # ---------- pytest ----------
 [tool.pytest.ini_options]
 minversion = "8.0"

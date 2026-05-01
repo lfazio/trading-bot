@@ -33,7 +33,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Generic, NoReturn, TypeAlias, TypeVar, Union
+from typing import Generic, NoReturn, TypeAlias, TypeVar
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -67,14 +67,14 @@ class Ok(Generic[T]):
     def unwrap_or_else(self, fn: Callable[[E], T]) -> T:
         return self.value
 
-    def map(self, fn: Callable[[T], U]) -> "Result[U, E]":
+    def map(self, fn: Callable[[T], U]) -> Result[U, E]:
         return Ok(fn(self.value))
 
-    def map_err(self, fn: Callable[[E], F]) -> "Result[T, F]":
+    def map_err(self, fn: Callable[[E], F]) -> Result[T, F]:
         # Static type carries the original Ok unchanged.
         return Ok(self.value)
 
-    def and_then(self, fn: Callable[[T], "Result[U, E]"]) -> "Result[U, E]":
+    def and_then(self, fn: Callable[[T], Result[U, E]]) -> Result[U, E]:
         return fn(self.value)
 
 
@@ -103,17 +103,17 @@ class Err(Generic[E]):
     def unwrap_or_else(self, fn: Callable[[E], T]) -> T:
         return fn(self.error)
 
-    def map(self, fn: Callable[[T], U]) -> "Result[U, E]":
+    def map(self, fn: Callable[[T], U]) -> Result[U, E]:
         return Err(self.error)
 
-    def map_err(self, fn: Callable[[E], F]) -> "Result[T, F]":
+    def map_err(self, fn: Callable[[E], F]) -> Result[T, F]:
         return Err(fn(self.error))
 
-    def and_then(self, fn: Callable[[T], "Result[U, E]"]) -> "Result[U, E]":
+    def and_then(self, fn: Callable[[T], Result[U, E]]) -> Result[U, E]:
         return Err(self.error)
 
 
-Result: TypeAlias = Union[Ok[T], Err[E]]
+Result: TypeAlias = Ok[T] | Err[E]
 
 
 # ---------------------------------------------------------------------------
@@ -142,10 +142,10 @@ class Some(Generic[T]):
     def unwrap_or_else(self, fn: Callable[[], T]) -> T:
         return self.value
 
-    def map(self, fn: Callable[[T], U]) -> "Option[U]":
+    def map(self, fn: Callable[[T], U]) -> Option[U]:
         return Some(fn(self.value))
 
-    def and_then(self, fn: Callable[[T], "Option[U]"]) -> "Option[U]":
+    def and_then(self, fn: Callable[[T], Option[U]]) -> Option[U]:
         return fn(self.value)
 
     def ok_or(self, error: E) -> Result[T, E]:
@@ -177,17 +177,17 @@ class Nothing:
     def unwrap_or_else(self, fn: Callable[[], T]) -> T:
         return fn()
 
-    def map(self, fn: Callable[[T], U]) -> "Option[U]":
+    def map(self, fn: Callable[[T], U]) -> Option[U]:
         return Nothing()
 
-    def and_then(self, fn: Callable[[T], "Option[U]"]) -> "Option[U]":
+    def and_then(self, fn: Callable[[T], Option[U]]) -> Option[U]:
         return Nothing()
 
     def ok_or(self, error: E) -> Result[T, E]:
         return Err(error)
 
 
-Option: TypeAlias = Union[Some[T], Nothing]
+Option: TypeAlias = Some[T] | Nothing
 
 
 # ---------------------------------------------------------------------------
