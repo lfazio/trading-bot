@@ -1,0 +1,17 @@
+# system.yaml — top-level run configuration
+# Refs: REQ_F_CAP_001, REQ_F_BRK_004, REQ_O_003, REQ_SDS_INT_004,
+#       REQ_SDD_API_004, REQ_SDS_ARC_005
+
+system:
+  starting_capital:
+    amount: 1000          # REQ_F_CAP_001 — configurable; not hardcoded in source
+    currency: EUR
+  log_level: INFO
+  seed: 0xCAFE            # REQ_SDS_ARC_005 — all randomness derives from this
+  mode: backtest          # live | backtest | paper
+
+broker:
+  adapter: local          # REQ_F_BRK_004 — selects BrokerAdapter implementation.
+                          # `local` -> LocalBrokerAdapter (in-process, deterministic;
+                          # the only concrete adapter shipped through this lifecycle).
+                          # Live-broker adapters are deferred (REQ_F_BRK_003).

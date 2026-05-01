@@ -1,0 +1,10 @@
+# risk.yaml — risk engine configuration
+# Refs: REQ_F_RSK_001..005, REQ_F_CAP_012, REQ_SDD_ALG_005, REQ_SDD_ALG_008
+
+risk:
+  single_asset_cap: 0.30
+  correlation_max: 0.85               # REQ_SDD_ALG_008 — 60-day rolling Pearson
+  correlation_window_days: 60
+  forbidden_regimes_for:
+    structured: ["high_vol", "bear"]  # REQ_F_STP_004
+    turbo:      ["high_vol"]

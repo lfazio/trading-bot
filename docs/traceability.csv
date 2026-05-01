@@ -91,7 +91,7 @@ REQ_NF_LIF_001,SRS,DO-178C lifecycle,Documentations/SDS.md,Documentations/SDD.md
 REQ_NF_LIF_002,SRS,Changes restart lifecycle,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_NF_LOG_001,SRS,Logging trades/KS/reports,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_NF_REP_001,SRS,Strategy reproducibility,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
-REQ_NF_TRC_001,SRS,Full traceability,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_NF_TRC_001,SRS,Full traceability,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/__init__.py,,CODE
 REQ_O_001,SRS,The repository SHALL deliver a runnable Python project with no pseudo…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_O_002,SRS,`main.py` SHALL demonstrate end-to-end: connect (mock or selected bro…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_O_003,SRS,"Starting capital, broker selection, and phase thresholds SHALL be rea…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
@@ -135,7 +135,7 @@ REQ_SDD_DAT_005,SDD,`Trade.fees` SHALL be the executed fee amount returned by th
 REQ_SDD_DAT_006,SDD,`Order.quantity` and `Position.quantity` magnitude SHALL be strictly…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_DAT_007,SDD,`Phase` enum values SHALL be the integers 1..6; constructors SHALL re…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_DAT_008,SDD,`KillSwitchTrigger.snapshot_id` SHALL be a non-empty string referenci…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
-REQ_SDD_ERR_001,SDD,Validation failures at type construction SHALL raise `ValueError`; al…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_SDD_ERR_001,SDD,Validation failures at type construction SHALL raise `ValueError`; al…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/result.py,tests/test_result.py,TEST
 REQ_SDD_ERR_002,SDD,`BrokerAdapter` and `MarketDataProvider` errors SHALL be mapped to `R…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_ERR_003,SDD,"Any internal inconsistency in `risk/` (e.g., contradictory verdicts o…",,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_ERR_004,SDD,"Configuration validation errors SHALL include the file path, the offe…",,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
@@ -144,8 +144,8 @@ REQ_SDD_IMP_001,SDD,Source-tree layout SHALL match the SDS module decomposition 
 REQ_SDD_IMP_002,SDD,Each module SHALL declare an `__all__` listing its public surface; sy…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_IMP_003,SDD,The dependency graph between top-level packages SHALL be acyclic; an…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_IMP_004,SDD,Each module's package docstring SHALL list the SRS / SDS / SDD requir…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
-REQ_SDD_IMP_005,SDD,The runtime tree (`trading_system/`) SHALL NOT import from `strategy_…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
-REQ_SDD_IMP_006,SDD,"Engine modules (`tax/`, `risk/`, `phase_engine/`, `screener/`, `turbo…",,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_SDD_IMP_005,SDD,The runtime tree (`trading_system/`) SHALL NOT import from `strategy_…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/__init__.py,,CODE
+REQ_SDD_IMP_006,SDD,"Engine modules (`tax/`, `risk/`, `phase_engine/`, `screener/`, `turbo…",,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/result.py,,CODE
 REQ_SDD_LOG_001,SDD,"Trade log entries SHALL include `(trade_id, order_id, strategy_id, in…",,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_LOG_002,SDD,"Kill-switch event log entries SHALL include `(snapshot_id, state_from…",,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_LOG_003,SDD,"`ImprovementReport` log entries SHALL include `(cycle_id, best_strate…",,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
@@ -167,8 +167,8 @@ REQ_SDD_TST_006,SDD,Backtest reproducibility SHALL be asserted by running each s
 REQ_SDD_TYP_001,SDD,All monetary and percentage-of-capital quantities SHALL use `decimal.…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_TYP_002,SDD,"Domain identifiers (`OrderId`, `TradeId`, `InstrumentId`, `StrategyId…",,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_TYP_003,SDD,"Enumerations (`Currency`, `Side`, `OrderType`, `OrderStatus`, `Phase`…",,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
-REQ_SDS_ARC_001,SDS,The system SHALL be organized into eight layers (L0–L7) with strict d…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
-REQ_SDS_ARC_002,SDS,"Engines (tax, risk, phase, screener, turbo, scoring, backtest) SHALL…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_SDS_ARC_001,SDS,The system SHALL be organized into eight layers (L0–L7) with strict d…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/__init__.py,,CODE
+REQ_SDS_ARC_002,SDS,"Engines (tax, risk, phase, screener, turbo, scoring, backtest) SHALL…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/__init__.py;trading_system/result.py,,CODE
 REQ_SDS_ARC_003,SDS,The safety layer SHALL act as a veto over execution; every call to `B…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDS_ARC_004,SDS,The runtime SHALL be a single-process event-driven loop; the same loo…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDS_ARC_005,SDS,All randomness SHALL be seeded; the seed SHALL be part of `Config` so…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
@@ -202,7 +202,7 @@ REQ_SDS_MOD_010,SDS,`safety/state_manager` SHALL be the single writer for `KillS
 REQ_SDS_MOD_011,SDS,The portfolio's primary equity curve SHALL be after-tax; any gross vi…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDS_MOD_012,SDS,The milestone controller SHALL include a fake-growth detector that re…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDS_MOD_013,SDS,The backtesting engine SHALL accept an explicit seed and SHALL produc…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
-REQ_SDS_MOD_014,SDS,`strategy_lab/` SHALL be offline-only; runtime modules SHALL import o…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_SDS_MOD_014,SDS,`strategy_lab/` SHALL be offline-only; runtime modules SHALL import o…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/__init__.py,,CODE
 REQ_SDS_MOD_015,SDS,`dashboard/` SHALL be a read-only view over `analytics/`; it SHALL NO…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_S_KS_001,SRS,Three states,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_S_KS_002,SRS,Override priority,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP

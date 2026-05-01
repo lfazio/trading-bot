@@ -1,0 +1,7 @@
+# tax.yaml — France CTO / PFU tax engine
+# Refs: REQ_F_TAX_001..006, REQ_C_TAX_001, REQ_SDD_CFG_001, REQ_SDD_CFG_002
+
+tax:
+  rate: 0.30                # REQ_SDD_CFG_001 — 30 % flat (PFU)
+  gate_multiplier: 5        # REQ_SDD_CFG_002 — trade-gate multiple
+  fiscal_year_end_month: 12 # REQ_F_TAX_006 — calendar year for tax-loss harvesting

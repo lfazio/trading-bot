@@ -1,0 +1,59 @@
+# phases.yaml — phase engine configuration
+# Refs: REQ_F_CAP_002..014, REQ_SDD_ALG_002, REQ_SDD_ALG_020,
+#       REQ_SDD_CFG_003, REQ_SDS_CFG_001
+
+phases:
+  bounds: [3000, 10000, 50000, 200000, 1000000]   # EUR; 5 bounds → 6 phases
+  hysteresis: 0.10                                # REQ_SDD_ALG_002
+
+  # Allocation targets sum to 1.0 ± 1e-9 (REQ_SDD_ALG_020).
+  # Negative cash represents leverage from turbo overlay (cash basis < total exposure).
+  constraints:
+    1:
+      max_positions: 3
+      max_trades_per_month: 4
+      allocation_targets: { stock: 0.90, tactical: 0.10, structured: 0.0,  turbo: 0.0,  cash:  0.0 }
+      turbo_exposure_max: 0.0
+      risk_per_trade_band: [0.01, 0.02]
+      max_drawdown: 0.15
+      portfolio_vol_cap: null
+    2:
+      max_positions: 6
+      max_trades_per_month: 8
+      allocation_targets: { stock: 0.70, tactical: 0.30, structured: 0.0,  turbo: 0.05, cash: -0.05 }
+      turbo_exposure_max: 0.05
+      risk_per_trade_band: [0.01, 0.02]
+      max_drawdown: 0.15
+      portfolio_vol_cap: null
+    3:
+      max_positions: 12
+      max_trades_per_month: 20
+      allocation_targets: { stock: 0.60, tactical: 0.40, structured: 0.0,  turbo: 0.15, cash: -0.15 }
+      turbo_exposure_max: 0.15
+      risk_per_trade_band: [0.01, 0.02]
+      max_drawdown: 0.20
+      portfolio_vol_cap: null
+    4:
+      max_positions: 20
+      max_trades_per_month: 40
+      allocation_targets: { stock: 0.50, tactical: 0.30, structured: 0.10, turbo: 0.20, cash: -0.10 }
+      turbo_exposure_max: 0.20
+      risk_per_trade_band: [0.01, 0.015]
+      max_drawdown: 0.20
+      portfolio_vol_cap: null
+    5:
+      max_positions: 30
+      max_trades_per_month: 60
+      allocation_targets: { stock: 0.55, tactical: 0.15, structured: 0.15, turbo: 0.10, cash:  0.05 }
+      turbo_exposure_max: 0.15
+      risk_per_trade_band: [0.005, 0.01]
+      max_drawdown: 0.15
+      portfolio_vol_cap: 0.12          # REQ_SDD_ALG_009 (Phase 5)
+    6:
+      max_positions: 50
+      max_trades_per_month: 100
+      allocation_targets: { stock: 0.60, tactical: 0.15, structured: 0.10, turbo: 0.10, cash:  0.05 }
+      turbo_exposure_max: 0.10
+      risk_per_trade_band: [0.0025, 0.0075]
+      max_drawdown: 0.12
+      portfolio_vol_cap: 0.08          # REQ_SDD_ALG_009 (Phase 6)

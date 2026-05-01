@@ -1,0 +1,19 @@
+# meta_loop.yaml — bounded research engine (strategy_lab)
+# Refs: REQ_F_MTO_001..008, REQ_SDD_ALG_004, REQ_SDD_CFG_005
+
+meta_loop:
+  candidates_per_cycle: 16
+  scoring_weights:                       # REQ_SDD_CFG_005
+    return: 0.40
+    sharpe: 0.30
+    stability: 0.20
+    drawdown_penalty: 0.10
+  walk_forward:                          # REQ_SDD_ALG_004
+    base:           { train_months: 24, validation_months: 6,  oos_months: 6 }
+    phase5_plus:    { train_months: 60, validation_months: 12, oos_months: 24 }
+  optimizer:
+    top_k: 3                             # REQ_F_MTO_006
+    parameter_sensitivity_max: 0.30
+    regime_stability_min: 0.70           # REQ_F_MTO_008
+    leverage_cap: 5.0
+    turnover_max: 2.0

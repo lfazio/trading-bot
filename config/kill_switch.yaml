@@ -1,0 +1,17 @@
+# kill_switch.yaml — global kill-switch triggers
+# Refs: REQ_S_KS_003..010, REQ_SDD_ALG_006, REQ_SDD_ALG_007, REQ_SDS_CFG_003
+#
+# Loaded once at startup; runtime mutation is rejected (REQ_S_KS_010,
+# REQ_SDS_CFG_003, REQ_SDD_API_004).
+
+kill_switch:
+  financial:
+    single_day_loss: 0.05               # REQ_SDD_ALG_006
+    rapid_decline:                      # REQ_SDD_ALG_007
+      pct: 0.10
+      days: 5
+  execution:
+    rejection_threshold: 0.20
+    slippage_anomaly_sigma: 3.0
+  recovery:
+    require_manual_token: true          # REQ_S_KS_009

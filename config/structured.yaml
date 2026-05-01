@@ -1,0 +1,12 @@
+# structured.yaml — structured-products overlay
+# Refs: REQ_F_STP_001..007, REQ_SDD_ALG_013, REQ_SDD_ALG_014
+
+structured:
+  allocation_max: 0.10                  # REQ_F_STP_001 — total cap
+  issuer_concentration_max: 0.25        # REQ_SDD_ALG_014 — % of SP allocation
+  allowed_regimes:   ["sideways", "bull"]   # REQ_F_STP_003
+  forbidden_regimes: ["high_vol", "bear"]   # REQ_F_STP_004
+  stress_scenarios:                     # REQ_SDD_ALG_013
+    crash_pct: -0.20
+    vol_multiplier: 3.0
+    correlation_target: 1.0

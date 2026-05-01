@@ -1,0 +1,14 @@
+# turbos.yaml — turbo selection
+# Refs: REQ_F_TRB_001..006, REQ_SDD_ALG_011, REQ_SDD_CFG_004
+
+turbos:
+  filter:
+    knockout_min_distance: 0.05       # REQ_F_TRB_002
+    spread_max: 0.015                 # REQ_F_TRB_002
+    min_liquidity: 100000
+    max_volatility: 0.50
+  scoring:
+    weights: [0.35, 0.25, 0.20, 0.20] # REQ_SDD_CFG_004 / REQ_F_TRB_003
+                                       # (knockout_distance / leverage_efficiency
+                                       #  / cost / expected_move_capture)
+    threshold: 0.50                   # REQ_F_TRB_004 — below → no trade
