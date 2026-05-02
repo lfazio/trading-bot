@@ -245,6 +245,22 @@ Work is tracked as GitHub Issues alongside `tasks.md`:
   or close issues without operator confirmation; do not auto-close on
   commit messages without explicit instruction.
 
+### Change Requests
+Proposed evolutions that have **not yet entered the lifecycle** live in
+`Documentations/Change-Requests.md`. The approved artifacts (SRS, SDS,
+SDD, Test Plan) are locked at specific commits per `REQ_NF_LIF_002`;
+when a CR is accepted, the change cascades through the full lifecycle
+(SRS amendment → SDS → SDD → Test Plan → code).
+
+CR rules:
+- New feature ideas / refactors with non-trivial design impact go into
+  the CR log first, **never directly into an approved spec**.
+- CR ids are immutable; rejected CRs keep their numbers.
+- Acceptance opens an SRS amendment that re-cascades all four phases.
+- Each CR carries a status (Proposed / Accepted / In-Progress / Done /
+  Deferred / Rejected), the affected artifacts, open questions, and a
+  discussion log.
+
 ### Documentation — GitHub Wiki (submodule)
 The lifecycle documents live **inside the wiki submodule**, not in the
 main repo. The wiki repo (`<repo>.wiki.git`) is mounted at
