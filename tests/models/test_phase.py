@@ -6,9 +6,9 @@ from decimal import Decimal
 
 import pytest
 
-from trading_system.models.instrument import InstrumentClass
 from trading_system.models.phase import (
     ALLOCATION_TOLERANCE,
+    AllocationBucket,
     MarketRegime,
     Phase,
     PhaseConstraints,
@@ -35,13 +35,31 @@ class TestMarketRegimeEnum:
         assert {r.value for r in MarketRegime} == {"bull", "bear", "sideways", "high_vol"}
 
 
+class TestAllocationBucket:
+    def test_five_values(self) -> None:
+        # REQ_SDD_TYP_004: 5-value StrEnum.
+        assert {b.value for b in AllocationBucket} == {
+            "stock",
+            "tactical",
+            "structured",
+            "turbo",
+            "cash",
+        }
+
+    def test_distinct_from_instrument_class(self) -> None:
+        # AllocationBucket is strategy-allocation, not instrument-class.
+        # STOCK and TACTICAL both hold equity instruments but live in
+        # different buckets so the budgets stay separate.
+        assert AllocationBucket.STOCK.value != AllocationBucket.TACTICAL.value
+
+
 def make_constraints(**overrides: object) -> PhaseConstraints:
     base: dict[str, object] = {
         "max_positions": 3,
         "max_trades_per_month": 4,
         "allocation_targets": {
-            InstrumentClass.STOCK: Decimal("0.90"),
-            InstrumentClass.TURBO: Decimal("0.10"),
+            AllocationBucket.STOCK: Decimal("0.90"),
+            AllocationBucket.TACTICAL: Decimal("0.10"),
         },
         "turbo_exposure_max": Decimal("0.05"),
         "risk_per_trade_band": (Decimal("0.01"), Decimal("0.02")),
@@ -66,8 +84,8 @@ class TestPhaseConstraints:
         # 0.5 + 0.5 - 1e-10 == 0.9999999999, still within tolerance.
         c = make_constraints(
             allocation_targets={
-                InstrumentClass.STOCK: Decimal("0.5"),
-                InstrumentClass.TURBO: Decimal("0.5") - ALLOCATION_TOLERANCE / 2,
+                AllocationBucket.STOCK: Decimal("0.5"),
+                AllocationBucket.TACTICAL: Decimal("0.5") - ALLOCATION_TOLERANCE / 2,
             }
         )
         assert c.max_positions == 3  # construction succeeded
@@ -76,8 +94,8 @@ class TestPhaseConstraints:
         with pytest.raises(ValueError, match="allocation_targets must sum to 1"):
             make_constraints(
                 allocation_targets={
-                    InstrumentClass.STOCK: Decimal("0.5"),
-                    InstrumentClass.TURBO: Decimal("0.4"),
+                    AllocationBucket.STOCK: Decimal("0.5"),
+                    AllocationBucket.TACTICAL: Decimal("0.4"),
                 }
             )
 

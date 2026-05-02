@@ -53,7 +53,12 @@ from trading_system.models.meta import (
     ValidationResult,
 )
 from trading_system.models.money import Currency, Money
-from trading_system.models.phase import MarketRegime, Phase, PhaseConstraints
+from trading_system.models.phase import (
+    AllocationBucket,
+    MarketRegime,
+    Phase,
+    PhaseConstraints,
+)
 from trading_system.models.safety import (
     KillSwitchState,
     KillSwitchTrigger,
@@ -71,6 +76,7 @@ from trading_system.models.trading import (
 )
 
 __all__ = [
+    "AllocationBucket",
     "Currency",
     "Dividend",
     "EquityPoint",

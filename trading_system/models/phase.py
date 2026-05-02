@@ -16,9 +16,25 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import IntEnum, StrEnum
 
-from trading_system.models.instrument import InstrumentClass
-
 ALLOCATION_TOLERANCE = Decimal("1e-9")
+
+
+class AllocationBucket(StrEnum):
+    """Phase-level allocation buckets (REQ_F_CAP_006..011, SDD §4.2 table).
+
+    These are *strategy-allocation* buckets, not instrument classes:
+    ``STOCK`` and ``TACTICAL`` both hold equity instruments
+    (``InstrumentClass.STOCK``) but are budgeted separately so the core
+    long-term strategy and the tactical strategy each get an explicit
+    capital share. ``CASH`` may be negative when leveraged turbo
+    exposure pushes total invested capital above 100 %.
+    """
+
+    STOCK = "stock"
+    TACTICAL = "tactical"
+    STRUCTURED = "structured"
+    TURBO = "turbo"
+    CASH = "cash"
 
 
 class Phase(IntEnum):
@@ -58,7 +74,7 @@ class PhaseConstraints:
 
     max_positions: int
     max_trades_per_month: int
-    allocation_targets: dict[InstrumentClass, Decimal]
+    allocation_targets: dict[AllocationBucket, Decimal]
     turbo_exposure_max: Decimal
     risk_per_trade_band: tuple[Decimal, Decimal]
     max_drawdown: Decimal
