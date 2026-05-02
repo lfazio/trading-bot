@@ -26,6 +26,10 @@ These choices are documented here so the next data-layer enrichment
 can swap them without changing the public API.
 
 REQ refs: REQ_F_SCR_001, REQ_F_SCR_002, REQ_SDD_ALG_018,
+REQ_SDD_ALG_021 (FILTER_RULES public + ordered),
+REQ_SDD_ALG_022 (screen drops Err silently; stable sort),
+REQ_SDD_ALG_023 (clamped score-helper formulas),
+REQ_SDD_DAT_009 (ScoreBreakdown / ScoredStock shape + range),
 REQ_SDS_MOD_006, REQ_SDD_API_001 (read-only over state).
 """
 

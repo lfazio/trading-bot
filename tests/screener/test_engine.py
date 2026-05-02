@@ -1,8 +1,11 @@
 """Tests for ``trading_system.screener.engine``.
 
 Covers the filter (REQ_F_SCR_001), scored ranking (REQ_F_SCR_002),
-filter-evaluation order (REQ_SDD_ALG_018), and the ``screen`` entry
-point's handling of ``Err`` from the data provider.
+filter-evaluation order (REQ_SDD_ALG_018), the public `FILTER_RULES`
+ordering (REQ_SDD_ALG_021), screen()'s Err-handling and stable sort
+(REQ_SDD_ALG_022), the clamped score-helper formulas
+(REQ_SDD_ALG_023), and the ScoreBreakdown / ScoredStock shape
+(REQ_SDD_DAT_009).
 """
 
 from __future__ import annotations
