@@ -60,8 +60,8 @@ REQ_F_RSK_002,SRS,Single-asset exposure cap,Documentations/SDS.md,Documentations
 REQ_F_RSK_003,SRS,Correlation monitoring,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_F_RSK_004,SRS,Phase 5+ vol cap,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_F_RSK_005,SRS,Risk engine failure trips kill switch,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
-REQ_F_SCR_001,SRS,EU dividend screener criteria,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/data/provider.py;trading_system/data/types.py;trading_system/data/__init__.py,,CODE
-REQ_F_SCR_002,SRS,Scored ranking output,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_F_SCR_001,SRS,EU dividend screener criteria,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/data/provider.py;trading_system/data/types.py;trading_system/data/__init__.py;trading_system/screener/config.py;trading_system/screener/__init__.py;trading_system/screener/engine.py,tests/screener/test_engine.py,TEST
+REQ_F_SCR_002,SRS,Scored ranking output,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/screener/config.py;trading_system/screener/__init__.py;trading_system/screener/engine.py,tests/screener/test_engine.py,TEST
 REQ_F_STP_001,SRS,Structured products <=10%,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_F_STP_002,SRS,Decomposition mandatory,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/__init__.py;trading_system/models/instrument.py,,CODE
 REQ_F_STP_003,SRS,Allowed regimes only,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
@@ -112,13 +112,13 @@ REQ_SDD_ALG_014,SDD,Structured-product issuer concentration SHALL be capped at 2
 REQ_SDD_ALG_015,SDD,Fake-growth detection SHALL trip on any of: 30-day cumulative gain >…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_ALG_016,SDD,`RiskEngine.pre_trade` SHALL evaluate gates in this order and SHALL s…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_ALG_017,SDD,`CapitalFlow.observe` SHALL maintain `injections` sorted by `at` asce…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/flow.py,,CODE
-REQ_SDD_ALG_018,SDD,`Screener` SHALL evaluate filters in this order (cheapest first): yie…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_SDD_ALG_018,SDD,`Screener` SHALL evaluate filters in this order (cheapest first): yie…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/screener/__init__.py;trading_system/screener/engine.py,tests/screener/test_engine.py,TEST
 REQ_SDD_ALG_019,SDD,"`Backtest` tick ordering SHALL be deterministic by `(timestamp ASC, i…",,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_ALG_020,SDD,`PhaseConstraints.allocation_targets` SHALL sum to `1.0 ± 1e-9`; devi…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/phase.py,tests/phase_engine/test_engine.py,TEST
-REQ_SDD_API_001,SDD,`Strategy.evaluate(state)` SHALL be read-only over `state`; mutation…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_SDD_API_001,SDD,`Strategy.evaluate(state)` SHALL be read-only over `state`; mutation…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/screener/engine.py,,CODE
 REQ_SDD_API_002,SDD,"Adapter contracts (`BrokerAdapter`, `MarketDataProvider`, `AlertChann…",,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/data/provider.py;trading_system/data/__init__.py;trading_system/execution/adapter.py;trading_system/execution/__init__.py;trading_system/execution/local.py,tests/data/test_mock.py;tests/execution/test_fees.py,TEST
 REQ_SDD_API_003,SDD,`SafetyLayer.must_halt()` SHALL be O(1) — a single atomic read of the…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
-REQ_SDD_API_004,SDD,`Config` SHALL be a `@dataclass(frozen=True)` value; runtime mutation…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/phase_engine/loader.py;trading_system/tax/config.py,,CODE
+REQ_SDD_API_004,SDD,`Config` SHALL be a `@dataclass(frozen=True)` value; runtime mutation…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/phase_engine/loader.py;trading_system/tax/config.py;trading_system/screener/config.py,,CODE
 REQ_SDD_API_005,SDD,`Strategy.id` SHALL be unique within the registry; attempting to stor…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_API_006,SDD,`BrokerAdapter.submit` and `BrokerAdapter.cancel` SHALL be idempotent…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/execution/adapter.py;trading_system/execution/__init__.py;trading_system/execution/local.py,tests/execution/test_local.py,TEST
 REQ_SDD_API_007,SDD,`MarketDataProvider.bars` SHALL return bars in strictly ascending `at…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/data/provider.py;trading_system/data/__init__.py,tests/data/test_mock.py,TEST
@@ -145,7 +145,7 @@ REQ_SDD_IMP_002,SDD,Each module SHALL declare an `__all__` listing its public su
 REQ_SDD_IMP_003,SDD,The dependency graph between top-level packages SHALL be acyclic; an…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_IMP_004,SDD,Each module's package docstring SHALL list the SRS / SDS / SDD requir…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_IMP_005,SDD,The runtime tree (`trading_system/`) SHALL NOT import from `strategy_…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/__init__.py,,CODE
-REQ_SDD_IMP_006,SDD,"Engine modules (`tax/`, `risk/`, `phase_engine/`, `screener/`, `turbo…",,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/result.py;trading_system/phase_engine/engine.py;trading_system/phase_engine/loader.py;trading_system/models/__init__.py;trading_system/tax/__init__.py,,CODE
+REQ_SDD_IMP_006,SDD,"Engine modules (`tax/`, `risk/`, `phase_engine/`, `screener/`, `turbo…",,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/result.py;trading_system/phase_engine/engine.py;trading_system/phase_engine/loader.py;trading_system/models/__init__.py;trading_system/tax/__init__.py;trading_system/screener/__init__.py,,CODE
 REQ_SDD_LOG_001,SDD,"Trade log entries SHALL include `(trade_id, order_id, strategy_id, in…",,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_LOG_002,SDD,"Kill-switch event log entries SHALL include `(snapshot_id, state_from…",,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_LOG_003,SDD,"`ImprovementReport` log entries SHALL include `(cycle_id, best_strate…",,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/meta.py,,CODE
@@ -169,7 +169,7 @@ REQ_SDD_TYP_002,SDD,"Domain identifiers (`OrderId`, `TradeId`, `InstrumentId`, `
 REQ_SDD_TYP_003,SDD,"Enumerations (`Currency`, `Side`, `OrderType`, `OrderStatus`, `Phase`…",,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/data/types.py;trading_system/models/__init__.py;trading_system/models/safety.py;trading_system/models/money.py;trading_system/models/instrument.py;trading_system/models/trading.py;trading_system/models/phase.py,tests/models/test_money.py,TEST
 REQ_SDD_TYP_004,SDD,`AllocationBucket` SHALL be a `StrEnum` with the five values `STOCK /…,,Documentations/SDD.md,Documentations/Test-Plan.md,,tests/models/test_phase.py,TEST
 REQ_SDS_ARC_001,SDS,The system SHALL be organized into eight layers (L0–L7) with strict d…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/__init__.py,,CODE
-REQ_SDS_ARC_002,SDS,"Engines (tax, risk, phase, screener, turbo, scoring, backtest) SHALL…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/__init__.py;trading_system/result.py;trading_system/phase_engine/engine.py;trading_system/execution/fees.py,,CODE
+REQ_SDS_ARC_002,SDS,"Engines (tax, risk, phase, screener, turbo, scoring, backtest) SHALL…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/__init__.py;trading_system/result.py;trading_system/phase_engine/engine.py;trading_system/screener/__init__.py;trading_system/execution/fees.py,,CODE
 REQ_SDS_ARC_003,SDS,The safety layer SHALL act as a veto over execution; every call to `B…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDS_ARC_004,SDS,The runtime SHALL be a single-process event-driven loop; the same loo…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDS_ARC_005,SDS,All randomness SHALL be seeded; the seed SHALL be part of `Config` so…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/execution/adapter.py;trading_system/execution/local.py;trading_system/execution/slippage.py,,CODE
@@ -189,13 +189,13 @@ REQ_SDS_FLO_005,SDS,"Kill-switch monitors (financial, strategy, execution, integ
 REQ_SDS_INT_001,SDS,"The `BrokerAdapter` interface SHALL specify `submit`, `cancel`, `posi…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/execution/adapter.py;trading_system/execution/__init__.py;trading_system/execution/local.py,,CODE
 REQ_SDS_INT_002,SDS,"The `MarketDataProvider` interface SHALL specify `bars`, `latest`, `d…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/data/provider.py;trading_system/data/types.py;trading_system/data/__init__.py;trading_system/data/mock.py,,CODE
 REQ_SDS_INT_003,SDS,The `AlertChannel` interface SHALL deliver kill-switch state-change n…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
-REQ_SDS_INT_004,SDS,"`Config` SHALL be a frozen, dependency-injected object; no runtime mo…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/phase_engine/loader.py;trading_system/tax/config.py,,CODE
+REQ_SDS_INT_004,SDS,"`Config` SHALL be a frozen, dependency-injected object; no runtime mo…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/phase_engine/loader.py;trading_system/tax/config.py;trading_system/screener/config.py,,CODE
 REQ_SDS_MOD_001,SDS,`config/` SHALL run schema validation at startup including cross-fiel…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDS_MOD_002,SDS,`models/` SHALL contain only data types with input validation; it SHA…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/__init__.py,,CODE
 REQ_SDS_MOD_003,SDS,"The tax module's public functions (`net_gain`, `net_dividend`, `trade…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/tax/harvest.py;trading_system/tax/__init__.py;trading_system/tax/engine.py,,CODE
 REQ_SDS_MOD_004,SDS,The phase engine's state machine SHALL be monotone-up by default and…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/phase_engine/__init__.py,,CODE
 REQ_SDS_MOD_005,SDS,"`capital_flow/` SHALL expose an ""equity excluding injections"" series…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
-REQ_SDS_MOD_006,SDS,Every concrete strategy SHALL implement a single `evaluate(state) ->…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_SDS_MOD_006,SDS,Every concrete strategy SHALL implement a single `evaluate(state) ->…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/screener/__init__.py;trading_system/screener/engine.py,,CODE
 REQ_SDS_MOD_007,SDS,"The turbo selector SHALL emit ""no trade"" when the best candidate's sc…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDS_MOD_008,SDS,Structured products that cannot be decomposed into equity-equiv expos…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDS_MOD_009,SDS,"Risk-engine internal inconsistencies (e.g., contradictory limit evalu…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
