@@ -49,7 +49,27 @@ for engineering decisions — read them before making non-trivial changes.
    backtest engine — Python code does the simulation, not the model.
 7. **Safe self-improvement.** A new strategy is accepted only if
    `new_risk ≤ baseline_risk` AND `new_return/risk > baseline`. Otherwise discard.
-8. **Option / Result, not exceptions.** Following Rust's discipline:
+8. **Every task ends with a documentation update.** A task is not complete until
+   the documentation reflects the change. Before claiming a task done:
+   - **`tasks.md`** — check the matching box, append `✅ DONE <YYYY-MM-DD> @ <SHA>`
+     for phase steps, or add a one-line note for ad-hoc work.
+   - **`docs/traceability.csv`** — re-run `python3 tools/traceability.py` and stage
+     the regenerated CSV in the same commit as the code change. The status bar
+     (`reached TP / CODE / TEST`) goes in the commit body.
+   - **Wiki documents** (`Documentations/SRS.md`, `SDS.md`, `SDD.md`,
+     `Test-Plan.md`) — if a design decision was made or refined during the work,
+     amend the corresponding wiki page and add a re-approval row to its approval
+     table per `REQ_NF_LIF_002`. Bump the `Documentations/` submodule pointer in
+     the same main-repo commit (or a follow-up).
+   - **`CLAUDE.md`** — update if hard rules, conventions, module layout, or
+     workflow changed.
+   - **`README.md`** — update if user-facing status changed (a phase completing,
+     a license change, a structural shift).
+
+   Documentation drift is a defect; the traceability tool's `--check` mode is the
+   CI gate that catches it for the matrix, but the wider rule applies to every
+   artifact listed above.
+9. **Option / Result, not exceptions.** Following Rust's discipline:
    - Fallible operations return `Result[T, E]` (`Ok(value)` | `Err(error)`).
    - Possibly-absent values return `Option[T]` (`Some(value)` | `Nothing()`).
    - `try`/`except` is forbidden for control flow at module boundaries;

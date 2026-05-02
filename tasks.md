@@ -10,15 +10,15 @@ Legend: `[ ]` open · `[~]` in progress · `[x]` done · `(REQ_xxx)` traceabilit
 
 ## Phase 0 — Repository Bootstrap
 
-- [ ] Decide Python version (3.11+) and pin in `pyproject.toml`
-- [ ] Set up project skeleton (`pyproject.toml`, `ruff`, `mypy`, `pytest`, `pre-commit`)
-- [ ] Add `Makefile` (or `just`) with: `lint`, `typecheck`, `test`, `backtest`, `run`
-- [ ] Add `.env.example` for broker credentials (never commit secrets); document one
+- [x] Decide Python version (3.11+) and pin in `pyproject.toml`
+- [x] Set up project skeleton (`pyproject.toml`, `ruff`, `mypy`, `pytest`, `pre-commit`)
+- [x] Add `Makefile` (or `just`) with: `lint`, `typecheck`, `test`, `backtest`, `run`
+- [x] Add `.env.example` for broker credentials (never commit secrets); document one
       block per supported adapter
-- [ ] Add `config/` defaults: `starting_capital`, `currency`, `phase_thresholds`,
+- [x] Add `config/` defaults: `starting_capital`, `currency`, `phase_thresholds`,
       `broker.adapter` (selects which `BrokerAdapter` implementation to use)
-- [ ] Initialize traceability matrix file (`docs/traceability.csv` — REQ ↔ SDS ↔ SDD ↔ code ↔ test)
-- [ ] Implement `trading_system/result.py` — Rust-style `Option[T]` (`Some` |
+- [x] Initialize traceability matrix file (`docs/traceability.csv` — REQ ↔ SDS ↔ SDD ↔ code ↔ test)
+- [x] Implement `trading_system/result.py` — Rust-style `Option[T]` (`Some` |
       `Nothing`) and `Result[T, E]` (`Ok` | `Err`) tagged unions, frozen
       dataclasses, with `is_ok` / `is_err` / `map` / `and_then` /
       `unwrap_or` / `unwrap_or_else` / `unwrap`. Stdlib only. No exception
@@ -32,33 +32,33 @@ Legend: `[ ]` open · `[~]` in progress · `[x]` done · `(REQ_xxx)` traceabilit
 
 Output: `Documentations/SRS.md` (in wiki submodule). **No design or code allowed.**
 
-- [ ] Functional requirements (REQ_F_xxx)
-  - [ ] Capital lifecycle: configurable starting capital; six-phase scaling
-  - [ ] After-tax optimization (France CTO, 30% flat)
-  - [ ] Tax-aware trade gate: `expected_net_profit > 5 × total_fees AFTER TAX`
-  - [ ] EU dividend + swing stock investing
-  - [ ] Tactical trading (weeks–months)
-  - [ ] Turbo / CFD trading with strict, phase-capped selection
-  - [ ] Generic broker adapter interface with `LocalBrokerAdapter` as the in-process reference implementation; live-broker adapters deferred until a broker is selected
-  - [ ] Capital flow tracking (initial + injections, performance net of inflows)
-  - [ ] Structured products overlay (max 10%, regime-gated)
-  - [ ] Meta-optimization loop (bounded strategy research, not autonomous trading)
-  - [ ] Global kill switch (3 states: ACTIVE / DEGRADED / KILL)
-  - [ ] Milestone controller (2k / 5k / 10k / 20k / 50k / 100k / 200k / 500k / 1M / 2M / 5M €; thresholds configurable)
-  - [ ] Phase 5 capabilities: tax-loss harvesting, sector rotation, currency hedging
-  - [ ] Phase 6 capabilities: vol-targeting, risk parity, multi-strategy ensemble, hedge overlay, NAV/attribution reporting
-- [ ] Non-functional requirements (REQ_NF_xxx)
-  - [ ] Determinism in backtest engine
-  - [ ] Reproducibility of strategy versions
-  - [ ] Auditability (full state snapshot on kill switch)
-- [ ] Constraints (REQ_C_xxx)
-  - [ ] Tax: 30% on realized gains and dividends
-  - [ ] Risk per trade: phase 1–3 = 1–2%, phase 4 = 1–1.5%, phase 5 = 0.5–1%, phase 6 = 0.25–0.75%; stop-loss mandatory
-  - [ ] Max drawdown: phases 1–2 = 15%, phases 3–4 = 20%, phase 5 = 15%, phase 6 = 12%
-  - [ ] Portfolio-level vol cap mandatory in phases 5–6 (in addition to per-trade limits)
-  - [ ] Position limits: stocks 25–35%, turbos phase-capped (≤ 5 / 15 / 20 / 15 / 10 % across phases 2–6)
-  - [ ] Starting capital and phase thresholds are read from `config/`, never hardcoded
-- [ ] Assign REQ id to every requirement; populate traceability matrix col 1
+- [x] Functional requirements (REQ_F_xxx)
+  - [x] Capital lifecycle: configurable starting capital; six-phase scaling
+  - [x] After-tax optimization (France CTO, 30% flat)
+  - [x] Tax-aware trade gate: `expected_net_profit > 5 × total_fees AFTER TAX`
+  - [x] EU dividend + swing stock investing
+  - [x] Tactical trading (weeks–months)
+  - [x] Turbo / CFD trading with strict, phase-capped selection
+  - [x] Generic broker adapter interface with `LocalBrokerAdapter` as the in-process reference implementation; live-broker adapters deferred until a broker is selected
+  - [x] Capital flow tracking (initial + injections, performance net of inflows)
+  - [x] Structured products overlay (max 10%, regime-gated)
+  - [x] Meta-optimization loop (bounded strategy research, not autonomous trading)
+  - [x] Global kill switch (3 states: ACTIVE / DEGRADED / KILL)
+  - [x] Milestone controller (2k / 5k / 10k / 20k / 50k / 100k / 200k / 500k / 1M / 2M / 5M €; thresholds configurable)
+  - [x] Phase 5 capabilities: tax-loss harvesting, sector rotation, currency hedging
+  - [x] Phase 6 capabilities: vol-targeting, risk parity, multi-strategy ensemble, hedge overlay, NAV/attribution reporting
+- [x] Non-functional requirements (REQ_NF_xxx)
+  - [x] Determinism in backtest engine
+  - [x] Reproducibility of strategy versions
+  - [x] Auditability (full state snapshot on kill switch)
+- [x] Constraints (REQ_C_xxx)
+  - [x] Tax: 30% on realized gains and dividends
+  - [x] Risk per trade: phase 1–3 = 1–2%, phase 4 = 1–1.5%, phase 5 = 0.5–1%, phase 6 = 0.25–0.75%; stop-loss mandatory
+  - [x] Max drawdown: phases 1–2 = 15%, phases 3–4 = 20%, phase 5 = 15%, phase 6 = 12%
+  - [x] Portfolio-level vol cap mandatory in phases 5–6 (in addition to per-trade limits)
+  - [x] Position limits: stocks 25–35%, turbos phase-capped (≤ 5 / 15 / 20 / 15 / 10 % across phases 2–6)
+  - [x] Starting capital and phase thresholds are read from `config/`, never hardcoded
+- [x] Assign REQ id to every requirement; populate traceability matrix col 1
 
 **Gate:** SRS explicitly reviewed and approved before SDS.
 
@@ -68,18 +68,18 @@ Output: `Documentations/SRS.md` (in wiki submodule). **No design or code allowed
 
 Output: `Documentations/SDS.md` (in wiki submodule). **No low-level code allowed.**
 
-- [ ] High-level architecture diagram (modules + data flows)
-- [ ] Module decomposition (must match spec layout)
+- [x] High-level architecture diagram (modules + data flows)
+- [x] Module decomposition (must match spec layout)
   - `config/`, `data/`, `models/`, `screener/`, `strategies/`, `risk/`, `tax/`,
     `backtesting/`, `portfolio/`, `execution/`, `phase_engine/`, `turbo_selector/`,
     `dashboard/`, `safety/`, `strategy_lab/`, `milestone_controller/`, `analytics/`
-- [ ] External interfaces
-  - [ ] Generic `BrokerAdapter` interface (orders, positions, leveraged instruments, account state)
-  - [ ] `LocalBrokerAdapter` reference adapter contract — in-process, deterministic, simulates fills / fees / slippage; the only concrete adapter shipped through this lifecycle
-  - [ ] Market data source(s); pluggable behind a `MarketDataProvider` interface
-- [ ] Phase engine design (auto-detect by `equity + injected_capital`; thresholds from config; six phases)
-- [ ] Kill switch override hierarchy: `KillSwitch > RiskEngine > Strategy > Execution`
-- [ ] Strategy lab orchestration (generator → backtester → evaluator → risk_guard → optimizer → registry → loop_controller)
+- [x] External interfaces
+  - [x] Generic `BrokerAdapter` interface (orders, positions, leveraged instruments, account state)
+  - [x] `LocalBrokerAdapter` reference adapter contract — in-process, deterministic, simulates fills / fees / slippage; the only concrete adapter shipped through this lifecycle
+  - [x] Market data source(s); pluggable behind a `MarketDataProvider` interface
+- [x] Phase engine design (auto-detect by `equity + injected_capital`; thresholds from config; six phases)
+- [x] Kill switch override hierarchy: `KillSwitch > RiskEngine > Strategy > Execution`
+- [x] Strategy lab orchestration (generator → backtester → evaluator → risk_guard → optimizer → registry → loop_controller)
 
 **Gate:** every SRS REQ id maps to an SDS component; traceability matrix col 2 filled.
 
@@ -89,22 +89,22 @@ Output: `Documentations/SDS.md` (in wiki submodule). **No low-level code allowed
 
 Output: `Documentations/SDD.md` (in wiki submodule). Pseudo-code only; map 1:1 to SDS.
 
-- [ ] Class/data-structure design per module
-- [ ] Algorithms
-  - [ ] Tax module: `net_profit = gross * 0.70`; `net_dividend = dividend * 0.70`
-  - [ ] Tax-aware trade gate function
-  - [ ] Turbo selection: filter → score → select (with weights 0.35/0.25/0.20/0.20)
-  - [ ] Risk engine constraints (drawdown, position, per-trade)
-  - [ ] Phase engine state machine (phases 1–6, configurable thresholds, hysteresis on downgrades)
-  - [ ] Phase 5 modules: tax-loss harvester, sector rotator, currency hedger
-  - [ ] Phase 6 modules: vol-target sizer, risk-parity allocator, strategy ensemble, hedge-overlay manager, NAV/attribution reporter
-  - [ ] Capital flow accounting (excludes injections from performance metrics)
-  - [ ] Meta-loop scoring: `0.4*ret + 0.3*sharpe + 0.2*stability + 0.1*dd_penalty`
-  - [ ] Walk-forward validator
-  - [ ] Kill switch trigger evaluator + recovery checker
-  - [ ] Milestone controller (gradual +10–20% exposure unlock)
-  - [ ] Structured product decomposer (reject if not decomposable)
-  - [ ] Regime detector (bull / bear / sideways / high-vol)
+- [x] Class/data-structure design per module
+- [x] Algorithms
+  - [x] Tax module: `net_profit = gross * 0.70`; `net_dividend = dividend * 0.70`
+  - [x] Tax-aware trade gate function
+  - [x] Turbo selection: filter → score → select (with weights 0.35/0.25/0.20/0.20)
+  - [x] Risk engine constraints (drawdown, position, per-trade)
+  - [x] Phase engine state machine (phases 1–6, configurable thresholds, hysteresis on downgrades)
+  - [x] Phase 5 modules: tax-loss harvester, sector rotator, currency hedger
+  - [x] Phase 6 modules: vol-target sizer, risk-parity allocator, strategy ensemble, hedge-overlay manager, NAV/attribution reporter
+  - [x] Capital flow accounting (excludes injections from performance metrics)
+  - [x] Meta-loop scoring: `0.4*ret + 0.3*sharpe + 0.2*stability + 0.1*dd_penalty`
+  - [x] Walk-forward validator
+  - [x] Kill switch trigger evaluator + recovery checker
+  - [x] Milestone controller (gradual +10–20% exposure unlock)
+  - [x] Structured product decomposer (reject if not decomposable)
+  - [x] Regime detector (bull / bear / sideways / high-vol)
 
 **Gate:** traceability matrix col 3 (SDD) complete; reviewed against SDS.
 
@@ -114,15 +114,15 @@ Output: `Documentations/SDD.md` (in wiki submodule). Pseudo-code only; map 1:1 t
 
 Output: `Documentations/Test-Plan.md` (in wiki submodule). **No implementation allowed.**
 
-- [ ] Unit test plan per module
-- [ ] Integration test plan (screener → strategy → risk → execution)
-- [ ] Backtest validation plan (deterministic; tax-inclusive; injection timeline)
-- [ ] Risk validation tests (drawdown caps, position caps, turbo cap)
-- [ ] Tax correctness tests (gross→net; dividend; trade-gate boundary)
-- [ ] Edge cases: market crash, turbo knockout, broker rejection, data outage
-- [ ] Walk-forward / out-of-sample tests for every strategy candidate
-- [ ] Kill switch tests (all trigger categories + recovery + manual override)
-- [ ] Structured product stress tests (crash / vol expansion / correlation spike)
+- [x] Unit test plan per module
+- [x] Integration test plan (screener → strategy → risk → execution)
+- [x] Backtest validation plan (deterministic; tax-inclusive; injection timeline)
+- [x] Risk validation tests (drawdown caps, position caps, turbo cap)
+- [x] Tax correctness tests (gross→net; dividend; trade-gate boundary)
+- [x] Edge cases: market crash, turbo knockout, broker rejection, data outage
+- [x] Walk-forward / out-of-sample tests for every strategy candidate
+- [x] Kill switch tests (all trigger categories + recovery + manual override)
+- [x] Structured product stress tests (crash / vol expansion / correlation spike)
 
 **Gate:** every REQ has ≥ 1 test case; traceability matrix col 4 complete.
 
@@ -133,10 +133,10 @@ Output: `Documentations/Test-Plan.md` (in wiki submodule). **No implementation a
 Follow the spec's mandatory order. Each module must reference its REQ ids in module
 docstring.
 
-1. [ ] `models/` — domain entities (Position, Trade, Order, Instrument, Turbo, ...)
-2. [ ] `data/` — market data layer (cache, feeds, validation)
-3. [ ] `tax/` — France CTO tax engine + tax-aware trade gate
-4. [ ] `execution/` — generic `BrokerAdapter` interface + `LocalBrokerAdapter` (in-process deterministic broker simulating orders, fills, positions, turbos/CFDs, fees, slippage); live-broker adapters deferred
+1. [x] `models/` — domain entities (Position, Trade, Order, Instrument, Turbo, ...) ✅ DONE 2026-05-01 @ b12043c
+2. [x] `data/` — market data layer (cache, feeds, validation) ✅ DONE 2026-05-01 @ f385314
+3. [x] `tax/` — France CTO tax engine + tax-aware trade gate ✅ DONE 2026-05-01 @ e823e4a
+4. [x] `execution/` — generic `BrokerAdapter` interface + `LocalBrokerAdapter` (in-process deterministic broker simulating orders, fills, positions, turbos/CFDs, fees, slippage); live-broker adapters deferred ✅ DONE 2026-05-02 @ c47273f (MARKET orders only; LIMIT/STOP deferred to follow-up)
 5. [ ] `phase_engine/` — phase detection + constraint enforcement
 6. [ ] `screener/` — EU dividend/stock screener (yield 3–7%, payout <70%, FCF>0, D/E<1.5, ≥5y history)
 7. [ ] `strategies/` — core (long-term/dividend) + tactical (trend, breakout, pullback)
@@ -204,3 +204,11 @@ Cross-cutting (build alongside):
   forbidden for control flow; `raise` is reserved for panics on programmer-error
   invariants. Third-party exceptions are wrapped at the adapter and converted to
   `Result`. See CLAUDE.md → "Coding conventions" for the full discipline.
+- **Every task ends with a documentation update.** Before checking a task complete:
+  update `tasks.md` (`[x]`, date, commit SHA), re-run `python3 tools/traceability.py`
+  and commit the regenerated CSV with the code change, amend any affected wiki
+  document with a re-approval row (per `REQ_NF_LIF_002`) and bump the
+  `Documentations/` submodule pointer, and update `CLAUDE.md` / `README.md` when
+  rules, conventions, or user-facing status change. The traceability tool's
+  `--check` mode is the CI gate for the matrix; the wider rule covers every
+  artifact in the repo. See CLAUDE.md hard rule #8 for the full procedure.
