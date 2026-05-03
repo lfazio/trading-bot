@@ -1,13 +1,13 @@
 req_id,defined_in,statement_short,sds_ref,sdd_ref,tp_ref,code_ref,test_ref,status
-REQ_C_BHV_001,SRS,Prefer stocks over turbos,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
-REQ_C_BHV_002,SRS,Avoid overtrading,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_C_BHV_001,SRS,Prefer stocks over turbos,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/strategies/core.py,,CODE
+REQ_C_BHV_002,SRS,Avoid overtrading,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/strategies/protocol.py;trading_system/strategies/core.py,tests/strategies/test_core.py,TEST
 REQ_C_BHV_003,SRS,Auto-reject marginal trades,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/tax/engine.py,tests/tax/test_engine.py,TEST
 REQ_C_BHV_004,SRS,Survival > return,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_C_BHV_005,SRS,Forbidden behaviors,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_C_CLA_001,SRS,Claude allowed actions,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_C_CLA_002,SRS,Claude forbidden actions,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_C_TAX_001,SRS,France CTO PFU only,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/tax/__init__.py,,CODE
-REQ_F_BCT_001,SRS,Deterministic backtest,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/data/provider.py;trading_system/data/__init__.py;trading_system/data/mock.py,,CODE
+REQ_F_BCT_001,SRS,Deterministic backtest,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/data/provider.py;trading_system/data/__init__.py;trading_system/data/mock.py;trading_system/strategies/state.py,,CODE
 REQ_F_BCT_002,SRS,Simulate broker fees,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/execution/fees.py,,CODE
 REQ_F_BCT_003,SRS,Simulate slippage,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/execution/slippage.py,,CODE
 REQ_F_BCT_004,SRS,Simulate turbo knockouts,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
@@ -33,8 +33,8 @@ REQ_F_CAP_009,SRS,Phase 4 constraints,Documentations/SDS.md,Documentations/SDD.m
 REQ_F_CAP_010,SRS,Phase 5 constraints,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_F_CAP_011,SRS,Phase 6 constraints,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_F_CAP_012,SRS,Phase 5+ portfolio vol cap,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/phase_engine/__init__.py;trading_system/phase_engine/engine.py;trading_system/models/phase.py,tests/phase_engine/test_engine.py;tests/phase_engine/test_loader.py,TEST
-REQ_F_CAP_013,SRS,Risk per trade per phase,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/phase_engine/__init__.py,,CODE
-REQ_F_CAP_014,SRS,Stop-loss mandatory,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/__init__.py;trading_system/models/trading.py,tests/models/test_trading.py,TEST
+REQ_F_CAP_013,SRS,Risk per trade per phase,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/phase_engine/__init__.py;trading_system/strategies/tactical.py,tests/strategies/test_tactical.py,TEST
+REQ_F_CAP_014,SRS,Stop-loss mandatory,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/__init__.py;trading_system/models/trading.py;trading_system/strategies/tactical.py,tests/models/test_trading.py;tests/strategies/test_tactical.py,TEST
 REQ_F_CFL_001,SRS,Track initial+injections+deployed+equity,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/flow.py;trading_system/models/__init__.py,,CODE
 REQ_F_CFL_002,SRS,Performance excludes injections,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/flow.py,,CODE
 REQ_F_CFL_003,SRS,Risk sizing scales with total capital,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
@@ -52,7 +52,7 @@ REQ_F_MTO_005,SRS,Registry versioning,Documentations/SDS.md,Documentations/SDD.m
 REQ_F_MTO_006,SRS,Self-improvement rule,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_F_MTO_007,SRS,ImprovementReport per cycle,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/__init__.py;trading_system/models/meta.py,,CODE
 REQ_F_MTO_008,SRS,Regime evaluation,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/phase.py,,CODE
-REQ_F_PRT_001,SRS,Track cash/positions/gains/dividends/equity,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/flow.py;trading_system/execution/types.py,,CODE
+REQ_F_PRT_001,SRS,Track cash/positions/gains/dividends/equity,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/flow.py;trading_system/strategies/protocol.py;trading_system/execution/types.py,,CODE
 REQ_F_PRT_002,SRS,Phase 6 NAV+attribution,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_F_PRT_003,SRS,Diversification enforced,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_F_RSK_001,SRS,Per-phase max drawdown,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
@@ -69,13 +69,13 @@ REQ_F_STP_004,SRS,Forbidden regimes block,Documentations/SDS.md,Documentations/S
 REQ_F_STP_005,SRS,Stress + liquidity tests,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_F_STP_006,SRS,Issuer diversification,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_F_STP_007,SRS,No turbo+SP stacking on same underlying,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
-REQ_F_STR_001,SRS,Core strategy long-term/dividend,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
-REQ_F_STR_002,SRS,Tactical strategy trend/breakout/pullback,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
-REQ_F_STR_003,SRS,Walk-forward validation required,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
-REQ_F_STR_004,SRS,Phase 6 multi-strategy ensemble,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_F_STR_001,SRS,Core strategy long-term/dividend,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/strategies/__init__.py;trading_system/strategies/protocol.py;trading_system/strategies/core.py,tests/strategies/test_core.py,TEST
+REQ_F_STR_002,SRS,Tactical strategy trend/breakout/pullback,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/strategies/tactical.py;trading_system/strategies/__init__.py,tests/strategies/test_tactical.py,TEST
+REQ_F_STR_003,SRS,Walk-forward validation required,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/strategies/__init__.py,,CODE
+REQ_F_STR_004,SRS,Phase 6 multi-strategy ensemble,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/strategies/__init__.py;trading_system/strategies/ensemble.py,tests/strategies/test_ensemble.py,TEST
 REQ_F_TAX_001,SRS,30% tax on realized gains,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/money.py;trading_system/tax/config.py;trading_system/tax/__init__.py;trading_system/tax/engine.py,tests/tax/test_engine.py,TEST
 REQ_F_TAX_002,SRS,30% tax on dividends,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/money.py;trading_system/models/trading.py;trading_system/tax/__init__.py;trading_system/tax/engine.py,,CODE
-REQ_F_TAX_003,SRS,Trade gate: net_profit > 5x fees after tax,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/meta.py;trading_system/tax/__init__.py;trading_system/tax/engine.py,tests/tax/test_engine.py,TEST
+REQ_F_TAX_003,SRS,Trade gate: net_profit > 5x fees after tax,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/meta.py;trading_system/tax/__init__.py;trading_system/tax/engine.py;trading_system/strategies/_estimates.py,tests/tax/test_engine.py;tests/strategies/test_core.py,TEST
 REQ_F_TAX_004,SRS,Optimize after-tax never gross,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/tax/harvest.py;trading_system/tax/__init__.py;trading_system/tax/engine.py,,CODE
 REQ_F_TAX_005,SRS,Backtests apply taxes,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_F_TAX_006,SRS,Phase 5+ tax-loss harvesting,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/tax/config.py;trading_system/tax/harvest.py;trading_system/tax/__init__.py;trading_system/tax/engine.py,tests/tax/test_harvest.py,TEST
@@ -86,7 +86,7 @@ REQ_F_TRB_004,SRS,No-trade if score below threshold,Documentations/SDS.md,Docume
 REQ_F_TRB_005,SRS,Turbo risk = invested capital only,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/instrument.py;trading_system/execution/local.py,tests/execution/test_local.py,TEST
 REQ_F_TRB_006,SRS,Turbo candidate fields required,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/__init__.py;trading_system/models/instrument.py,,CODE
 REQ_NF_AUD_001,SRS,Snapshot on KS event,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/safety.py,,CODE
-REQ_NF_DET_001,SRS,Deterministic backtest engine,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/data/mock.py,,CODE
+REQ_NF_DET_001,SRS,Deterministic backtest engine,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/data/mock.py;trading_system/strategies/state.py,,CODE
 REQ_NF_LIF_001,SRS,DO-178C lifecycle,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_NF_LIF_002,SRS,Changes restart lifecycle,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_NF_LOG_001,SRS,Logging trades/KS/reports,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
@@ -104,7 +104,7 @@ REQ_SDD_ALG_006,SDD,Single-day loss kill-switch threshold SHALL default to 5% of
 REQ_SDD_ALG_007,SDD,Rapid-decline detection SHALL trip on a ≥10% drawdown over 5 trading…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_ALG_008,SDD,Correlation guard SHALL use 60-day rolling Pearson correlation betwee…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_ALG_009,SDD,Portfolio-level annualized volatility cap SHALL default to 12% in Pha…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
-REQ_SDD_ALG_010,SDD,Phase-6 ensemble weights SHALL be inverse-volatility normalized (risk…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_SDD_ALG_010,SDD,Phase-6 ensemble weights SHALL be inverse-volatility normalized (risk…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/strategies/__init__.py;trading_system/strategies/ensemble.py,tests/strategies/test_ensemble.py,TEST
 REQ_SDD_ALG_011,SDD,Turbo knockout-distance score SHALL be a sigmoid centred at the confi…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_ALG_012,SDD,Structured-product decomposition rules SHALL map: AUTOCALL → conditio…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_ALG_013,SDD,"Structured-product stress scenarios SHALL include −20% crash, vol×3,…",,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
@@ -118,11 +118,11 @@ REQ_SDD_ALG_020,SDD,`PhaseConstraints.allocation_targets` SHALL sum to `1.0 ± 1
 REQ_SDD_ALG_021,SDD,Screener filter rules SHALL be exposed as a public immutable `FILTER_…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/screener/engine.py,tests/screener/test_engine.py,TEST
 REQ_SDD_ALG_022,SDD,"`screen(universe, data, cfg)` SHALL treat an `Err` from `data.fundame…",,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/screener/engine.py,tests/screener/test_engine.py,TEST
 REQ_SDD_ALG_023,SDD,"Screener score helpers (`stability_score`, `yield_quality_score`, `va…",,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/screener/engine.py,tests/screener/test_engine.py,TEST
-REQ_SDD_API_001,SDD,`Strategy.evaluate(state)` SHALL be read-only over `state`; mutation…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/screener/engine.py,,CODE
-REQ_SDD_API_002,SDD,"Adapter contracts (`BrokerAdapter`, `MarketDataProvider`, `AlertChann…",,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/data/provider.py;trading_system/data/__init__.py;trading_system/execution/adapter.py;trading_system/execution/__init__.py;trading_system/execution/local.py,tests/data/test_mock.py;tests/execution/test_fees.py,TEST
+REQ_SDD_API_001,SDD,`Strategy.evaluate(state)` SHALL be read-only over `state`; mutation…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/screener/engine.py;trading_system/strategies/state.py;trading_system/strategies/tactical.py;trading_system/strategies/__init__.py;trading_system/strategies/protocol.py;trading_system/strategies/core.py;trading_system/strategies/ensemble.py,tests/strategies/test_protocol.py,TEST
+REQ_SDD_API_002,SDD,"Adapter contracts (`BrokerAdapter`, `MarketDataProvider`, `AlertChann…",,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/data/provider.py;trading_system/data/__init__.py;trading_system/strategies/__init__.py;trading_system/strategies/protocol.py;trading_system/execution/adapter.py;trading_system/execution/__init__.py;trading_system/execution/local.py,tests/data/test_mock.py;tests/strategies/test_protocol.py;tests/execution/test_fees.py,TEST
 REQ_SDD_API_003,SDD,`SafetyLayer.must_halt()` SHALL be O(1) — a single atomic read of the…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_API_004,SDD,`Config` SHALL be a `@dataclass(frozen=True)` value; runtime mutation…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/phase_engine/loader.py;trading_system/tax/config.py;trading_system/screener/config.py,,CODE
-REQ_SDD_API_005,SDD,`Strategy.id` SHALL be unique within the registry; attempting to stor…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_SDD_API_005,SDD,`Strategy.id` SHALL be unique within the registry; attempting to stor…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/strategies/tactical.py;trading_system/strategies/__init__.py;trading_system/strategies/protocol.py;trading_system/strategies/core.py;trading_system/strategies/ensemble.py,tests/strategies/test_core.py;tests/strategies/test_tactical.py,TEST
 REQ_SDD_API_006,SDD,`BrokerAdapter.submit` and `BrokerAdapter.cancel` SHALL be idempotent…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/execution/adapter.py;trading_system/execution/__init__.py;trading_system/execution/local.py,tests/execution/test_local.py,TEST
 REQ_SDD_API_007,SDD,`MarketDataProvider.bars` SHALL return bars in strictly ascending `at…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/data/provider.py;trading_system/data/__init__.py,tests/data/test_mock.py,TEST
 REQ_SDD_CFG_001,SDD,Default tax rate SHALL be `0.30` in `tax.yaml`. *Derives from: REQ_F_…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/tax/config.py;trading_system/tax/__init__.py,tests/tax/test_config.py,TEST
@@ -130,11 +130,11 @@ REQ_SDD_CFG_002,SDD,Default trade-gate multiplier SHALL be `5` in `tax.yaml`. *D
 REQ_SDD_CFG_003,SDD,"Default phase boundaries SHALL be `[3000, 10000, 50000, 200000, 10000…",,Documentations/SDD.md,Documentations/Test-Plan.md,,tests/phase_engine/test_loader.py,TEST
 REQ_SDD_CFG_004,SDD,Default turbo scoring weights SHALL be `0.35 / 0.25 / 0.20 / 0.20` in…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_CFG_005,SDD,Default meta-loop scoring weights SHALL be `0.4 / 0.3 / 0.2 / 0.1` in…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
-REQ_SDD_DAT_001,SDD,`Order` and `Position` SHALL carry a non-optional `StopLoss` field; c…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/__init__.py;trading_system/models/trading.py,,CODE
+REQ_SDD_DAT_001,SDD,`Order` and `Position` SHALL carry a non-optional `StopLoss` field; c…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/__init__.py;trading_system/models/trading.py;trading_system/strategies/tactical.py,,CODE
 REQ_SDD_DAT_002,SDD,`Position.opened_at` and `Position.avg_price` SHALL be set at constru…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/trading.py,,CODE
 REQ_SDD_DAT_003,SDD,"`EquityPoint` SHALL store `(at, equity_gross, equity_after_tax, drawd…",,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/flow.py;trading_system/models/__init__.py,,CODE
 REQ_SDD_DAT_004,SDD,"`RegistryEntry` SHALL store `(strategy_id, git_sha, config_hash, seed…",,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
-REQ_SDD_DAT_005,SDD,`Trade.fees` SHALL be the executed fee amount returned by the adapter…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/meta.py;trading_system/models/trading.py,tests/models/test_trading.py,TEST
+REQ_SDD_DAT_005,SDD,`Trade.fees` SHALL be the executed fee amount returned by the adapter…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/meta.py;trading_system/models/trading.py;trading_system/strategies/_estimates.py,tests/models/test_trading.py,TEST
 REQ_SDD_DAT_006,SDD,`Order.quantity` and `Position.quantity` magnitude SHALL be strictly…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/trading.py,tests/models/test_trading.py,TEST
 REQ_SDD_DAT_007,SDD,`Phase` enum values SHALL be the integers 1..6; constructors SHALL re…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/__init__.py;trading_system/models/phase.py,,CODE
 REQ_SDD_DAT_008,SDD,`KillSwitchTrigger.snapshot_id` SHALL be a non-empty string referenci…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/__init__.py;trading_system/models/safety.py,,CODE
@@ -168,7 +168,7 @@ REQ_SDD_TST_003,SDD,"Tax-engine tests SHALL include boundary cases: zero gain, e
 REQ_SDD_TST_004,SDD,Phase-engine tests SHALL include a hysteresis-flapping fixture that t…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_TST_005,SDD,"Kill-switch tests SHALL cover every trigger code (financial, strategy…",,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_TST_006,SDD,Backtest reproducibility SHALL be asserted by running each shipped st…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
-REQ_SDD_TYP_001,SDD,All monetary and percentage-of-capital quantities SHALL use `decimal.…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/data/types.py;trading_system/models/flow.py;trading_system/models/__init__.py;trading_system/models/money.py;trading_system/models/meta.py;trading_system/models/trading.py;trading_system/tax/harvest.py;trading_system/execution/types.py;trading_system/execution/fees.py,tests/models/test_money.py,TEST
+REQ_SDD_TYP_001,SDD,All monetary and percentage-of-capital quantities SHALL use `decimal.…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/data/types.py;trading_system/models/flow.py;trading_system/models/__init__.py;trading_system/models/money.py;trading_system/models/meta.py;trading_system/models/trading.py;trading_system/tax/harvest.py;trading_system/strategies/state.py;trading_system/execution/types.py;trading_system/execution/fees.py,tests/models/test_money.py,TEST
 REQ_SDD_TYP_002,SDD,"Domain identifiers (`OrderId`, `TradeId`, `InstrumentId`, `StrategyId…",,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/__init__.py;trading_system/models/identifiers.py;trading_system/models/instrument.py,,CODE
 REQ_SDD_TYP_003,SDD,"Enumerations (`Currency`, `Side`, `OrderType`, `OrderStatus`, `Phase`…",,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/data/types.py;trading_system/models/__init__.py;trading_system/models/safety.py;trading_system/models/money.py;trading_system/models/instrument.py;trading_system/models/trading.py;trading_system/models/phase.py,tests/models/test_money.py,TEST
 REQ_SDD_TYP_004,SDD,`AllocationBucket` SHALL be a `StrEnum` with the five values `STOCK /…,,Documentations/SDD.md,Documentations/Test-Plan.md,,tests/models/test_phase.py,TEST
@@ -185,8 +185,8 @@ REQ_SDS_CRS_001,SDS,"All logs SHALL be JSON-line records with categories (`trade
 REQ_SDS_CRS_002,SDS,Every kill-switch state transition SHALL persist a snapshot artifact…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDS_CRS_003,SDS,"The strategy registry SHALL store, for every validated entry: code re…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDS_CRS_004,SDS,"Behavioral defaults (preferring stocks, rejecting marginal trades, bl…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
-REQ_SDS_FLO_001,SDS,Every trade decision SHALL traverse the order: tax-aware gate → risk…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
-REQ_SDS_FLO_002,SDS,"`phase_engine` SHALL distribute `PhaseConstraints` to `risk/`, `strat…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/phase_engine/__init__.py;trading_system/phase_engine/engine.py,tests/phase_engine/test_engine.py,TEST
+REQ_SDS_FLO_001,SDS,Every trade decision SHALL traverse the order: tax-aware gate → risk…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/strategies/__init__.py,,CODE
+REQ_SDS_FLO_002,SDS,"`phase_engine` SHALL distribute `PhaseConstraints` to `risk/`, `strat…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/phase_engine/__init__.py;trading_system/phase_engine/engine.py;trading_system/strategies/tactical.py,tests/phase_engine/test_engine.py,TEST
 REQ_SDS_FLO_003,SDS,"Backtests SHALL use the same trade-decision pipeline as live runs, sw…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDS_FLO_004,SDS,The runtime SHALL never invoke `strategy_lab/` modules other than the…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDS_FLO_005,SDS,"Kill-switch monitors (financial, strategy, execution, integrity) SHAL…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
@@ -199,12 +199,12 @@ REQ_SDS_MOD_002,SDS,`models/` SHALL contain only data types with input validatio
 REQ_SDS_MOD_003,SDS,"The tax module's public functions (`net_gain`, `net_dividend`, `trade…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/tax/harvest.py;trading_system/tax/__init__.py;trading_system/tax/engine.py,,CODE
 REQ_SDS_MOD_004,SDS,The phase engine's state machine SHALL be monotone-up by default and…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/phase_engine/__init__.py,,CODE
 REQ_SDS_MOD_005,SDS,"`capital_flow/` SHALL expose an ""equity excluding injections"" series…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
-REQ_SDS_MOD_006,SDS,Every concrete strategy SHALL implement a single `evaluate(state) ->…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/screener/__init__.py;trading_system/screener/engine.py,,CODE
+REQ_SDS_MOD_006,SDS,Every concrete strategy SHALL implement a single `evaluate(state) ->…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/screener/__init__.py;trading_system/screener/engine.py;trading_system/strategies/state.py;trading_system/strategies/tactical.py;trading_system/strategies/__init__.py;trading_system/strategies/protocol.py;trading_system/strategies/core.py;trading_system/strategies/ensemble.py,tests/strategies/test_protocol.py,TEST
 REQ_SDS_MOD_007,SDS,"The turbo selector SHALL emit ""no trade"" when the best candidate's sc…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDS_MOD_008,SDS,Structured products that cannot be decomposed into equity-equiv expos…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDS_MOD_009,SDS,"Risk-engine internal inconsistencies (e.g., contradictory limit evalu…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDS_MOD_010,SDS,`safety/state_manager` SHALL be the single writer for `KillSwitchStat…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
-REQ_SDS_MOD_011,SDS,The portfolio's primary equity curve SHALL be after-tax; any gross vi…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_SDS_MOD_011,SDS,The portfolio's primary equity curve SHALL be after-tax; any gross vi…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/strategies/protocol.py,,CODE
 REQ_SDS_MOD_012,SDS,The milestone controller SHALL include a fake-growth detector that re…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDS_MOD_013,SDS,The backtesting engine SHALL accept an explicit seed and SHALL produc…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDS_MOD_014,SDS,`strategy_lab/` SHALL be offline-only; runtime modules SHALL import o…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/__init__.py,,CODE

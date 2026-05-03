@@ -139,7 +139,7 @@ docstring.
 4. [x] `execution/` — generic `BrokerAdapter` interface + `LocalBrokerAdapter` (in-process deterministic broker simulating orders, fills, positions, turbos/CFDs, fees, slippage); live-broker adapters deferred ✅ DONE 2026-05-02 @ c47273f (MARKET orders only; LIMIT/STOP deferred to follow-up)
 5. [x] `phase_engine/` — phase detection + constraint enforcement ✅ DONE 2026-05-02 (added `AllocationBucket` StrEnum + `REQ_SDD_TYP_004`; SDD/Test-Plan re-approved at wiki d724b2f)
 6. [x] `screener/` — EU dividend/stock screener (yield 3–7%, payout <70%, FCF>0, D/E<1.5, ≥5y history) ✅ DONE 2026-05-02 (filter + scored ranking, score helpers documented as pragmatic stand-ins for the SDD's hypothetical inputs since `Fundamentals` does not yet carry dividend-growth std-dev or P/FCF multiple — choices captured in the engine docstring; no design re-approval needed)
-7. [ ] `strategies/` — core (long-term/dividend) + tactical (trend, breakout, pullback)
+7. [x] `strategies/` — core (long-term/dividend) + tactical (trend, breakout, pullback) ✅ DONE 2026-05-03 (Strategy + PortfolioView Protocols, MarketState, CoreStrategy, TacticalStrategy with pure signal helpers, Phase-6 EnsembleStrategy with risk-parity weights + vol-targeting; estimates module shares fee/profit calculation across strategies)
 8. [ ] `turbo_selector/` — filter + score + select (phase-gated)
 9. [ ] `risk/` — risk engine (drawdown, position, per-trade, stop-loss enforcement)
 10. [ ] `backtesting/` — deterministic engine (fees, slippage, knockouts, dividends, **tax**, injections)
