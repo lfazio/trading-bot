@@ -148,7 +148,7 @@ docstring.
 
 Cross-cutting (build alongside):
 
-- [ ] `safety/` — `kill_switch.py`, `monitor.py`, `anomaly_detector.py`, `state_manager.py`, `alert_system.py`
+- [x] `safety/` — concrete kill-switch implementation ✅ DONE 2026-05-05 (StateManager single writer per REQ_SDS_MOD_010; AuditSnapshot + MemorySnapshotSink + FileSnapshotSink for REQ_NF_AUD_001; AlertChannel Protocol with MemoryAlertChannel + deliver_with_retry exponential backoff per REQ_SDD_ERR_005; pure anomaly detectors single_day_loss_breach + rapid_decline_breach per REQ_SDD_ALG_006/007; HmacOperatorTokenVerifier + RecoveryConditions for REQ_S_KS_009; YAML loader for config/kill_switch.yaml. Standalone `monitor.py` deferred — risk engine + state manager already cover the financial trigger path; strategy / execution / integrity monitors will land alongside backtesting and execution.)
 - [ ] `strategy_lab/` — `generator.py`, `backtester.py`, `evaluator.py`, `risk_guard.py`, `optimizer.py`, `registry.py`, `loop_controller.py`
 - [ ] `milestone_controller/` — milestone gate + gradual exposure unlock + fake-growth detector
 - [ ] `structured_products/` — classifier, decomposer, regime filter, allocation cap (0–10%)
