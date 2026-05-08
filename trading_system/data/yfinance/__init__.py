@@ -16,11 +16,17 @@ REQ_SDD_DAT_010..013.
 
 from trading_system.data.yfinance.cache import CacheKey, YFinanceCache
 from trading_system.data.yfinance.mappers import bars_from_yf, dividends_from_yf
+from trading_system.data.yfinance.provider import (
+    TransientDownloadError,
+    YFinanceMarketDataProvider,
+)
 from trading_system.data.yfinance.symbols import yahoo_symbol_for
 
 __all__ = [
     "CacheKey",
+    "TransientDownloadError",
     "YFinanceCache",
+    "YFinanceMarketDataProvider",
     "bars_from_yf",
     "dividends_from_yf",
     "yahoo_symbol_for",
