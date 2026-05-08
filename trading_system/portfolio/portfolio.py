@@ -34,7 +34,11 @@ from decimal import Decimal
 
 from trading_system.models.flow import EquityPoint
 from trading_system.models.identifiers import InstrumentId, StrategyId
-from trading_system.models.instrument import InstrumentClass
+from trading_system.models.instrument import (
+    InstrumentClass,
+    StructuredProduct,
+    Turbo,
+)
 from trading_system.models.money import Currency, Money
 from trading_system.models.phase import AllocationBucket
 from trading_system.models.trading import Order, Position, Side, Trade
@@ -239,6 +243,45 @@ class Portfolio:
 
     def positions(self) -> dict[InstrumentId, Position]:
         return dict(self._positions)
+
+    def has_turbo_on(self, underlying: InstrumentId) -> bool:
+        """``True`` iff a turbo position is open on ``underlying``.
+
+        Used by the structured-products admission gate to enforce
+        REQ_F_STP_007 (no SP / turbo stack on the same underlying)
+        and by future risk checks that need to spot existing turbo
+        exposure.
+        """
+        for pos in self._positions.values():
+            if not isinstance(pos.instrument, Turbo):
+                continue
+            if pos.instrument.underlying == underlying:
+                return True
+        return False
+
+    def issuer_concentration(self, issuer: str) -> Decimal:
+        """Share of after-tax equity in structured products from
+        ``issuer`` (REQ_F_STP_006).
+
+        Returns a fraction in ``[0, 1]``. Empty equity yields zero
+        — the admission caller still rejects via its own cap, no
+        divide-by-zero leaks here.
+        """
+        eq = self.equity_after_tax().amount
+        if eq <= 0:
+            return Decimal(0)
+        marked = Decimal(0)
+        for iid, pos in self._positions.items():
+            if not isinstance(pos.instrument, StructuredProduct):
+                continue
+            if pos.instrument.issuer != issuer:
+                continue
+            price = self._last_prices.get(iid)
+            assert price is not None, (
+                f"Portfolio.issuer_concentration: missing mark price for {iid}"
+            )
+            marked += abs(price * pos.quantity)
+        return marked / eq
 
     def realizations(self) -> tuple[RealizationEvent, ...]:
         """Append-only log of every realization (close / partial close /
