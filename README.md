@@ -51,7 +51,7 @@ trading-bot/
 ├── tools/
 │   └── traceability.py      ← REQ scanner / drift gate
 ├── trading-bot.md           ← original imported specification
-├── tasks.md                 ← engineering work breakdown
+├── TASKS.md                 ← engineering work breakdown
 ├── CLAUDE.md                ← guidance for Claude Code agents
 └── README.md                ← this file
 ```

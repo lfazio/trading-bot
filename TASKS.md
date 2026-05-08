@@ -205,7 +205,7 @@ Cross-cutting (build alongside):
   invariants. Third-party exceptions are wrapped at the adapter and converted to
   `Result`. See CLAUDE.md → "Coding conventions" for the full discipline.
 - **Every task ends with a documentation update.** Before checking a task complete:
-  update `tasks.md` (`[x]`, date, commit SHA), re-run `python3 tools/traceability.py`
+  update `TASKS.md` (`[x]`, date, commit SHA), re-run `python3 tools/traceability.py`
   and commit the regenerated CSV with the code change, amend any affected wiki
   document with a re-approval row (per `REQ_NF_LIF_002`) and bump the
   `Documentations/` submodule pointer, and update `CLAUDE.md` / `README.md` when

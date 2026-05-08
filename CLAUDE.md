@@ -24,7 +24,7 @@ must not depend on any concrete broker.
 
 The full specification lives in [`trading-bot.md`](./trading-bot.md) — note that the
 imported spec names XTB and 1000€ explicitly; this CLAUDE.md generalizes those. The
-work breakdown is in [`tasks.md`](./tasks.md). Both derived files are authoritative
+work breakdown is in [`TASKS.md`](./TASKS.md). Both derived files are authoritative
 for engineering decisions — read them before making non-trivial changes.
 
 ## Hard rules — do not violate
@@ -51,7 +51,7 @@ for engineering decisions — read them before making non-trivial changes.
    `new_risk ≤ baseline_risk` AND `new_return/risk > baseline`. Otherwise discard.
 8. **Every task ends with a documentation update.** A task is not complete until
    the documentation reflects the change. Before claiming a task done:
-   - **`tasks.md`** — check the matching box, append `✅ DONE <YYYY-MM-DD> @ <SHA>`
+   - **`TASKS.md`** — check the matching box, append `✅ DONE <YYYY-MM-DD> @ <SHA>`
      for phase steps, or add a one-line note for ad-hoc work.
    - **`docs/traceability.csv`** — re-run `python3 tools/traceability.py` and stage
      the regenerated CSV in the same commit as the code change. The status bar
@@ -227,19 +227,19 @@ confirmation (this is a hard-to-reverse, shared-state action — see
 "Executing actions with care" in the system instructions).
 
 ### Tasks / tickets — GitHub Issues
-Work is tracked as GitHub Issues alongside `tasks.md`:
+Work is tracked as GitHub Issues alongside `TASKS.md`:
 
 - One **parent issue per lifecycle phase** ("Phase 5 — Implementation",
   "Phase 6 — Test Execution", …) with a checkbox sublist for the
-  module-level tasks already enumerated in `tasks.md`.
+  module-level tasks already enumerated in `TASKS.md`.
 - **Module / feature work** uses child issues linked back to the parent;
   tag with labels `phase-N`, `module-<name>`, `enhancement`.
 - **Bugs** use the `bug` label and reference any failing TC ids
   (e.g., `TC_TAX_004`) and REQ ids (e.g., `REQ_F_TAX_003`) so
   traceability survives across the issue tracker.
-- `tasks.md` stays the authoritative engineering plan; issues are the
+- `TASKS.md` stays the authoritative engineering plan; issues are the
   *operational* tracker. The two must not drift — every issue references
-  the relevant section in `tasks.md`, and closing a task in `tasks.md`
+  the relevant section in `TASKS.md`, and closing a task in `TASKS.md`
   closes its issue.
 - CLI: use `gh issue create / list / view / edit`. Do not create, edit,
   or close issues without operator confirmation; do not auto-close on
@@ -340,7 +340,7 @@ by hand).
 ## Notes on the spec file
 
 `trading-bot.md` is a Google Docs markdown export and is the **original imported
-spec** — it names XTB and 1000€ explicitly. This CLAUDE.md and `tasks.md`
+spec** — it names XTB and 1000€ explicitly. This CLAUDE.md and `TASKS.md`
 generalize those: broker is abstracted, starting capital is configurable. Treat
 `trading-bot.md` as historical/reference; engineering decisions follow the derived
 files.
