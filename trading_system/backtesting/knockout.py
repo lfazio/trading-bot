@@ -54,7 +54,7 @@ class KnockoutSimulator:
             if turbo.underlying != tick.instrument_id:
                 continue
             if _knockout_breached(turbo, tick.last):
-                portfolio.close_at_zero(iid, tax)
+                portfolio.close_at_zero(iid, tax, at=tick.at)
                 closed.append(iid)
         return closed
 

@@ -62,7 +62,7 @@ class DividendSimulator:
                             d.amount_gross.amount * pos.quantity,
                             d.amount_gross.currency,
                         )
-                        portfolio.apply_dividend(iid, gross_total, tax)
+                        portfolio.apply_dividend(iid, gross_total, tax, at=t)
                         self._paid.add(key)
                         applied.append(d)
                 case Err(_):

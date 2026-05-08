@@ -347,7 +347,7 @@ class TestDividends:
         # Cash now 500; credit GROSS 100 to cash. The 30 of unpaid tax
         # is captured in (dividends_gross - dividends_after_tax) and
         # deducted by equity_after_tax.
-        p.apply_dividend(s.id, _eur("100"), _tax())
+        p.apply_dividend(s.id, _eur("100"), _tax(), at=_ts(2026, 6))
         assert p.cash() == _eur("600")
         assert p.dividends_gross() == _eur("100")
         assert p.dividends_after_tax() == _eur("70.00")
@@ -359,7 +359,7 @@ class TestDividends:
     def test_panics_when_not_held(self) -> None:
         p = Portfolio.empty(_eur("1000"))
         with pytest.raises(AssertionError, match="not held long"):
-            p.apply_dividend(InstrumentId("ASML.AS"), _eur("100"), _tax())
+            p.apply_dividend(InstrumentId("ASML.AS"), _eur("100"), _tax(), at=_ts())
 
 
 # ---------------------------------------------------------------------------
@@ -451,7 +451,7 @@ class TestCloseAtZero:
         s = _stock()
         o = _order(s, qty="10", stop="40.00")
         p.apply(_trade(o, price="50.00", fees="0.00"), o, AllocationBucket.STOCK, _tax())
-        p.close_at_zero(s.id, _tax())
+        p.close_at_zero(s.id, _tax(), at=_ts(2026, 1, 2))
         # Loss = -10 * 50 = -500.
         assert p.realized_gross() == _eur("-500")
         assert p.realized_after_tax() == _eur("-500.00")
@@ -462,7 +462,83 @@ class TestCloseAtZero:
     def test_panics_when_not_held(self) -> None:
         p = Portfolio.empty(_eur("1000"))
         with pytest.raises(AssertionError, match="not held"):
-            p.close_at_zero(InstrumentId("ZZZ"), _tax())
+            p.close_at_zero(InstrumentId("ZZZ"), _tax(), at=_ts())
+
+
+# ---------------------------------------------------------------------------
+# Attribution — TC_PRT_003 (REQ_F_PRT_002)
+# ---------------------------------------------------------------------------
+
+
+class TestAttribution:
+    def test_empty_portfolio_returns_only_nav_row(self) -> None:
+        p = Portfolio.empty(_eur("10000"))
+        rows = p.attribution()
+        assert len(rows) == 1
+        assert rows[0].kind == "nav"
+        assert rows[0].nav_after_tax == _eur("10000")
+
+    def test_realization_attributes_to_opener_strategy_and_class(self) -> None:
+        s = _stock()
+        p = Portfolio.empty(_eur("10000"))
+        # Open with strategy core_v1
+        o_buy = Order(
+            id=OrderId("OB"),
+            instrument=s,
+            side=Side.BUY,
+            quantity=Decimal("10"),
+            type=OrderType.MARKET,
+            stop_loss=_stop(),
+            created_at=_ts(),
+            source_strategy=StrategyId("core_v1"),
+        )
+        t_buy = _trade(o_buy, price="50", fees="0", tid="TB")
+        p.apply(t_buy, o_buy, AllocationBucket.STOCK, _tax())
+        # Close with a different strategy id; attribution should still go to opener.
+        o_sell = Order(
+            id=OrderId("OS"),
+            instrument=s,
+            side=Side.SELL,
+            quantity=Decimal("10"),
+            type=OrderType.MARKET,
+            stop_loss=_stop(),
+            created_at=_ts(),
+            source_strategy=StrategyId("tactical_v1"),
+        )
+        t_sell = _trade(o_sell, price="55", fees="0", tid="TS")
+        p.apply(t_sell, o_sell, AllocationBucket.STOCK, _tax())
+        rows = p.attribution()
+        # NAV + 1 strategy row (core_v1) + 1 class row (stock)
+        assert len(rows) == 3
+        nav, strat, cls_row = rows
+        assert nav.kind == "nav"
+        assert strat.kind == "strategy"
+        assert strat.label == "core_v1"
+        assert strat.realized_gross == _eur("50")
+        assert strat.realized_after_tax == _eur("35.00")
+        assert cls_row.kind == "class"
+        assert cls_row.label == "stock"
+        assert cls_row.realized_gross == _eur("50")
+
+    def test_dividend_attributed_to_opener(self) -> None:
+        s = _stock()
+        p = Portfolio.empty(_eur("10000"))
+        o = Order(
+            id=OrderId("OB"),
+            instrument=s,
+            side=Side.BUY,
+            quantity=Decimal("10"),
+            type=OrderType.MARKET,
+            stop_loss=_stop(),
+            created_at=_ts(),
+            source_strategy=StrategyId("core_v1"),
+        )
+        p.apply(_trade(o, price="50", fees="0"), o, AllocationBucket.STOCK, _tax())
+        p.apply_dividend(s.id, _eur("100"), _tax(), at=_ts(2026, 6))
+        rows = p.attribution()
+        strat = next(r for r in rows if r.kind == "strategy")
+        assert strat.dividends_gross == _eur("100")
+        assert strat.dividends_after_tax == _eur("70.00")
 
 
 # ---------------------------------------------------------------------------
