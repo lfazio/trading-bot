@@ -18,6 +18,14 @@ from trading_system.backtesting.injection_scheduler import InjectionScheduler
 from trading_system.backtesting.knockout import KnockoutSimulator
 from trading_system.backtesting.market_replay import MarketReplay
 from trading_system.backtesting.result import BacktestResult
+from trading_system.backtesting.walk_forward import (
+    WalkForwardWindow,
+    WFResult,
+    WindowResult,
+    detect_oos_collapse,
+    sharpe_ratio,
+    walk_forward,
+)
 
 __all__ = [
     "Backtest",
@@ -29,4 +37,10 @@ __all__ = [
     "InjectionScheduler",
     "KnockoutSimulator",
     "MarketReplay",
+    "WFResult",
+    "WalkForwardWindow",
+    "WindowResult",
+    "detect_oos_collapse",
+    "sharpe_ratio",
+    "walk_forward",
 ]

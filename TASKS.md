@@ -142,8 +142,8 @@ docstring.
 7. [x] `strategies/` — core (long-term/dividend) + tactical (trend, breakout, pullback) ✅ DONE 2026-05-03 (Strategy + PortfolioView Protocols, MarketState, CoreStrategy, TacticalStrategy with pure signal helpers, Phase-6 EnsembleStrategy with risk-parity weights + vol-targeting; estimates module shares fee/profit calculation across strategies)
 8. [x] `turbo_selector/` — filter + score + select (phase-gated) ✅ DONE 2026-05-03 (TurboCandidate (Turbo + resolved underlying); filter rules per REQ_F_TRB_002; sigmoid knockout-distance score per REQ_SDD_ALG_011; weighted total per REQ_SDD_CFG_004; phase-1 gate at `turbo_exposure_max==0`; YAML loader bridges `config/turbos.yaml`)
 9. [x] `risk/` — risk engine (drawdown, position, per-trade, stop-loss enforcement) ✅ DONE 2026-05-04 (RiskEngine.pre_trade with REQ_SDD_ALG_016 gate ordering; post_trade with drawdown + Phase 5+ vol-cap escalation; SafetyLayer Protocol stub in `safety/` package; class-cap lumps STOCK + TACTICAL via `buckets_for_class`; correlation gate optional pending Phase 5 step 11 portfolio integration; single-asset cap parsed but enforcement deferred)
-10. [ ] `backtesting/` — deterministic engine (fees, slippage, knockouts, dividends, **tax**, injections)
-11. [ ] `portfolio/` — cash, positions, gains, dividends, **after-tax equity curve**
+10. [x] `backtesting/` — deterministic engine (fees, slippage, knockouts, dividends, **tax**, injections) ✅ DONE 2026-05-08 (3 commits: 82ab5ce prerequisites; e6afec9 engine + sub-simulators; this commit walk-forward + OOS-collapse detector. SDD §6 followed: EventClock, MarketReplay with deterministic (ts, iid) ordering per REQ_SDD_ALG_019, InjectionScheduler, DividendSimulator with per-share interpretation of `Dividend.amount_gross` (SDD-deviation noted in DividendSimulator docstring; one-line wiki re-approval row appended to SDD §6.3), KnockoutSimulator, BacktestBroker thin wrapper over LocalBrokerAdapter, Backtest orchestrator. Walk-forward defaults from REQ_SDD_ALG_004; collapse threshold 0.5x train Sharpe per REQ_F_BCT_009. Throughput threshold ≥10k ticks/s held on the deterministic mock path.)
+11. [~] `portfolio/` — cash, positions, gains, dividends, **after-tax equity curve** — core shipped 2026-05-08 @ 82ab5ce as a step-10 prerequisite (PortfolioView Protocol; apply / apply_dividend / inject / close_at_zero / mark / record_equity; equity_after_tax = cash + marked - tax_owed_unpaid). Phase-6 attribution (REQ_F_PRT_002) and dashboard hooks remain — land with step 12.
 12. [ ] `dashboard/` — phase, allocation, turbo exposure, after-tax perf, drawdown, history
 
 Cross-cutting (build alongside):
@@ -152,7 +152,7 @@ Cross-cutting (build alongside):
 - [ ] `strategy_lab/` — `generator.py`, `backtester.py`, `evaluator.py`, `risk_guard.py`, `optimizer.py`, `registry.py`, `loop_controller.py`
 - [ ] `milestone_controller/` — milestone gate + gradual exposure unlock + fake-growth detector
 - [ ] `structured_products/` — classifier, decomposer, regime filter, allocation cap (0–10%)
-- [ ] `capital_flow/` — injection tracking, performance net of inflows
+- [x] `capital_flow/` — injection tracking, performance net of inflows ✅ DONE 2026-05-08 @ 82ab5ce (CapitalFlow ledger: total_capital, cumulative_injected_at, equity_excl_injections; observe re-sorts per REQ_SDD_ALG_017; consumed by the backtest engine's InjectionScheduler.)
 - [ ] `analytics/` — performance + monitoring; phase 6 NAV/attribution reporter
 - [ ] `wealth_ops/` — phase-5 features: tax-loss harvester, sector rotator, currency hedger
 - [ ] `institutional/` — phase-6 features: vol-target sizer, risk-parity allocator, strategy ensemble, hedge-overlay manager
