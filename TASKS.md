@@ -153,6 +153,7 @@ Cross-cutting (build alongside):
 - [ ] `milestone_controller/` — milestone gate + gradual exposure unlock + fake-growth detector
 - [ ] `structured_products/` — classifier, decomposer, regime filter, allocation cap (0–10%)
 - [x] `capital_flow/` — injection tracking, performance net of inflows ✅ DONE 2026-05-08 @ 82ab5ce (CapitalFlow ledger: total_capital, cumulative_injected_at, equity_excl_injections; observe re-sorts per REQ_SDD_ALG_017; consumed by the backtest engine's InjectionScheduler.)
+- [x] `data/yfinance/` — Yahoo Finance backtest historical-data adapter (CR-009) ✅ DONE 2026-05-08 (4 commits: 90db016 cache + mappers + symbols + tests; 1f4f4d1 provider + retry + live-mode panic + tests; db7612d engine integration + JSON Lines fixtures; this commit recorder + pyproject extra + closeout. 19 new REQs reach TEST: REQ_F_DAT_001..010, REQ_NF_DAT_001, REQ_SDS_DAT_001..004, REQ_SDD_DAT_010..013. Adapter is backtest-only — constructor panics on run_mode=="live"; cache is system of record for replay determinism; yfinance + pandas behind an optional `[yfinance]` extra and lazy-imported only by the recorder script and the provider's network branch.)
 - [ ] `analytics/` — performance + monitoring; phase 6 NAV/attribution reporter
 - [ ] `wealth_ops/` — phase-5 features: tax-loss harvester, sector rotator, currency hedger
 - [ ] `institutional/` — phase-6 features: vol-target sizer, risk-parity allocator, strategy ensemble, hedge-overlay manager

@@ -26,6 +26,17 @@ dev = [
     "pre-commit>=3.0",
     "types-PyYAML>=6.0",
 ]
+# CR-009: yfinance is the recorder script's only path. The runtime,
+# tests, and CI never import yfinance / pandas — the YFinanceCache is
+# the system of record (REQ_NF_DAT_001). Install with:
+#     pip install trading-bot[yfinance]
+# Operator runs ``python tools/yfinance_recorder.py ...`` to populate
+# the cache from real Yahoo; subsequent backtests read from the cache
+# offline (REQ_F_DAT_005 / REQ_F_DAT_006).
+yfinance = [
+    "yfinance>=0.2",
+    "pandas>=2.0",
+]
 
 [tool.setuptools.packages.find]
 include = ["trading_system*"]
