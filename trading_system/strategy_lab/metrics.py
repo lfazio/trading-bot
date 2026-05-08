@@ -1,0 +1,68 @@
+"""``StrategyMetrics`` — the metric vector consumed by the meta-loop.
+
+Every consumer in the loop reads from this single struct:
+
+- **score** (REQ_F_MTO_003) reads ``net_after_tax_return``, ``sharpe``,
+  ``stability``, ``dd_penalty`` (weights 0.4 / 0.3 / 0.2 / 0.1).
+- **risk_guard** reads ``max_drawdown``, ``turnover``,
+  ``regime_stability``, ``leverage``, ``parameter_sensitivity``.
+- **optimizer** (safe-self-improvement, REQ_F_MTO_006) reads ``risk``
+  and ``return_`` to enforce
+  ``new_risk <= baseline_risk AND new_return/risk > baseline``.
+
+The fields are intentionally redundant where the SDD §7 pseudo-code
+referenced separate names: ``net_after_tax_return`` and ``return_``
+carry the same value, but the optimizer's safe-improvement rule
+explicitly compares ``return_/risk`` against the baseline so the
+field is kept distinct for documentation and cross-cycle tooling
+that may want to swap in a different "return" denominator
+(e.g., gross). ``dd_penalty`` is derived from ``max_drawdown``;
+the evaluator computes it once at construction.
+
+REQ refs: REQ_F_MTO_003, REQ_F_MTO_005, REQ_F_MTO_006, REQ_F_MTO_008,
+REQ_SDS_CRS_003.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from decimal import Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class StrategyMetrics:
+    """Frozen metric vector for a single strategy candidate."""
+
+    # ----- Score inputs (REQ_F_MTO_003) ---------------------------------
+    net_after_tax_return: Decimal
+    sharpe: Decimal
+    stability: Decimal  # in [0, 1]
+    dd_penalty: Decimal  # in [0, 1]; bigger drawdown -> bigger penalty
+
+    # ----- Risk-guard inputs --------------------------------------------
+    max_drawdown: Decimal  # in [0, 1]
+    turnover: Decimal  # absolute count or rate; non-negative
+    regime_stability: Decimal  # in [0, 1]; failure in any regime -> low
+    leverage: Decimal  # peak observed; >= 1.0 means levered
+    parameter_sensitivity: Decimal  # in [0, 1]; lower = more robust
+
+    # ----- Optimizer inputs (REQ_F_MTO_006) ------------------------------
+    risk: Decimal  # canonical risk; typically annualized vol
+    return_: Decimal  # alias of net_after_tax_return for clarity
+
+    def __post_init__(self) -> None:
+        for name, value in (
+            ("stability", self.stability),
+            ("dd_penalty", self.dd_penalty),
+            ("max_drawdown", self.max_drawdown),
+            ("regime_stability", self.regime_stability),
+            ("parameter_sensitivity", self.parameter_sensitivity),
+        ):
+            if not (Decimal(0) <= value <= Decimal(1)):
+                raise ValueError(f"StrategyMetrics.{name} must lie in [0, 1], got {value}")
+        if self.turnover < 0:
+            raise ValueError(f"StrategyMetrics.turnover must be >= 0, got {self.turnover}")
+        if self.leverage < 0:
+            raise ValueError(f"StrategyMetrics.leverage must be >= 0, got {self.leverage}")
+        if self.risk < 0:
+            raise ValueError(f"StrategyMetrics.risk must be >= 0, got {self.risk}")
