@@ -20,6 +20,7 @@ from decimal import Decimal
 from trading_system.models.identifiers import StrategyId
 from trading_system.models.instrument import Instrument
 from trading_system.models.money import Money
+from trading_system.models.phase import MarketRegime
 from trading_system.models.trading import Side, StopLoss
 
 
@@ -117,3 +118,29 @@ class ImprovementReport:
                 "ImprovementReport must record either an accepted best_strategy_id "
                 "or at least one rejection"
             )
+
+
+@dataclass(frozen=True, slots=True)
+class RotationProposal:
+    """Output of the Phase-5+ sector rotator (CR-010 / REQ_F_SCT_007).
+
+    Carries full provenance so the audit log can reconstruct any
+    rotation: the originating regime, source / destination sector
+    weight maps, the decision timestamp, and the policy id that
+    produced the proposal.
+
+    REQ refs:
+    - REQ_F_SCT_007 — every rotation proposal carries provenance.
+    - REQ_SDD_SCT_004 — frozen dataclass; runtime mutation raises
+      ``FrozenInstanceError``.
+    """
+
+    source_regime: MarketRegime
+    source_weights: dict[str, Decimal]  # sector -> current relative weight
+    dest_weights: dict[str, Decimal]  # sector -> target  relative weight
+    decided_at: datetime
+    policy_id: str
+
+    def __post_init__(self) -> None:
+        if not self.policy_id:
+            raise ValueError("RotationProposal.policy_id must be non-empty")
