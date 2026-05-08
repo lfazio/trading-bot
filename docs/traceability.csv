@@ -39,6 +39,16 @@ REQ_F_CFL_001,SRS,Track initial+injections+deployed+equity,Documentations/SDS.md
 REQ_F_CFL_002,SRS,Performance excludes injections,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/capital_flow/flow.py;trading_system/models/flow.py;trading_system/backtesting/result.py;trading_system/analytics/engine.py,tests/capital_flow/test_flow.py;tests/backtesting/test_injection_scheduler.py,TEST
 REQ_F_CFL_003,SRS,Risk sizing scales with total capital,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_F_CFL_004,SRS,Backtests simulate injection timeline,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/capital_flow/flow.py;trading_system/backtesting/injection_scheduler.py,tests/capital_flow/test_flow.py;tests/backtesting/test_injection_scheduler.py,TEST
+REQ_F_DAT_001,SRS,A backtest historical-data adapter SHALL exist alongside `MockMarketD…,,,,,,SRS
+REQ_F_DAT_002,SRS,The adapter SHALL source OHLCV bars from Yahoo Finance via the `yfina…,,,,,,SRS
+REQ_F_DAT_003,SRS,The adapter SHALL source dividend events at **per-share** granularity…,,,,,,SRS
+REQ_F_DAT_004,SRS,"Every `(symbol, timeframe, start, end)` fetch SHALL be persisted to a…",,,,,,SRS
+REQ_F_DAT_005,SRS,On cache hit the adapter SHALL NOT open a network connection; reads a…,,,,,,SRS
+REQ_F_DAT_006,SRS,A constructor flag `allow_network` (default `False`) SHALL gate live…,,,,,,SRS
+REQ_F_DAT_007,SRS,All numeric fields SHALL cross the adapter boundary as `Decimal`; flo…,,,,,,SRS
+REQ_F_DAT_008,SRS,`Bar.close` SHALL carry the **unadjusted** close as reported by Yahoo…,,,,,,SRS
+REQ_F_DAT_009,SRS,The adapter SHALL be forbidden from being instantiated when the syste…,,,,,,SRS
+REQ_F_DAT_010,SRS,The adapter SHALL NOT introduce a new fundamentals source; `Fundament…,,,,,,SRS
 REQ_F_DSH_001,SRS,Dashboard fields,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/dashboard/engine.py;trading_system/dashboard/view.py;trading_system/dashboard/__init__.py,tests/dashboard/test_engine.py,TEST
 REQ_F_MIL_001,SRS,Configurable milestone list,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_F_MIL_002,SRS,Milestone validation conditions,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
@@ -86,6 +96,7 @@ REQ_F_TRB_004,SRS,No-trade if score below threshold,Documentations/SDS.md,Docume
 REQ_F_TRB_005,SRS,Turbo risk = invested capital only,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/instrument.py;trading_system/execution/local.py;trading_system/backtesting/knockout.py;trading_system/turbo_selector/__init__.py;trading_system/portfolio/portfolio.py,tests/execution/test_local.py;tests/backtesting/test_knockout.py;tests/portfolio/test_portfolio.py,TEST
 REQ_F_TRB_006,SRS,Turbo candidate fields required,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/__init__.py;trading_system/models/instrument.py;trading_system/turbo_selector/__init__.py,tests/backtesting/test_knockout.py,TEST
 REQ_NF_AUD_001,SRS,Snapshot on KS event,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/safety/__init__.py;trading_system/safety/state_manager.py;trading_system/safety/snapshot.py;trading_system/models/safety.py,,CODE
+REQ_NF_DAT_001,SRS,"Once a `(symbol, timeframe, start, end)` tuple is cached by the histo…",,,,,,SRS
 REQ_NF_DET_001,SRS,Deterministic backtest engine,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/backtesting/engine.py;trading_system/backtesting/config.py;trading_system/backtesting/__init__.py;trading_system/backtesting/result.py;trading_system/backtesting/clock.py;trading_system/backtesting/walk_forward.py;trading_system/backtesting/market_replay.py;trading_system/strategies/state.py;trading_system/data/mock.py,tests/backtesting/test_market_replay.py;tests/backtesting/test_clock.py;tests/backtesting/test_engine.py;tests/backtesting/test_walk_forward.py,TEST
 REQ_NF_LIF_001,SRS,DO-178C lifecycle,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_NF_LIF_002,SRS,Changes restart lifecycle,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
