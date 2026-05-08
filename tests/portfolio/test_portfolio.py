@@ -339,21 +339,130 @@ class TestExposure:
 
 
 class TestDividends:
-    def test_credits_net_dividend_to_cash(self) -> None:
+    def test_credits_gross_dividend_to_cash_with_implicit_tax_liability(self) -> None:
         p = Portfolio.empty(_eur("1000"))
         s = _stock()
         o = _order(s, qty="10", stop="40.00")
         p.apply(_trade(o, price="50.00", fees="0.00"), o, AllocationBucket.STOCK, _tax())
-        # Cash now 500; credit gross 100 => net 70.
+        # Cash now 500; credit GROSS 100 to cash. The 30 of unpaid tax
+        # is captured in (dividends_gross - dividends_after_tax) and
+        # deducted by equity_after_tax.
         p.apply_dividend(s.id, _eur("100"), _tax())
-        assert p.cash() == _eur("570.00")
+        assert p.cash() == _eur("600")
         assert p.dividends_gross() == _eur("100")
         assert p.dividends_after_tax() == _eur("70.00")
+        # Equity check: cash 600 + marked 500 - tax_owed 30 = 1070.
+        # That equals starting 1000 + net dividend 70.
+        p.mark({s.id: Decimal("50.00")})
+        assert p.equity_after_tax() == _eur("1070.00")
 
     def test_panics_when_not_held(self) -> None:
         p = Portfolio.empty(_eur("1000"))
         with pytest.raises(AssertionError, match="not held long"):
             p.apply_dividend(InstrumentId("ASML.AS"), _eur("100"), _tax())
+
+
+# ---------------------------------------------------------------------------
+# equity_after_tax invariant — the canonical formula
+# ---------------------------------------------------------------------------
+
+
+class TestEquityAfterTaxInvariant:
+    def test_after_partial_close_equals_starting_plus_net_realized(self) -> None:
+        # Before any trade: equity = starting capital.
+        # After BUY 10@50 + SELL 4@60: realized net = 4*(60-50)*0.7 = 28.
+        # Marking the remaining 6 shares at 50 (avg_price), equity should
+        # be exactly starting + 28 = 10028.
+        p = Portfolio.empty(_eur("10000"))
+        s = _stock()
+        o_buy = _order(s, qty="10", oid="OB", stop="40.00")
+        p.apply(_trade(o_buy, price="50.00", fees="0.00"), o_buy, AllocationBucket.STOCK, _tax())
+        o_sell = _order(s, side=Side.SELL, qty="4", oid="OS", stop="40.00")
+        p.apply(
+            _trade(o_sell, price="60.00", fees="0.00", tid="T2"),
+            o_sell,
+            AllocationBucket.STOCK,
+            _tax(),
+        )
+        p.mark({s.id: Decimal("50.00")})
+        assert p.equity_after_tax() == _eur("10028.00")
+
+    def test_after_full_close_equals_starting_plus_net_realized(self) -> None:
+        # BUY 10@50 + SELL 10@55: net = 50*0.7 = 35. equity = 10035.
+        p = Portfolio.empty(_eur("10000"))
+        s = _stock()
+        o_buy = _order(s, qty="10", oid="OB", stop="40.00")
+        p.apply(_trade(o_buy, price="50.00", fees="0.00"), o_buy, AllocationBucket.STOCK, _tax())
+        o_sell = _order(s, side=Side.SELL, qty="10", oid="OS", stop="40.00")
+        p.apply(
+            _trade(o_sell, price="55.00", fees="0.00", tid="T2"),
+            o_sell,
+            AllocationBucket.STOCK,
+            _tax(),
+        )
+        assert p.equity_after_tax() == _eur("10035.00")
+
+    def test_loss_passes_through_to_equity(self) -> None:
+        # BUY 10@50 + SELL 10@40: loss = -100, no tax credit.
+        p = Portfolio.empty(_eur("10000"))
+        s = _stock()
+        o_buy = _order(s, qty="10", oid="OB", stop="40.00")
+        p.apply(_trade(o_buy, price="50.00", fees="0.00"), o_buy, AllocationBucket.STOCK, _tax())
+        o_sell = _order(s, side=Side.SELL, qty="10", oid="OS", stop="40.00")
+        p.apply(
+            _trade(o_sell, price="40.00", fees="0.00", tid="T2"),
+            o_sell,
+            AllocationBucket.STOCK,
+            _tax(),
+        )
+        assert p.equity_after_tax() == _eur("9900.00")
+
+
+# ---------------------------------------------------------------------------
+# inject — REQ_F_BCT_007
+# ---------------------------------------------------------------------------
+
+
+class TestInject:
+    def test_increases_cash(self) -> None:
+        p = Portfolio.empty(_eur("1000"))
+        p.inject(_eur("500"))
+        assert p.cash() == _eur("1500")
+
+    def test_currency_mismatch_rejected(self) -> None:
+        p = Portfolio.empty(_eur("1000"))
+        with pytest.raises(ValueError, match="must match"):
+            p.inject(Money(Decimal("500"), Currency.USD))
+
+    def test_non_positive_rejected(self) -> None:
+        p = Portfolio.empty(_eur("1000"))
+        with pytest.raises(ValueError, match="must be > 0"):
+            p.inject(_eur("0"))
+
+
+# ---------------------------------------------------------------------------
+# close_at_zero — REQ_F_TRB_005, REQ_F_BCT_004
+# ---------------------------------------------------------------------------
+
+
+class TestCloseAtZero:
+    def test_realizes_full_cost_basis_as_loss(self) -> None:
+        p = Portfolio.empty(_eur("10000"))
+        s = _stock()
+        o = _order(s, qty="10", stop="40.00")
+        p.apply(_trade(o, price="50.00", fees="0.00"), o, AllocationBucket.STOCK, _tax())
+        p.close_at_zero(s.id, _tax())
+        # Loss = -10 * 50 = -500.
+        assert p.realized_gross() == _eur("-500")
+        assert p.realized_after_tax() == _eur("-500.00")
+        assert p.holds(s.id) is False
+        # Equity dropped by 500: 10000 - 500 = 9500.
+        assert p.equity_after_tax() == _eur("9500.00")
+
+    def test_panics_when_not_held(self) -> None:
+        p = Portfolio.empty(_eur("1000"))
+        with pytest.raises(AssertionError, match="not held"):
+            p.close_at_zero(InstrumentId("ZZZ"), _tax())
 
 
 # ---------------------------------------------------------------------------

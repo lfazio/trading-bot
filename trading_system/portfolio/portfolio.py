@@ -101,33 +101,46 @@ class Portfolio:
         return self.equity_after_tax()
 
     def equity_after_tax(self) -> Money:
-        """Cash + marked-to-market positions + realized-after-tax +
-        dividends-after-tax (REQ_F_PRT_001).
+        """Canonical performance reference (REQ_F_PRT_001).
+
+        equity_after_tax = cash + marked - tax_liability_unpaid
+
+        Cash captures every gross flow (BUY pays out, SELL takes in
+        gross proceeds, dividends credit gross). The tax liability on
+        realized gains and dividends is computed but not deducted from
+        cash at realization time (France CTO pays tax annually, not at
+        sale). This method subtracts the implicit liability so the
+        canonical equity series is what the operator would walk away
+        with after settling tax.
 
         Every open position MUST have a price recorded via ``mark`` —
         a missing price is a programmer error and panics. The
         backtester refreshes prices on every tick before any consumer
         reads equity.
         """
+        marked = self._marked_value()
+        tax_owed = (self._realized_gross - self._realized_after_tax) + (
+            self._dividends_gross - self._dividends_after_tax
+        )
+        return self._cash + marked - tax_owed
+
+    def equity_gross(self) -> Money:
+        """Pre-tax equity = cash + marked. Realized and dividends are
+        already reflected in cash (gross flows); they are informational
+        running totals, not separate components of equity."""
+        return self._cash + self._marked_value()
+
+    def _marked_value(self) -> Money:
+        """Mark every open position at its last recorded price."""
         marked = Money(Decimal(0), self.currency)
         for iid, pos in self._positions.items():
             price = self._last_prices.get(iid)
             assert price is not None, (
-                f"Portfolio.equity_after_tax: missing mark price for {iid}; "
+                f"Portfolio._marked_value: missing mark price for {iid}; "
                 "call .mark() before reading equity"
             )
             marked = marked + Money(price * pos.quantity, self.currency)
-        return self._cash + marked + self._realized_after_tax + self._dividends_after_tax
-
-    def equity_gross(self) -> Money:
-        """Pre-tax equity — useful for analytics; not the canonical
-        reference (REQ_F_PRT_001 says after-tax is canonical)."""
-        marked = Money(Decimal(0), self.currency)
-        for iid, pos in self._positions.items():
-            price = self._last_prices.get(iid)
-            assert price is not None, f"Portfolio.equity_gross: missing mark price for {iid}"
-            marked = marked + Money(price * pos.quantity, self.currency)
-        return self._cash + marked + self._realized_gross + self._dividends_gross
+        return marked
 
     def exposure_pct(self, bucket: AllocationBucket) -> Decimal:
         """Share of after-tax equity allocated to ``bucket``
@@ -308,6 +321,12 @@ class Portfolio:
         """Credit a cash dividend; track gross/net totals (REQ_F_TAX_002,
         REQ_F_BCT_005).
 
+        Cash is credited the GROSS amount (consistent with how SELL
+        proceeds enter cash gross); the implicit tax liability is
+        accumulated in ``dividends_gross - dividends_after_tax`` and
+        deducted by ``equity_after_tax``. This matches the France CTO
+        regime where tax settles annually, not at receipt.
+
         Caller is responsible for sizing ``amount_gross`` to the held
         share count (``DividendSimulator`` does this in the backtester).
         Dividends are credited only on long positions; calling this for
@@ -323,9 +342,52 @@ class Portfolio:
             f"apply_dividend: {instrument_id} not held long"
         )
         net = net_dividend(tax, amount_gross)
-        self._cash = self._cash + net
+        self._cash = self._cash + amount_gross
         self._dividends_gross = self._dividends_gross + amount_gross
         self._dividends_after_tax = self._dividends_after_tax + net
+
+    def inject(self, amount: Money) -> None:
+        """Receive an external capital injection (REQ_F_BCT_007).
+
+        Increases cash by ``amount``. Performance metrics exclude
+        injections via ``capital_flow.equity_excl_injections``; this
+        method is purely a cash-balance update.
+        """
+        if amount.currency != self.currency:
+            raise ValueError(
+                f"Portfolio.inject: amount.currency must match "
+                f"Portfolio.currency, got {amount.currency} vs {self.currency}"
+            )
+        if amount.amount <= 0:
+            raise ValueError(f"Portfolio.inject: amount must be > 0, got {amount.amount}")
+        self._cash = self._cash + amount
+
+    def close_at_zero(self, instrument_id: InstrumentId, tax: TaxConfig) -> None:
+        """Close a position at zero (turbo knockout — REQ_F_TRB_005,
+        REQ_F_BCT_004).
+
+        Realizes a loss equal to the remaining cost basis; the position
+        is removed. Cash is unchanged because the closing fill price is
+        zero. The position's ``last_price`` is set to zero so any
+        equity read between knockout and the next mark is consistent.
+        """
+        pos = self._positions.get(instrument_id)
+        assert pos is not None, f"close_at_zero: {instrument_id} not held"
+        # Loss on the closed slice: -avg_price * quantity (positive qty
+        # for long, negative for short — quantity * avg_price is the
+        # signed cost basis; closing at 0 produces -cost_basis).
+        cost_basis = pos.avg_price * pos.quantity
+        gross_loss = Money(-cost_basis, self.currency)
+        self._realized_gross = self._realized_gross + gross_loss
+        # net_gain on a loss passes through unchanged (REQ_F_TAX_001
+        # loss handling).
+        self._realized_after_tax = self._realized_after_tax + net_gain(tax, gross_loss)
+        del self._positions[instrument_id]
+        del self._position_buckets[instrument_id]
+        # Drop the cached mark — the position is gone; if a stale
+        # entry stayed around it would be a footgun for the next
+        # caller of equity_after_tax.
+        self._last_prices.pop(instrument_id, None)
 
     def record_equity(self, at: datetime) -> EquityPoint:
         """Snapshot equity at ``at`` and append to ``equity_curve``.
