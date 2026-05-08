@@ -72,13 +72,13 @@ REQ_F_RSK_004,SRS,Phase 5+ vol cap,Documentations/SDS.md,Documentations/SDD.md,D
 REQ_F_RSK_005,SRS,Risk engine failure trips kill switch,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/risk/engine.py,,CODE
 REQ_F_SCR_001,SRS,EU dividend screener criteria,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/main.py;trading_system/data/__init__.py;trading_system/data/provider.py;trading_system/data/types.py;trading_system/screener/engine.py;trading_system/screener/config.py;trading_system/screener/__init__.py,tests/screener/test_engine.py,TEST
 REQ_F_SCR_002,SRS,Scored ranking output,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/screener/engine.py;trading_system/screener/config.py;trading_system/screener/__init__.py,tests/screener/test_engine.py,TEST
-REQ_F_SCT_001,SRS,The system SHALL ship a sector rotator under `wealth_ops/sector_rotat…,,,,,,SRS
-REQ_F_SCT_002,SRS,The rotator SHALL maintain a regime-to-sector-tilt table mapping each…,,,,,,SRS
-REQ_F_SCT_003,SRS,Every rotation proposal SHALL respect a minimum holding period per se…,,,,,,SRS
-REQ_F_SCT_004,SRS,A whipsaw guard SHALL reject rotation proposals that would re-enter a…,,,,,,SRS
-REQ_F_SCT_005,SRS,Sector identifiers SHALL come from the screener's `Fundamentals.secto…,,,,,,SRS
-REQ_F_SCT_006,SRS,A rotation cap SHALL bound the per-period rotation count (default: at…,,,,,,SRS
-REQ_F_SCT_007,SRS,Every emitted rotation proposal SHALL carry provenance: source regime…,,,,,,SRS
+REQ_F_SCT_001,SRS,The system SHALL ship a sector rotator under `wealth_ops/sector_rotat…,Documentations/SDS.md,,,,,SDS
+REQ_F_SCT_002,SRS,The rotator SHALL maintain a regime-to-sector-tilt table mapping each…,Documentations/SDS.md,,,,,SDS
+REQ_F_SCT_003,SRS,Every rotation proposal SHALL respect a minimum holding period per se…,Documentations/SDS.md,,,,,SDS
+REQ_F_SCT_004,SRS,A whipsaw guard SHALL reject rotation proposals that would re-enter a…,Documentations/SDS.md,,,,,SDS
+REQ_F_SCT_005,SRS,Sector identifiers SHALL come from the screener's `Fundamentals.secto…,Documentations/SDS.md,,,,,SDS
+REQ_F_SCT_006,SRS,A rotation cap SHALL bound the per-period rotation count (default: at…,Documentations/SDS.md,,,,,SDS
+REQ_F_SCT_007,SRS,Every emitted rotation proposal SHALL carry provenance: source regime…,Documentations/SDS.md,,,,,SDS
 REQ_F_STP_001,SRS,Structured products <=10%,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/structured_products/__init__.py;trading_system/structured_products/admission.py,tests/structured_products/test_admission.py,TEST
 REQ_F_STP_002,SRS,Decomposition mandatory,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/structured_products/decomposers.py;trading_system/structured_products/__init__.py;trading_system/structured_products/admission.py;trading_system/structured_products/decomposition.py;trading_system/models/__init__.py;trading_system/models/instrument.py,tests/structured_products/test_admission.py,TEST
 REQ_F_STP_003,SRS,Allowed regimes only,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/structured_products/__init__.py;trading_system/structured_products/admission.py,tests/structured_products/test_admission.py,TEST
@@ -109,7 +109,7 @@ REQ_NF_LIF_001,SRS,DO-178C lifecycle,Documentations/SDS.md,Documentations/SDD.md
 REQ_NF_LIF_002,SRS,Changes restart lifecycle,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_NF_LOG_001,SRS,Logging trades/KS/reports,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/analytics/engine.py;trading_system/analytics/__init__.py;trading_system/milestone_controller/metrics.py,tests/analytics/test_engine.py,TEST
 REQ_NF_REP_001,SRS,Strategy reproducibility,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/strategy_lab/candidate.py;trading_system/strategy_lab/evaluator.py;trading_system/strategy_lab/registry.py,tests/strategy_lab/test_registry.py;tests/strategy_lab/test_evaluator.py,TEST
-REQ_NF_SCT_001,SRS,"The rotator SHALL be deterministic given the tuple `(regime, screener…",,,,,,SRS
+REQ_NF_SCT_001,SRS,"The rotator SHALL be deterministic given the tuple `(regime, screener…",Documentations/SDS.md,,,,,SDS
 REQ_NF_TRC_001,SRS,Full traceability,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/__init__.py;trading_system/models/identifiers.py,,CODE
 REQ_O_001,SRS,The repository SHALL deliver a runnable Python project with no pseudo…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/main.py,tests/test_main.py,TEST
 REQ_O_002,SRS,`main.py` SHALL demonstrate end-to-end: connect (mock or selected bro…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/main.py,tests/test_main.py,TEST
@@ -236,6 +236,9 @@ REQ_SDS_MOD_012,SDS,The milestone controller SHALL include a fake-growth detecto
 REQ_SDS_MOD_013,SDS,The backtesting engine SHALL accept an explicit seed and SHALL produc…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/backtesting/__init__.py,,CODE
 REQ_SDS_MOD_014,SDS,`strategy_lab/` SHALL be offline-only; runtime modules SHALL import o…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/__init__.py;trading_system/strategy_lab/generator.py;trading_system/strategy_lab/__init__.py;trading_system/strategy_lab/backtester.py;trading_system/strategy_lab/loop_controller.py;trading_system/strategy_lab/optimizer.py;trading_system/strategy_lab/registry.py,,CODE
 REQ_SDS_MOD_015,SDS,`dashboard/` SHALL be a read-only view over `analytics/`; it SHALL NO…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/main.py;trading_system/dashboard/engine.py;trading_system/dashboard/view.py;trading_system/dashboard/__init__.py;trading_system/analytics/engine.py;trading_system/analytics/__init__.py,tests/dashboard/test_engine.py,TEST
+REQ_SDS_SCT_001,SDS,`wealth_ops/sector_rotator/` SHALL sit at L4 alongside `strategies/`;…,Documentations/SDS.md,,,,,SDS
+REQ_SDS_SCT_002,SDS,The phase engine SHALL be the single authority that activates the rot…,Documentations/SDS.md,,,,,SDS
+REQ_SDS_SCT_003,SDS,Holding-period and rotation-cap state SHALL live on the rotator's fro…,Documentations/SDS.md,,,,,SDS
 REQ_S_KS_001,SRS,Three states,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/safety/__init__.py;trading_system/safety/state_manager.py;trading_system/models/__init__.py;trading_system/models/safety.py,,CODE
 REQ_S_KS_002,SRS,Override priority,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/safety/protocol.py,,CODE
 REQ_S_KS_003,SRS,Financial triggers,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/safety/anomaly.py,,CODE
