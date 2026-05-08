@@ -36,3 +36,6 @@ Thumbs.db
 # Project
 .env
 *.log
+
+# Local tooling state
+.rtk/
