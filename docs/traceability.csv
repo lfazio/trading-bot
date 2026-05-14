@@ -62,6 +62,16 @@ REQ_F_MTO_005,SRS,Registry versioning,Documentations/SDS.md,Documentations/SDD.m
 REQ_F_MTO_006,SRS,Self-improvement rule,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/strategy_lab/metrics.py;trading_system/strategy_lab/risk_guard.py;trading_system/strategy_lab/loop_controller.py;trading_system/strategy_lab/optimizer.py;trading_system/strategy_lab/registry.py,tests/strategy_lab/test_metrics.py;tests/strategy_lab/test_loop_controller.py;tests/strategy_lab/test_optimizer.py;tests/strategy_lab/test_risk_guard.py,TEST
 REQ_F_MTO_007,SRS,ImprovementReport per cycle,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/meta.py;trading_system/models/__init__.py;trading_system/strategy_lab/risk_guard.py;trading_system/strategy_lab/evaluator.py;trading_system/strategy_lab/loop_controller.py,tests/strategy_lab/test_loop_controller.py,TEST
 REQ_F_MTO_008,SRS,Regime evaluation,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/phase.py;trading_system/strategy_lab/metrics.py;trading_system/strategy_lab/risk_guard.py,tests/strategy_lab/test_metrics.py;tests/strategy_lab/test_risk_guard.py,TEST
+REQ_F_PER_001,SRS,The system SHALL persist its state to a single SQLite database via a…,,,,,,SRS
+REQ_F_PER_002,SRS,The persistence layer SHALL expose one repository per aggregate root:…,,,,,,SRS
+REQ_F_PER_003,SRS,Writes SHALL be wrapped in explicit transactions (`BEGIN ... COMMIT`…,,,,,,SRS
+REQ_F_PER_004,SRS,"On startup, the system SHALL run any pending forward migrations under…",,,,,,SRS
+REQ_F_PER_005,SRS,Every persisted row carrying monetary or ratio data SHALL store `Deci…,,,,,,SRS
+REQ_F_PER_006,SRS,`RegistryRepository` SHALL implement the operator-token-authenticated…,,,,,,SRS
+REQ_F_PER_007,SRS,`BacktestResultRepository` SHALL archive every `BacktestResult` keyed…,,,,,,SRS
+REQ_F_PER_008,SRS,`KillSwitchSnapshotRepository` SHALL replace the existing `FileSnapsh…,,,,,,SRS
+REQ_F_PER_009,SRS,Every persisted aggregate SHALL carry an `account_id` column (CR-006)…,,,,,,SRS
+REQ_F_PER_010,SRS,The persistence layer SHALL be the ONLY component that imports `sqlit…,,,,,,SRS
 REQ_F_PRT_001,SRS,Track cash/positions/gains/dividends/equity,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/safety/anomaly.py;trading_system/models/flow.py;trading_system/execution/types.py;trading_system/strategies/protocol.py;trading_system/portfolio/__init__.py;trading_system/portfolio/portfolio.py,tests/portfolio/test_portfolio.py,TEST
 REQ_F_PRT_002,SRS,Phase 6 NAV+attribution,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/analytics/engine.py;trading_system/analytics/__init__.py;trading_system/portfolio/portfolio.py,tests/analytics/test_engine.py;tests/portfolio/test_portfolio.py,TEST
 REQ_F_PRT_003,SRS,Diversification enforced,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/risk/mapping.py;trading_system/portfolio/__init__.py;trading_system/portfolio/portfolio.py,tests/portfolio/test_portfolio.py,TEST
@@ -108,6 +118,7 @@ REQ_NF_DET_001,SRS,Deterministic backtest engine,Documentations/SDS.md,Documenta
 REQ_NF_LIF_001,SRS,DO-178C lifecycle,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_NF_LIF_002,SRS,Changes restart lifecycle,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_NF_LOG_001,SRS,Logging trades/KS/reports,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/analytics/engine.py;trading_system/analytics/__init__.py;trading_system/milestone_controller/metrics.py,tests/analytics/test_engine.py,TEST
+REQ_NF_PER_001,SRS,The persistence layer SHALL preserve replay determinism: writing then…,,,,,,SRS
 REQ_NF_REP_001,SRS,Strategy reproducibility,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/strategy_lab/candidate.py;trading_system/strategy_lab/evaluator.py;trading_system/strategy_lab/registry.py,tests/strategy_lab/test_registry.py;tests/strategy_lab/test_evaluator.py,TEST
 REQ_NF_SCT_001,SRS,"The rotator SHALL be deterministic given the tuple `(regime, screener…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/wealth_ops/sector_rotator/__init__.py,tests/wealth_ops/sector_rotator/test_rotator.py,TEST
 REQ_NF_TRC_001,SRS,Full traceability,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/__init__.py;trading_system/models/identifiers.py,,CODE
