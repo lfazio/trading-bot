@@ -22,10 +22,18 @@ REQ_SDD_PER_001..008.
 
 from trading_system.persistence.connection import Connection
 from trading_system.persistence.migrations.runner import MigrationRunner
+from trading_system.persistence.repositories.backtest import BacktestResultRepository
 from trading_system.persistence.repositories.portfolio import PortfolioRepository
+from trading_system.persistence.repositories.registry import RegistryRepository
+from trading_system.persistence.repositories.snapshot import (
+    KillSwitchSnapshotRepository,
+)
 
 __all__ = [
+    "BacktestResultRepository",
     "Connection",
+    "KillSwitchSnapshotRepository",
     "MigrationRunner",
     "PortfolioRepository",
+    "RegistryRepository",
 ]
