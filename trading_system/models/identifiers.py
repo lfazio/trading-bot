@@ -16,3 +16,9 @@ TradeId = NewType("TradeId", str)
 InstrumentId = NewType("InstrumentId", str)
 StrategyId = NewType("StrategyId", str)
 SnapshotId = NewType("SnapshotId", str)
+AccountId = NewType("AccountId", str)
+
+# CR-006 / CR-008 — single-account sentinel. Every persisted row
+# carries ``account_id``; the single-account default fills this
+# value (REQ_F_PER_009 / REQ_SDD_PER_008).
+DEFAULT_ACCOUNT_ID = AccountId("default")
