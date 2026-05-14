@@ -25,11 +25,13 @@ from trading_system.wealth_ops.sector_rotator.policy import (
 from trading_system.wealth_ops.sector_rotator.regime_sector_bias import (
     RegimeSectorBias,
 )
+from trading_system.wealth_ops.sector_rotator.rotator import SectorRotator
 from trading_system.wealth_ops.sector_rotator.taxonomy import SectorTaxonomy
 
 __all__ = [
     "HoldingState",
     "RegimeSectorBias",
     "RotationPolicy",
+    "SectorRotator",
     "SectorTaxonomy",
 ]
