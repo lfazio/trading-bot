@@ -22,6 +22,7 @@ from trading_system.models.flow import EquityPoint
 from trading_system.models.identifiers import OrderId, SnapshotId, StrategyId, TradeId
 from trading_system.models.money import Currency, Money
 from trading_system.models.phase import MarketRegime
+from trading_system.models.rationale import TradeRationale
 from trading_system.models.safety import KillSwitchState
 from trading_system.models.trading import Trade
 from trading_system.regime.transition import TransitionEvent
@@ -208,6 +209,7 @@ def backtest_result_to_json(result: BacktestResult) -> str:
         "dividends_after_tax": _money_to_json(result.dividends_after_tax),
         "knockouts": result.knockouts,
         "injections_applied": result.injections_applied,
+        "rationales": [_trade_rationale_to_json(r) for r in result.rationales],
     }
     return json.dumps(payload, separators=(",", ":"))
 
@@ -226,6 +228,45 @@ def backtest_result_from_json(s: str) -> BacktestResult:
         dividends_after_tax=_money_from_json(d["dividends_after_tax"]),
         knockouts=int(d["knockouts"]),
         injections_applied=int(d["injections_applied"]),
+        # ``rationales`` was added by CR-015; older archives without the
+        # field round-trip as an empty tuple (backwards-compat).
+        rationales=tuple(
+            _trade_rationale_from_json(r) for r in d.get("rationales", [])
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# TradeRationale — JSON-native helpers (CR-015)
+# ---------------------------------------------------------------------------
+
+
+def _trade_rationale_to_json(r: TradeRationale) -> dict[str, Any]:
+    # ``risk_approval`` round-trips as a plain ``dict`` (sorted keys
+    # for canonical serialisation).
+    risk = {k: v for k, v in sorted(r.risk_approval.items())}
+    return {
+        "trade_id": str(r.trade_id),
+        "strategy_id": str(r.strategy_id),
+        "strategy_version": r.strategy_version,
+        "signal_reason": r.signal_reason,
+        "risk_approval": risk,
+        "tax_gate_decision": r.tax_gate_decision,
+        "improvement_report_id": r.improvement_report_id,
+        "decided_at": r.decided_at.isoformat(),
+    }
+
+
+def _trade_rationale_from_json(d: Mapping[str, Any]) -> TradeRationale:
+    return TradeRationale(
+        trade_id=TradeId(d["trade_id"]),
+        strategy_id=StrategyId(d["strategy_id"]),
+        strategy_version=d["strategy_version"],
+        signal_reason=d["signal_reason"],
+        risk_approval=dict(d.get("risk_approval", {})),
+        tax_gate_decision=d["tax_gate_decision"],
+        improvement_report_id=d["improvement_report_id"],
+        decided_at=datetime.fromisoformat(d["decided_at"]),
     )
 
 
