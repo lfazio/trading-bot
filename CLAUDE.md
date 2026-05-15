@@ -53,6 +53,13 @@ for engineering decisions — read them before making non-trivial changes.
    the documentation reflects the change. Before claiming a task done:
    - **`TASKS.md`** — check the matching box, append `✅ DONE <YYYY-MM-DD> @ <SHA>`
      for phase steps, or add a one-line note for ad-hoc work.
+     **Design-only cascades land in `TASKS.md` too**, as Phase-6 placeholder
+     rows (`[ ]` checkbox, module path, CR id, the four cascade wiki SHAs,
+     and the REQ count reaching TP). Adding a CR's design surface without
+     a corresponding `TASKS.md` row is a documentation defect — the
+     engineering plan must always reflect the lifecycle state, not just the
+     wiki. CR acceptances (without design work yet) land as a one-liner
+     under the relevant module group naming the CR + status.
    - **`docs/traceability.csv` + `Documentations/Traceability.md`** —
      re-run `python3 tools/traceability-report.py` and stage the regenerated
      CSV (in the same commit as the code change) plus the wiki Markdown
