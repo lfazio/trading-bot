@@ -29,6 +29,17 @@ from trading_system.regime.config import RegimeConfig
 from trading_system.regime.detector import RULE_ORDER, RegimeDetector
 from trading_system.regime.transition import TransitionEvent, TransitionTracker
 
+# ``RegimeOrchestrator`` lives in ``regime.orchestrator`` and depends on
+# ``persistence.repositories.transition`` — importing it eagerly here
+# would cycle through ``persistence.mappers`` → ``regime.transition``
+# (which is still inside this package's __init__). Callers that need
+# the orchestrator import it directly:
+#
+#     from trading_system.regime.orchestrator import RegimeOrchestrator
+#
+# The pure ``regime/`` core (detector + tracker + config) has no
+# persistence dependency and stays re-exported here.
+
 __all__ = [
     "RULE_ORDER",
     "BarSource",

@@ -21,8 +21,10 @@ from trading_system.backtesting.result import BacktestResult
 from trading_system.models.flow import EquityPoint
 from trading_system.models.identifiers import OrderId, SnapshotId, StrategyId, TradeId
 from trading_system.models.money import Currency, Money
+from trading_system.models.phase import MarketRegime
 from trading_system.models.safety import KillSwitchState
 from trading_system.models.trading import Trade
+from trading_system.regime.transition import TransitionEvent
 from trading_system.safety.snapshot import AuditSnapshot
 from trading_system.strategy_lab.metrics import StrategyMetrics
 from trading_system.strategy_lab.registry import RegistryEntry
@@ -265,6 +267,35 @@ def row_to_audit_snapshot(row: Mapping[str, Any]) -> AuditSnapshot:
         trigger_message=body["trigger_message"],
         severity=body["severity"],
         payload=body.get("payload", {}),
+    )
+
+
+# ---------------------------------------------------------------------------
+# TransitionEvent — CR-013 regime transitions (REQ_SDD_RGM_005)
+# ---------------------------------------------------------------------------
+
+
+def transition_event_to_row(
+    event: TransitionEvent, account_id: str, snapshot_id: str
+) -> dict[str, Any]:
+    """Domain ``TransitionEvent`` → row dict for ``transitions``."""
+    return {
+        "account_id": account_id,
+        "at": event.at.isoformat(),
+        "from_regime": event.from_regime.value,
+        "to_regime": event.to_regime.value,
+        "confirmation_periods": int(event.confirmation_periods),
+        "snapshot_id": snapshot_id,
+    }
+
+
+def row_to_transition_event(row: Mapping[str, Any]) -> TransitionEvent:
+    """Row dict → domain ``TransitionEvent``."""
+    return TransitionEvent(
+        from_regime=MarketRegime(row["from_regime"]),
+        to_regime=MarketRegime(row["to_regime"]),
+        at=datetime.fromisoformat(row["at"]),
+        confirmation_periods=int(row["confirmation_periods"]),
     )
 
 
