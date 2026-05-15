@@ -30,9 +30,11 @@ Lifecycle phases (gated; each is reviewed and approved before the next opens):
 | 6 — Test Execution | `tests/` | — |
 | 7 — Validation & Traceability | [`docs/traceability.csv`](./docs/traceability.csv) | — |
 
-**234 requirements** are tracked across SRS / SDS / SDD / Test Plan
-(108 + 37 + 72 + 17). Current coverage: `reached TP: 100 %`. Run
-`python3 tools/traceability.py --report` for the live snapshot.
+**340 requirements** are tracked across SRS / SDS / SDD / Test Plan.
+Current coverage: `reached TP: 100 %`. Run
+`python3 tools/traceability-report.py --report` for the live snapshot,
+or browse [`Documentations/Traceability.md`](./Documentations/Traceability.md)
+for the auto-generated requirements-by-status report.
 
 ---
 
@@ -49,7 +51,9 @@ trading-bot/
 ├── docs/
 │   └── traceability.csv     ← REQ ↔ artifact matrix (generated)
 ├── tools/
-│   └── traceability.py      ← REQ scanner / drift gate
+│   └── traceability-report.py  ← REQ scanner / drift gate + report
+                                     (writes docs/traceability.csv +
+                                      Documentations/Traceability.md)
 ├── trading-bot.md           ← original imported specification
 ├── TASKS.md                 ← engineering work breakdown
 ├── CLAUDE.md                ← guidance for Claude Code agents
@@ -83,8 +87,8 @@ recommended entry point.
 ### Verify traceability
 
 ```bash
-python3 tools/traceability.py --report          # human-readable summary
-python3 tools/traceability.py --check           # CI gate; exit 1 on drift
+python3 tools/traceability-report.py --report   # human-readable summary
+python3 tools/traceability-report.py --check    # CI gate; exit 1 on drift
 ```
 
 ### Edit documentation

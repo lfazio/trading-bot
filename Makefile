@@ -12,8 +12,8 @@ help:
 	@echo "  format        ruff fix + format"
 	@echo "  typecheck     mypy --strict"
 	@echo "  test          pytest"
-	@echo "  trace         tools/traceability.py --report"
-	@echo "  trace-check   tools/traceability.py --check (CI gate)"
+	@echo "  trace         tools/traceability-report.py --report"
+	@echo "  trace-check   tools/traceability-report.py --check (CI gate)"
 	@echo "  check         lint + typecheck + trace-check + test"
 	@echo "  backtest      run main in backtest mode (Phase 5+)"
 	@echo "  run           run main (Phase 5+)"
@@ -37,10 +37,10 @@ test:
 	$(PYTHON) -m pytest
 
 trace:
-	$(PYTHON) tools/traceability.py --report
+	$(PYTHON) tools/traceability-report.py --report
 
 trace-check:
-	$(PYTHON) tools/traceability.py --check
+	$(PYTHON) tools/traceability-report.py --check
 
 check: lint typecheck trace-check test
 	@echo "All gates passed."

@@ -53,8 +53,10 @@ for engineering decisions — read them before making non-trivial changes.
    the documentation reflects the change. Before claiming a task done:
    - **`TASKS.md`** — check the matching box, append `✅ DONE <YYYY-MM-DD> @ <SHA>`
      for phase steps, or add a one-line note for ad-hoc work.
-   - **`docs/traceability.csv`** — re-run `python3 tools/traceability.py` and stage
-     the regenerated CSV in the same commit as the code change. The status bar
+   - **`docs/traceability.csv` + `Documentations/Traceability.md`** —
+     re-run `python3 tools/traceability-report.py` and stage the regenerated
+     CSV (in the same commit as the code change) plus the wiki Markdown
+     report (in the same wiki commit). The status bar
      (`reached TP / CODE / TEST`) goes in the commit body.
    - **Wiki documents** (`Documentations/SRS.md`, `SDS.md`, `SDD.md`,
      `Test-Plan.md`) — if a design decision was made or refined during the work,
@@ -275,8 +277,10 @@ trading-bot/
 │   ├── SDD.md              ← Software Design Description
 │   └── Test-Plan.md        ← Test Plan
 ├── docs/
-│   └── traceability.csv    ← build artifact (regenerated)
-├── tools/traceability.py   ← reads from Documentations/, writes to docs/
+│   └── traceability.csv          ← build artifact (regenerated)
+├── tools/traceability-report.py  ← reads Documentations/, writes
+│                                    docs/traceability.csv +
+│                                    Documentations/Traceability.md
 └── ...
 ```
 
@@ -323,16 +327,18 @@ git submodule update --init --recursive
 wiki pages to files in the main repo use absolute GitHub blob URLs
 (e.g., `https://github.com/<owner>/<repo>/blob/main/CLAUDE.md`).
 
-**Tooling** — `tools/traceability.py` reads `Documentations/SRS.md`,
+**Tooling** — `tools/traceability-report.py` reads `Documentations/SRS.md`,
 `Documentations/SDS.md`, `Documentations/SDD.md`, and
-`Documentations/Test-Plan.md` by default; CSV output stays in
-`docs/traceability.csv` as a build artifact (regenerated, do not edit
-by hand).
+`Documentations/Test-Plan.md` by default. It writes two artifacts:
+`docs/traceability.csv` (in the main repo) and
+`Documentations/Traceability.md` (in the wiki submodule — the
+human-readable requirements-by-status report). Both are regenerated;
+do not edit by hand.
 
 ### Safety rules for GitHub operations
 - No `git push`, `gh issue create`, `gh pr create`, wiki commits, or
   release tags without explicit per-action operator confirmation.
-- `tools/traceability.py --check` is read-only and safe to run anytime.
+- `tools/traceability-report.py --check` is read-only and safe to run anytime.
 - Approval entries (Section *Approval* in each design doc) are recorded
   as **new commits**, never as amends, so the lifecycle history is
   immutable on `main`.
