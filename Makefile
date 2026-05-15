@@ -34,7 +34,8 @@ typecheck:
 	$(PYTHON) -m mypy --strict trading_system tests tools
 
 test:
-	$(PYTHON) -m pytest
+	coverage run -m pytest
+	coverage report
 
 trace:
 	$(PYTHON) tools/traceability-report.py --report
