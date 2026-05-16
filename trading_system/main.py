@@ -381,6 +381,24 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = _parse_args()
+    # Structured logging — REQ_NF_LOG_001 / REQ_SDS_CRS_001. Absent
+    # config/logging.yaml ⇒ defaults (INFO / json / stderr).
+    from trading_system.observability import (
+        configure_logging,
+        load_logging_config,
+    )
+
+    logging_cfg_path = Path(args.config_dir) / "logging.yaml"
+    if logging_cfg_path.exists():
+        match load_logging_config(logging_cfg_path):
+            case Err(reason):
+                print(f"main: ERROR {reason}", file=sys.stderr)
+                return 1
+            case Ok(cfg):
+                configure_logging(level=cfg.level, json_output=cfg.format == "json")
+    else:
+        configure_logging()  # defaults
+
     res = run(
         config_dir=args.config_dir,
         start=args.start,

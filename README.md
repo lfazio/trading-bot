@@ -122,9 +122,11 @@ trading-bot/
 │   │                              TaxModel / cross-account gate / household
 │   │                              drawdown trigger / AccountScopedTokenVerifier
 │   ├── analytics/              ← perf / exposure / drawdown / rationale_for
+│   ├── observability/          ← structured logging — JsonLineFormatter,
+│   │                              LogContext, log_scope (REQ_SDS_CRS_001)
 │   ├── dashboard/              ← read-only views (no trade actions)
 │   └── main.py                 ← end-to-end runnable demo
-├── tests/                      ← pytest suite (1248+ tests)
+├── tests/                      ← pytest suite (1283+ tests)
 ├── config/                     ← operator YAMLs
 │   ├── system.yaml             ← starting capital, broker, base currency
 │   ├── phases.yaml             ← per-phase constraint table

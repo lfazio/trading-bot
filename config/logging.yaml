@@ -1,0 +1,11 @@
+# Structured logging config — REQ_NF_LOG_001 / REQ_SDS_CRS_001.
+#
+# level: DEBUG | INFO | WARNING | ERROR | CRITICAL
+# format: "json" (REQ_SDS_CRS_001 JSON-line schema) or "text" (human-readable)
+# file_path: optional absolute path for a secondary file sink; v1 wires
+#            stderr only — file sink lands with the live-deployment
+#            hardening sub-CR.
+logging:
+  level: INFO
+  format: json
+  file_path: null
