@@ -108,15 +108,23 @@ trading-bot/
 │   ├── structured_products/    ← decomposer + admission gate (cap ≤ 10 %)
 │   ├── milestone_controller/   ← 2k / 5k / … / 5M EUR ladder
 │   ├── portfolio/              ← cash / positions / attribution
+│   ├── portfolio_manager/      ← CR-005 read-only proposal generators
+│   │                              (Rebalancer, SectorRotatorFacade,
+│   │                              TaxHarvesterFacade) + attribution
 │   ├── backtesting/            ← deterministic engine + walk-forward
 │   │   └── result.py           ← BacktestResult + rationales tuple
 │   ├── execution/              ← LocalBrokerAdapter (in-process)
 │   ├── strategy_lab/           ← offline meta-loop (generator → registry)
-│   ├── wealth_ops/             ← Phase-5: tax harvest, sector rotation
+│   ├── wealth_ops/             ← Phase-5: tax harvest, sector rotation,
+│   │                              fx_hedger (CR-011)
+│   ├── accounts/               ← CR-006 Phase-6 foundation:
+│   │                              Account / AccountRegistry / PortfolioGroup /
+│   │                              TaxModel / cross-account gate / household
+│   │                              drawdown trigger / AccountScopedTokenVerifier
 │   ├── analytics/              ← perf / exposure / drawdown / rationale_for
 │   ├── dashboard/              ← read-only views (no trade actions)
 │   └── main.py                 ← end-to-end runnable demo
-├── tests/                      ← pytest suite (1071+ tests)
+├── tests/                      ← pytest suite (1248+ tests)
 ├── config/                     ← operator YAMLs
 │   ├── system.yaml             ← starting capital, broker, base currency
 │   ├── phases.yaml             ← per-phase constraint table
@@ -143,9 +151,12 @@ trading-bot/
 ```
 
 Phase-5 implementation is **in progress** — the modules listed above are the
-shipped slices through 2026-05-15. Stubs / unshipped phases remain as
+shipped slices through 2026-05-16. Stubs / unshipped phases remain as
 placeholders; the [`Traceability` wiki page](https://github.com/lfazio/trading-bot/wiki/Traceability)
-shows which REQs have reached `CODE` / `TEST`.
+shows which REQs have reached `CODE` / `TEST`. CR-006 (Phase 6 multi-account)
+landed its foundation slice 2026-05-16 — `trading_system/accounts/` is
+additive: runtime wiring (tick fan-out, per-account tax dispatch, household
+drawdown subscriber, persistence call-site rewrites) is the next follow-up.
 
 ---
 
