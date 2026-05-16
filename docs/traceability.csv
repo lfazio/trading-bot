@@ -71,6 +71,12 @@ REQ_F_FXH_003,SRS,"`FXHedger.propose_hedges(exposures, policy, *, base_currency)
 REQ_F_FXH_004,SRS,"`HedgePolicy(threshold_pct, target_hedge_ratio, rebalance_frequency)`…",,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/wealth_ops/fx_hedger/policy.py;trading_system/wealth_ops/fx_hedger/__init__.py,tests/wealth_ops/fx_hedger/test_policy.py,TEST
 REQ_F_FXH_005,SRS,FX hedge positions SHALL live in a separate `FXHedgeLedger` (NOT in `…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/wealth_ops/fx_hedger/ledger.py;trading_system/wealth_ops/fx_hedger/__init__.py;trading_system/wealth_ops/fx_hedger/forward.py,tests/integration/test_phase5_stack.py;tests/wealth_ops/fx_hedger/test_forward.py;tests/wealth_ops/fx_hedger/test_ledger.py,TEST
 REQ_F_FXH_006,SRS,FX hedge P&L SHALL be tax-treated as a separate line item under REQ_C…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/wealth_ops/fx_hedger/ledger.py;trading_system/wealth_ops/fx_hedger/__init__.py,tests/integration/test_phase5_stack.py;tests/wealth_ops/fx_hedger/test_ledger.py,TEST
+REQ_F_MCS_001,SRS,The system SHALL ship a `backtesting/monte_carlo/` module containing…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_F_MCS_002,SRS,Path generation SHALL be reached through an `MCGenerator` Protocol wi…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_F_MCS_003,SRS,"`MCConfig(generator, n_paths, seed, block_length, gbm_params, regime_…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_F_MCS_004,SRS,`MonteCarloResult` SHALL be a frozen dataclass carrying: `equity_perc…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_F_MCS_005,SRS,The `MonteCarloRunner` SHALL be reachable from `strategy_lab/loop_con…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_F_MCS_006,SRS,Persistence SHALL extend CR-008's `BacktestResultRepository` with a `…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_F_MIL_001,SRS,Configurable milestone list,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/milestone_controller/controller.py;trading_system/milestone_controller/__init__.py,tests/milestone_controller/test_controller.py,TEST
 REQ_F_MIL_002,SRS,Milestone validation conditions,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/milestone_controller/controller.py;trading_system/milestone_controller/metrics.py,tests/milestone_controller/test_controller.py,TEST
 REQ_F_MIL_003,SRS,Gradual scaling at milestone,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/milestone_controller/controller.py,tests/milestone_controller/test_controller.py,TEST
@@ -185,6 +191,7 @@ REQ_NF_FXH_001,SRS,"Deterministic hedge sizing: identical `(portfolio_snapshot, 
 REQ_NF_LIF_001,SRS,DO-178C lifecycle,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_NF_LIF_002,SRS,Changes restart lifecycle,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_NF_LOG_001,SRS,Logging trades/KS/reports,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/analytics/engine.py;trading_system/analytics/__init__.py;trading_system/milestone_controller/metrics.py,tests/analytics/test_engine.py,TEST
+REQ_NF_MCS_001,SRS,"Bit-identical path-set replay: identical `(strategy, data_source, MCC…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_NF_NOT_001,SRS,`notifications/` SHALL NOT sit on the trade-execution critical path.…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_NF_NOT_002,SRS,"Digest content SHALL be deterministic: identical `(now, portfolio_sta…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_NF_NOT_003,SRS,Outbound notification payloads SHALL carry only the minimum necessary…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
@@ -278,6 +285,12 @@ REQ_SDD_IMP_006,SDD,"Engine modules (`tax/`, `risk/`, `phase_engine/`, `screener
 REQ_SDD_LOG_001,SDD,"Trade log entries SHALL include `(trade_id, order_id, strategy_id, in…",,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_LOG_002,SDD,"Kill-switch event log entries SHALL include `(snapshot_id, state_from…",,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/safety/state_manager.py,,CODE
 REQ_SDD_LOG_003,SDD,"`ImprovementReport` log entries SHALL include `(cycle_id, best_strate…",,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/meta.py,,CODE
+REQ_SDD_MCS_001,SDD,"`backtesting/monte_carlo/` SHALL import from `backtesting.engine`, `b…",,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_SDD_MCS_002,SDD,`MonteCarloRunner` SHALL compose the public `Backtest` surface via an…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_SDD_MCS_003,SDD,Per-path RNG seeding SHALL implement exactly: `seed_for_path(seed: RN…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_SDD_MCS_004,SDD,"`MonteCarloResult.__post_init__` SHALL panic with `RuntimeError(""mc:p…",,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_SDD_MCS_005,SDD,`MCConfig.__post_init__` SHALL enforce the closed validator set: `n_p…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_SDD_MCS_006,SDD,`MonteCarloResultRepository` (CR-008 slot — Phase-6 follow-up) SHALL…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_NAM_001,SDD,Type names SHALL be `PascalCase`; function and variable names SHALL b…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_NAM_002,SDD,"Concrete adapter classes SHALL end in `Adapter` (e.g., `XTBAdapter`);…",,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_NAM_003,SDD,"Configuration record types SHALL end in `Config` (e.g., `ScreenerConf…",,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
@@ -376,6 +389,10 @@ REQ_SDS_INT_001,SDS,"The `BrokerAdapter` interface SHALL specify `submit`, `canc
 REQ_SDS_INT_002,SDS,"The `MarketDataProvider` interface SHALL specify `bars`, `latest`, `d…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/backtesting/market_replay.py;trading_system/data/__init__.py;trading_system/data/provider.py;trading_system/data/mock.py;trading_system/data/types.py,tests/backtesting/test_market_replay.py;tests/data/yfinance/test_integration.py,TEST
 REQ_SDS_INT_003,SDS,The `AlertChannel` interface SHALL deliver kill-switch state-change n…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/safety/alerts.py;trading_system/safety/__init__.py,,CODE
 REQ_SDS_INT_004,SDS,"`Config` SHALL be a frozen, dependency-injected object; no runtime mo…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/main.py;trading_system/phase_engine/loader.py;trading_system/regime/config.py;trading_system/accounts/tax_model.py;trading_system/turbo_selector/config.py;trading_system/risk/config.py;trading_system/tax/config.py;trading_system/screener/config.py;trading_system/wealth_ops/fx_hedger/policy.py;trading_system/wealth_ops/sector_rotator/policy.py;trading_system/wealth_ops/sector_rotator/taxonomy.py;trading_system/wealth_ops/sector_rotator/regime_sector_bias.py;trading_system/data/fundamentals/config.py,,CODE
+REQ_SDS_MCS_001,SDS,`backtesting/monte_carlo/` SHALL sit at L5 between `backtesting/engin…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_SDS_MCS_002,SDS,Per-path RNG seeding SHALL be derived as `seed_for_path(MCConfig.seed…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_SDS_MCS_003,SDS,`MonteCarloResult.equity_percentiles` (and the drawdown / sharpe sibl…,Documentations/SDS.md,Documentations/SDD.md,,,,SDD
+REQ_SDS_MCS_004,SDS,The `MCGenerator` Protocol surface SHALL be exactly one method: `gene…,Documentations/SDS.md,Documentations/SDD.md,,,,SDD
 REQ_SDS_MOD_001,SDS,`config/` SHALL run schema validation at startup including cross-fiel…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDS_MOD_002,SDS,`models/` SHALL contain only data types with input validation; it SHA…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/models/__init__.py,,CODE
 REQ_SDS_MOD_003,SDS,"The tax module's public functions (`net_gain`, `net_dividend`, `trade…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/tax/engine.py;trading_system/tax/harvest.py;trading_system/tax/__init__.py,,CODE
