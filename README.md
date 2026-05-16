@@ -115,6 +115,8 @@ trading-bot/
 │   │   └── result.py           ← BacktestResult + rationales tuple
 │   ├── execution/              ← LocalBrokerAdapter (in-process)
 │   ├── strategy_lab/           ← offline meta-loop (generator → registry)
+│   │   └── quant/              ← CR-002 Hypothesis layer (5-gate validator
+│   │                              + overfitting helpers + in-memory library)
 │   ├── wealth_ops/             ← Phase-5: tax harvest, sector rotation,
 │   │                              fx_hedger (CR-011)
 │   ├── accounts/               ← CR-006 Phase-6 foundation:
@@ -130,7 +132,7 @@ trading-bot/
 │   │                              --validate-all (REQ_SDS_CFG_001)
 │   ├── dashboard/              ← read-only views (no trade actions)
 │   └── main.py                 ← end-to-end runnable demo
-├── tests/                      ← pytest suite (1330+ tests)
+├── tests/                      ← pytest suite (1405+ tests)
 ├── config/                     ← operator YAMLs
 │   ├── system.yaml             ← starting capital, broker, base currency
 │   ├── phases.yaml             ← per-phase constraint table

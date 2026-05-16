@@ -50,6 +50,17 @@ class StrategyMetrics:
     risk: Decimal  # canonical risk; typically annualized vol
     return_: Decimal  # alias of net_after_tax_return for clarity
 
+    # ----- Overfitting inputs (REQ_F_QNT_006, CR-002) --------------------
+    # Defaults make these backwards-compatible — existing callers that
+    # don't yet supply the fields get a "no overfitting info" row
+    # (n_params=0 + n_train_periods=0 ⇒ parameter_to_data_ratio is
+    # Decimal("Infinity"), which the overfitting gate rejects — that's
+    # correct: a candidate WITHOUT measured parameter count should not
+    # ship through a strict-overfitting gate).
+    n_params: int = 0  # count of free parameters
+    n_train_periods: int = 0  # sample size of the training window
+    information_coefficient: Decimal = Decimal("0")  # Pearson IC train ↔ OOS
+
     def __post_init__(self) -> None:
         for name, value in (
             ("stability", self.stability),
@@ -66,3 +77,17 @@ class StrategyMetrics:
             raise ValueError(f"StrategyMetrics.leverage must be >= 0, got {self.leverage}")
         if self.risk < 0:
             raise ValueError(f"StrategyMetrics.risk must be >= 0, got {self.risk}")
+        if self.n_params < 0:
+            raise ValueError(
+                f"StrategyMetrics.n_params must be >= 0, got {self.n_params}"
+            )
+        if self.n_train_periods < 0:
+            raise ValueError(
+                f"StrategyMetrics.n_train_periods must be >= 0, "
+                f"got {self.n_train_periods}"
+            )
+        if not (Decimal("-1") <= self.information_coefficient <= Decimal("1")):
+            raise ValueError(
+                f"StrategyMetrics.information_coefficient must lie in "
+                f"[-1, 1], got {self.information_coefficient}"
+            )
