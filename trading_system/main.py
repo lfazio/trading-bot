@@ -24,16 +24,14 @@ from __future__ import annotations
 
 import argparse
 import sys
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from trading_system.analytics import Analytics
 from trading_system.backtesting import Backtest, BacktestConfig
+from trading_system.config import SystemConfig, load_system_config, validate_all
 from trading_system.dashboard import Dashboard, DashboardView
 from trading_system.data.mock import MockMarketDataProvider
 from trading_system.data.types import Fundamentals, Timeframe
@@ -56,57 +54,6 @@ from trading_system.tax.config import TaxConfig
 DEFAULT_CONFIG_DIR = Path("config")
 DEFAULT_START = datetime(2026, 1, 1, tzinfo=UTC)
 DEFAULT_END = datetime(2026, 4, 1, tzinfo=UTC)
-
-
-@dataclass(frozen=True, slots=True)
-class _SystemConfig:
-    """Subset of system.yaml the demo reads. Frozen so the
-    runtime can't accidentally mutate it (REQ_SDS_INT_004)."""
-
-    starting_capital: Money
-    seed: int
-    mode: str
-    broker_adapter: str
-
-
-# ----------------------------------------------------------------------
-# Configuration loading
-# ----------------------------------------------------------------------
-
-
-def _load_system_config(path: Path) -> Result[_SystemConfig, str]:  # noqa: PLR0911
-    """Parse system.yaml. Returns a categorised Err on any failure."""
-    try:
-        text = path.read_text()
-    except OSError as e:
-        return Err(f"main:system_config_read:{path}:{e}")
-    try:
-        raw: Any = yaml.safe_load(text)
-    except yaml.YAMLError as e:
-        return Err(f"main:system_config_yaml:{path}:{e}")
-    if not isinstance(raw, dict):
-        return Err(f"main:system_config_shape:{path}: expected a mapping at top level")
-    sys_section = raw.get("system", {})
-    broker_section = raw.get("broker", {})
-    capital = sys_section.get("starting_capital", {})
-    if not isinstance(capital, dict):
-        return Err("main:system_config:starting_capital must be a mapping")
-    amount = capital.get("amount")
-    currency = capital.get("currency")
-    if amount is None or currency is None:
-        return Err("main:system_config:starting_capital.amount/currency required")
-    try:
-        cur = Currency(currency)
-    except ValueError as e:
-        return Err(f"main:system_config:bad_currency:{currency}:{e}")
-    return Ok(
-        _SystemConfig(
-            starting_capital=Money(Decimal(str(amount)), cur),
-            seed=int(sys_section.get("seed", 0)),
-            mode=str(sys_section.get("mode", "backtest")),
-            broker_adapter=str(broker_section.get("adapter", "local")),
-        )
-    )
 
 
 # ----------------------------------------------------------------------
@@ -221,7 +168,7 @@ def run(  # noqa: PLR0913 — orchestration entry; one arg per pipeline stage's 
     """Run the full pipeline once; return the dashboard view on
     success or a categorised Err."""
     # 1. Configuration (REQ_O_003).
-    sys_res = _load_system_config(config_dir / "system.yaml")
+    sys_res = load_system_config(config_dir / "system.yaml")
     if isinstance(sys_res, Err):
         return Err(sys_res.error)
     sys_cfg = sys_res.value
@@ -304,13 +251,13 @@ def run(  # noqa: PLR0913 — orchestration entry; one arg per pipeline stage's 
     return Ok(view)
 
 
-def _eur_zero(sys_cfg: _SystemConfig) -> Money:
+def _eur_zero(sys_cfg: SystemConfig) -> Money:
     return Money(Decimal(0), sys_cfg.starting_capital.currency)
 
 
 def _print_summary(
     view: DashboardView,
-    sys_cfg: _SystemConfig,
+    sys_cfg: SystemConfig,
     result: Any,
     out_stream: Any,
 ) -> None:
@@ -398,6 +345,21 @@ def main() -> int:
                 configure_logging(level=cfg.level, json_output=cfg.format == "json")
     else:
         configure_logging()  # defaults
+
+    # Centralised startup config validation — REQ_SDS_CFG_001.
+    # Every shipped YAML SHALL parse cleanly before the runtime starts;
+    # aggregated Errs are printed so the operator fixes them in one cycle.
+    match validate_all(args.config_dir):
+        case Err(report):
+            for line in report.errors:
+                print(line, file=sys.stderr)
+            print(
+                f"main: ERROR config: {len(report.errors)} validation error(s)",
+                file=sys.stderr,
+            )
+            return 1
+        case Ok(_):
+            pass
 
     res = run(
         config_dir=args.config_dir,

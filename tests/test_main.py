@@ -85,6 +85,7 @@ def test_missing_config_dir_returns_categorised_err() -> None:
     )
     match res:
         case Err(reason):
-            assert reason.startswith("main:system_config_read")
+            # The system-config loader's new shape — config:io: ...
+            assert reason.startswith("config:io:")
         case Ok(_):
             raise AssertionError("expected Err for missing config")
