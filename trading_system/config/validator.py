@@ -29,6 +29,7 @@ from typing import Any
 
 import yaml
 
+from trading_system.accounts.yaml_loader import load_accounts_yaml
 from trading_system.config.system import load_system_config
 from trading_system.observability.loader import load_logging_config
 from trading_system.phase_engine.loader import load_phase_engine
@@ -69,6 +70,7 @@ _TYPED_LOADERS: tuple[tuple[str, Callable[[Path], Result[Any, str]], bool], ...]
     ("kill_switch.yaml", load_kill_switch_config, True),
     ("turbos.yaml", load_turbo_selector_config, True),
     ("logging.yaml", load_logging_config, False),  # absent ⇒ defaults
+    ("accounts.yaml", load_accounts_yaml, False),  # absent ⇒ single-account default
 )
 
 

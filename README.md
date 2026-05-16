@@ -130,7 +130,7 @@ trading-bot/
 │   │                              --validate-all (REQ_SDS_CFG_001)
 │   ├── dashboard/              ← read-only views (no trade actions)
 │   └── main.py                 ← end-to-end runnable demo
-├── tests/                      ← pytest suite (1299+ tests)
+├── tests/                      ← pytest suite (1330+ tests)
 ├── config/                     ← operator YAMLs
 │   ├── system.yaml             ← starting capital, broker, base currency
 │   ├── phases.yaml             ← per-phase constraint table

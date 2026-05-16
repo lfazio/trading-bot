@@ -13,12 +13,21 @@ REQ_SDS_ACC_002, REQ_SDD_ACC_002.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from trading_system.accounts.account import Account
 from trading_system.models.identifiers import DEFAULT_ACCOUNT_ID, AccountId
 from trading_system.result import Err, Nothing, Ok, Option, Result, Some
+
+
+# A per-account pipeline callable: invoked once per tick per account
+# in lex-by-id order. The registry is generic over what the pipeline
+# does — it's responsible only for the deterministic fan-out. Phase-B
+# follow-ups will supply a concrete pipeline that walks the screener
+# → strategy → risk → execution stages per account.
+AccountPipeline = Callable[[Account, datetime], None]
 
 
 @dataclass(slots=True)
@@ -64,6 +73,26 @@ class AccountRegistry:
         tooling and dashboards that need to render the household
         composition deterministically."""
         return iter(sorted(self._accounts))
+
+    def tick(self, now: datetime, pipeline: AccountPipeline) -> None:
+        """Per-tick fan-out (REQ_F_ACC_002 / REQ_SDS_ACC_002 /
+        REQ_SDD_ACC_002).
+
+        Iterates ``sorted(self._accounts)`` and invokes ``pipeline``
+        once per account. The registry SHALL NOT inspect what the
+        pipeline does — that's the caller's contract; the registry's
+        guarantee is that two ticks with the same registry state +
+        the same ``(now, pipeline)`` produce the same sequence of
+        ``pipeline(account, now)`` calls.
+
+        Household aggregation runs *after* the per-account loop so
+        cross-account state observable inside a tick is the previous
+        tick's snapshot (REQ_SDS_ACC_002); ``PortfolioGroup``
+        recomputes on each accessor call so there is no separate
+        ``refresh`` step the registry needs to fire here.
+        """
+        for acct in self.list_accounts():
+            pipeline(acct, now)
 
 
 def is_default_single_account(registry: AccountRegistry) -> bool:

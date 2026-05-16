@@ -25,13 +25,18 @@ def test_package_exports_documented_public_surface() -> None:
     cascade documented SHALL be exported."""
     expected = {
         "Account",
+        "AccountComponents",
+        "AccountPipeline",
         "AccountRegistry",
         "AccountScopedTokenVerifier",
+        "AccountSpec",
         "FranceCTOTaxModel",
         "HouseholdDrawdownTrigger",
         "PortfolioGroup",
         "TaxModel",
+        "build_default_registry",
         "cross_account_concentration_gate",
+        "load_accounts_yaml",
     }
     assert set(accounts_pkg.__all__) == expected
     for name in expected:

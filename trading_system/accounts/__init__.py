@@ -28,11 +28,15 @@ from trading_system.accounts.account import Account
 from trading_system.accounts.cross_account_risk import (
     cross_account_concentration_gate,
 )
+from trading_system.accounts.factory import (
+    AccountComponents,
+    build_default_registry,
+)
 from trading_system.accounts.group import PortfolioGroup
 from trading_system.accounts.household_drawdown_trigger import (
     HouseholdDrawdownTrigger,
 )
-from trading_system.accounts.registry import AccountRegistry
+from trading_system.accounts.registry import AccountPipeline, AccountRegistry
 from trading_system.accounts.tax_model import (
     FranceCTOTaxModel,
     TaxModel,
@@ -40,14 +44,20 @@ from trading_system.accounts.tax_model import (
 from trading_system.accounts.token_verifier import (
     AccountScopedTokenVerifier,
 )
+from trading_system.accounts.yaml_loader import AccountSpec, load_accounts_yaml
 
 __all__ = [
     "Account",
+    "AccountComponents",
+    "AccountPipeline",
     "AccountRegistry",
     "AccountScopedTokenVerifier",
+    "AccountSpec",
     "FranceCTOTaxModel",
     "HouseholdDrawdownTrigger",
     "PortfolioGroup",
     "TaxModel",
+    "build_default_registry",
     "cross_account_concentration_gate",
+    "load_accounts_yaml",
 ]

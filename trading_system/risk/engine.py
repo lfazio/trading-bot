@@ -32,6 +32,7 @@ from trading_system.models.phase import (
     PhaseConstraints,
 )
 from trading_system.models.safety import KillSwitchTrigger, TriggerCategory
+from trading_system.result import Err, Result
 from trading_system.risk.config import RiskConfig
 from trading_system.risk.mapping import buckets_for_class
 from trading_system.risk.metrics import drawdown_now, portfolio_vol_ann
@@ -66,6 +67,7 @@ class RiskEngine:
         regime: MarketRegime,
         *,
         correlation_lookup: Callable[[Instrument], Decimal | None] | None = None,
+        cross_account_gate: Callable[[TradeProposal], Result[None, str]] | None = None,
     ) -> ValidationResult:
         # 1. Kill-switch check (REQ_S_KS_011)
         if self.safety.must_halt():
@@ -104,6 +106,20 @@ class RiskEngine:
         forbidden = self.cfg.regimes_forbidden_for(cls)
         if regime in forbidden:
             return ValidationResult.reject("regime_forbidden")
+
+        # 7. Cross-account concentration (REQ_F_ACC_008 / REQ_SDS_ACC_004).
+        # In single-account deployments the caller passes
+        # ``cross_account_gate=None`` (default) and this gate is a
+        # no-op — REQ_NF_ACC_001 backwards compatibility. Multi-
+        # account callers pass a closure that captures the registry
+        # + household PortfolioGroup; the gate runs AFTER the
+        # cheaper per-account checks above so multi-account
+        # deployments aren't paying for cross-account work on
+        # trades that would have been rejected anyway.
+        if cross_account_gate is not None:
+            outcome = cross_account_gate(proposal)
+            if isinstance(outcome, Err):
+                return ValidationResult.reject(outcome.error)
 
         return ValidationResult.accept()
 
