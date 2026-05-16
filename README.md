@@ -124,6 +124,9 @@ trading-bot/
 │   │                              TaxModel / cross-account gate / household
 │   │                              drawdown trigger / AccountScopedTokenVerifier
 │   ├── analytics/              ← perf / exposure / drawdown / rationale_for
+│   ├── notifications/          ← CR-001 channels + fan-out + approval gate
+│   │                              + summary publisher (LocalLogChannel,
+│   │                              NotificationFanOut, ApprovalGate)
 │   ├── observability/          ← structured logging — JsonLineFormatter,
 │   │                              LogContext, log_scope (REQ_SDS_CRS_001)
 │   ├── config/                 ← centralised YAML validator —
@@ -132,7 +135,7 @@ trading-bot/
 │   │                              --validate-all (REQ_SDS_CFG_001)
 │   ├── dashboard/              ← read-only views (no trade actions)
 │   └── main.py                 ← end-to-end runnable demo
-├── tests/                      ← pytest suite (1405+ tests)
+├── tests/                      ← pytest suite (1479+ tests)
 ├── config/                     ← operator YAMLs
 │   ├── system.yaml             ← starting capital, broker, base currency
 │   ├── phases.yaml             ← per-phase constraint table
