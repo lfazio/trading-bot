@@ -37,6 +37,11 @@ from trading_system.models.safety import (
     KillSwitchTrigger,
     TriggerCategory,
 )
+from trading_system.notifications.fanout import NotificationFanOut
+from trading_system.notifications.payloads import (
+    KillSwitchEvent,
+    KillSwitchSeverity,
+)
 from trading_system.result import Err, Ok, Result
 from trading_system.safety.alerts import AlertChannel, deliver_with_retry
 from trading_system.safety.recovery import (
@@ -72,6 +77,13 @@ class StateManager:
     snapshot_sink: SnapshotSink
     alert_channels: list[AlertChannel] = field(default_factory=list)
     cfg: StateManagerConfig = field(default_factory=StateManagerConfig)
+    # CR-001 Phase B bridge — optional. When set, every KS state
+    # transition (including idempotent same-state DEGRADE / KILL
+    # entries) dispatches a typed ``KillSwitchEvent`` through the
+    # new notification fan-out *after* the legacy AlertChannel path
+    # so REQ_F_NOT_003 / REQ_SDD_NOT_002 land without breaking
+    # existing KS-only deployments (which leave this field None).
+    notification_fanout: NotificationFanOut | None = None
 
     _state: KillSwitchState = field(default=KillSwitchState.ACTIVE, init=False)
     _seq: count[int] = field(default_factory=lambda: count(1), init=False)
@@ -148,6 +160,10 @@ class StateManager:
         )
         self.snapshot_sink.record(snapshot)
         self._fanout_alert("RECOVERY", _alert_payload_recovery(prior, snapshot_id, at))
+        if self.notification_fanout is not None:
+            self.notification_fanout.dispatch(
+                _ks_event_from_recovery(prior, snapshot_id, at)
+            )
         return Ok(None)
 
     # ------------------------------------------------------------------
@@ -182,6 +198,14 @@ class StateManager:
         self._fanout_alert(
             trigger.severity, _alert_payload_trigger(prior, target, trigger, snapshot_id)
         )
+        # CR-001 Phase B bridge — REQ_F_NOT_003 / REQ_SDD_NOT_002.
+        # Existing deployments leave ``notification_fanout`` unset
+        # and skip this call entirely (bit-identical to pre-bridge
+        # behaviour).
+        if self.notification_fanout is not None:
+            self.notification_fanout.dispatch(
+                _ks_event_from_trigger(prior, target, trigger, snapshot_id)
+            )
 
     def _next_snapshot_id(self) -> SnapshotId:
         return SnapshotId(f"{self.cfg.snapshot_id_prefix}-{next(self._seq):08d}")
@@ -213,6 +237,64 @@ def _alert_payload_trigger(
         "message": trigger.message,
         "raised_at": trigger.raised_at.isoformat(),
     }
+
+
+def _ks_event_from_trigger(
+    prior: KillSwitchState,
+    target: KillSwitchState,
+    trigger: KillSwitchTrigger,
+    snapshot_id: SnapshotId,
+) -> KillSwitchEvent:
+    """Build a typed ``KillSwitchEvent`` mirroring the dict payload
+    above. Used by the CR-001 NotificationFanOut bridge."""
+    sev = _normalise_severity(trigger.severity)
+    return KillSwitchEvent(
+        snapshot_id=snapshot_id,
+        state_from=prior,
+        state_to=target,
+        trigger_code=trigger.code,
+        severity=sev,
+        summary=trigger.message or trigger.code,
+    )
+
+
+def _ks_event_from_recovery(
+    prior: KillSwitchState,
+    snapshot_id: SnapshotId,
+    at: datetime,
+) -> KillSwitchEvent:
+    """``KillSwitchEvent`` for the recovery transition. ``severity``
+    is the documented ``RECOVERY`` literal."""
+    return KillSwitchEvent(
+        snapshot_id=snapshot_id,
+        state_from=prior,
+        state_to=KillSwitchState.ACTIVE,
+        trigger_code="manual_recovery",
+        severity="RECOVERY",
+        summary=f"recovery from {prior.value} at {at.isoformat()}",
+    )
+
+
+def _normalise_severity(raw: str) -> KillSwitchSeverity:
+    """The legacy ``KillSwitchTrigger.severity`` is a free-form
+    ``str``; the new typed payload accepts only the documented
+    Literal values. Defensive guard so a hand-constructed trigger
+    with a typo doesn't silently produce an invalid event — we
+    panic at the boundary instead.
+    """
+    if raw in ("DEGRADE", "DEGRADED"):
+        # The state manager uses "DEGRADE" but some callers emit
+        # "DEGRADED" (matches the state value); both map to the
+        # canonical Literal.
+        return "DEGRADE"
+    if raw in ("KILL",):
+        return "KILL"
+    if raw in ("RECOVERY",):
+        return "RECOVERY"
+    raise ValueError(
+        f"_normalise_severity: unknown severity {raw!r}; "
+        "expected DEGRADE / KILL / RECOVERY"
+    )
 
 
 def _alert_payload_recovery(
