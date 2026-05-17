@@ -1,0 +1,41 @@
+# CR-017 Phase A — single-service webapp topology.
+#
+# Usage:
+#   TRADING_BOT_OPERATOR_SECRET=<hex> docker compose up --build
+#
+# REQ refs:
+# - REQ_F_FAS_007 — webapp + persistence-volume topology so
+#   `docker compose up webapp` boots the full deployment.
+
+services:
+  webapp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: trading-bot:${TRADING_BOT_VERSION:-dev}
+    container_name: trading-bot-webapp
+    ports:
+      - "8000:8000"
+    volumes:
+      # Operator's config directory is read-only inside the container.
+      - ./config:/config:ro
+      # Persistence volume — CR-008's SQLite DB + CR-016 var/reports/
+      # land here so they survive container restarts.
+      - trading-data:/data
+    environment:
+      TRADING_BOT_CONFIG_DIR: /config
+      TRADING_BOT_VERSION: ${TRADING_BOT_VERSION:-dev}
+      # REQ_F_FAS_005 — required at boot.
+      TRADING_BOT_OPERATOR_SECRET: ${TRADING_BOT_OPERATOR_SECRET}
+      TRADING_BOT_TOKEN_TTL_SECONDS: ${TRADING_BOT_TOKEN_TTL_SECONDS:-300}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=2).status==200 else 1)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  trading-data:
+    name: trading-data

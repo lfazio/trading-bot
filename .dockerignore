@@ -1,0 +1,48 @@
+# CR-017 Phase A — keep the build context lean (< 50 MB target).
+
+# VCS
+.git/
+.gitignore
+.gitattributes
+.gitmodules
+
+# Local dev
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Runtime artefacts — only the baseline report is checked in; both are
+# rebuilt by the runtime as needed.
+var/
+
+# Wiki submodule — the container doesn't need Markdown docs.
+Documentations/
+
+# Tooling that doesn't ship in the image.
+tests/
+tools/
+.rtk/
+
+# Build artefacts.
+build/
+dist/
+*.egg
+
+# CR-016 / CR-009 data + fixtures travel via mounted volumes, not the image.
+data/yfinance-fixtures/
+.cache/

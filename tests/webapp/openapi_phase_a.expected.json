@@ -1,0 +1,213 @@
+{
+  "components": {
+    "schemas": {
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "PromoteRequest": {
+        "description": "Body schema for ``POST /api/registry/{strategy_id}/promote``.\n\nPydantic validation kicks in at the FastAPI boundary; malformed\nbodies surface as a 422 with the auto-generated detail. The\nAuthorization header carries the Bearer token; the\n``X-Operator-Token`` header carries the action-specific operator\ntoken (kept distinct so the audit row can pair both).",
+        "properties": {
+          "account_id": {
+            "description": "Target account id",
+            "minLength": 1,
+            "title": "Account Id",
+            "type": "string"
+          },
+          "operator_id": {
+            "description": "Acting operator id",
+            "minLength": 1,
+            "title": "Operator Id",
+            "type": "string"
+          },
+          "rationale": {
+            "description": "Promotion rationale",
+            "minLength": 1,
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_id",
+          "operator_id",
+          "rationale"
+        ],
+        "title": "PromoteRequest",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "FastAPI surface for the trading-bot. Phase A ships the live-state read + registry-promotion mutation + HTMX dashboard. Phase B adds SSE + JobQueue + cookie sessions.",
+    "title": "trading-bot webapp",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/": {
+      "get": {
+        "description": "Render the Phase-A dashboard.\n\nAuthenticated callers (household token) see the chrome plus an\nHTMX `hx-get` block that polls `/api/accounts/default/live-state`\nevery 5 s. Phase B swaps the poll for an SSE channel.",
+        "operationId": "dashboard__get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Dashboard"
+      }
+    },
+    "/api/accounts/{account_id}/live-state": {
+      "get": {
+        "description": "Returns the canonical live-state envelope for the named account. The body shape mirrors the stdlib webui's ``LiveStateResponse`` byte-for-byte.",
+        "operationId": "get_live_state_api_accounts__account_id__live_state_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read live state for an account"
+      }
+    },
+    "/api/registry/{strategy_id}/promote": {
+      "post": {
+        "description": "REQ_F_FAS_001 / REQ_F_FAS_005 \u2014 mutation endpoint gated by the\naccount-scoped operator token.",
+        "operationId": "post_promote_api_registry__strategy_id__promote_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Promotion accepted"
+          },
+          "401": {
+            "description": "Token invalid"
+          },
+          "404": {
+            "description": "Strategy not found"
+          },
+          "409": {
+            "description": "Already promoted or other categorised Err"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Promote a registered strategy"
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "Return ``{\"status\": \"ok\", \"as_of\": <iso8601>, \"version\": ...}``\nso the container's HEALTHCHECK can poll a stable endpoint without\nauthentication.",
+        "operationId": "get_health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Health"
+      }
+    }
+  }
+}

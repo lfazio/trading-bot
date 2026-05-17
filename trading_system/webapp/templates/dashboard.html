@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}trading-bot &mdash; dashboard{% endblock %}
+{% block content %}
+<h1>trading-bot dashboard</h1>
+<p class="muted">Account: <code>{{ account_id }}</code></p>
+
+<section class="panel">
+  <h2>Live state</h2>
+  <pre id="live-state"
+       hx-get="/api/accounts/{{ account_id }}/live-state"
+       hx-trigger="load, every 5s"
+       hx-swap="innerHTML">
+loading...
+  </pre>
+  <p class="muted">
+    Phase&nbsp;A polls every 5&nbsp;s; Phase&nbsp;B replaces this with
+    <code>hx-ext="sse"</code> and a push channel at
+    <code>/events/live-state</code>.
+  </p>
+</section>
+{% endblock %}
