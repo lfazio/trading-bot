@@ -40,6 +40,12 @@ Thumbs.db
 # Local tooling state
 .rtk/
 
+# Operator-local secrets — never commit. Includes per-deployment HMAC
+# keys + issued operator tokens.
+OPERATOR.md
+secrets.env
+*.secret
+
 # Runtime artefacts — keep only the pre-recorded baseline (CR-016 MVP-6)
 # Each parent dir must be re-included before child unignores are reachable.
 var/*

@@ -40,6 +40,7 @@ from trading_system.webapp.health import router as health_router
 from trading_system.webapp.routers.api.live_state import router as live_state_router
 from trading_system.webapp.routers.api.registry import router as registry_router
 from trading_system.webapp.routers.views.dashboard import router as dashboard_router
+from trading_system.webapp.sse import router as sse_router
 
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
@@ -101,6 +102,7 @@ def create_app(state: WebappState) -> FastAPI:
     app.include_router(health_router)
     app.include_router(live_state_router)
     app.include_router(registry_router)
+    app.include_router(sse_router)
     app.include_router(dashboard_router)
 
     return app
@@ -151,14 +153,34 @@ class _DemoLiveStateReader:
     """Minimal in-process ``LiveStateReader`` so ``default_app()``'s
     dashboard renders end-to-end on a fresh container.
 
-    Phase B replaces this with the runtime-wired reader that reads
-    through CR-008 repositories + the live ``Analytics`` /
+    Implements both the request-response surface (``live_state``)
+    and the SSE streaming surface (``subscribe``) so the Phase-B
+    dashboard's `hx-ext="sse"` channel works on the same reader the
+    polling endpoint uses.
+
+    Phase B follow-up replaces this with the runtime-wired reader
+    that reads through CR-008 repositories + the live ``Analytics`` /
     ``Portfolio`` / ``Safety`` instances. The Phase-A demo reader is
-    deliberately small (no I/O, no clock-dependent state) so the
-    dashboard's HTMX poll converges on byte-identical responses.
+    deliberately small (no I/O, no clock-dependent state beyond the
+    one ``as_of`` timestamp) so subscribers see byte-identical
+    payloads modulo the timestamp.
     """
 
     def live_state(self, *, account_id, as_of):  # type: ignore[no-untyped-def]
+        return self._snapshot(account_id=account_id, as_of=as_of)
+
+    async def subscribe(self, *, account_id):  # type: ignore[no-untyped-def]
+        """REQ_F_FAS_003 — yields one snapshot every 5 s."""
+        from trading_system.webapp.sse import demo_subscribe
+
+        async for snapshot in demo_subscribe(
+            self._snapshot,
+            account_id=account_id,
+            tick_seconds=5.0,
+        ):
+            yield snapshot
+
+    def _snapshot(self, *, account_id, as_of):  # type: ignore[no-untyped-def]
         # Import locally so this module's import graph stays free of
         # the webui dependency at module load time (only paid when an
         # operator actually boots ``default_app``).

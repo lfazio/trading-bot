@@ -197,6 +197,23 @@
         "summary": "Promote a registered strategy"
       }
     },
+    "/events/live-state": {
+      "get": {
+        "description": "Server-Sent Events channel that pushes the live-state envelope to subscribed clients. Each event's ``id`` is the snapshot's ``as_of`` ISO-8601 timestamp so HTMX `hx-sse` resumes the stream after disconnect.",
+        "operationId": "stream_live_state_events_live_state_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "SSE live-state stream"
+      }
+    },
     "/health": {
       "get": {
         "description": "Return ``{\"status\": \"ok\", \"as_of\": <iso8601>, \"version\": ...}``\nso the container's HEALTHCHECK can poll a stable endpoint without\nauthentication.",

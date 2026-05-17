@@ -4,18 +4,17 @@
 <h1>trading-bot dashboard</h1>
 <p class="muted">Account: <code>{{ account_id }}</code></p>
 
-<section class="panel">
+<section class="panel" hx-ext="sse" sse-connect="/events/live-state?account_id={{ account_id }}">
   <h2>Live state</h2>
   <pre id="live-state"
-       hx-get="/api/accounts/{{ account_id }}/live-state"
-       hx-trigger="load, every 5s"
+       sse-swap="live-state"
        hx-swap="innerHTML">
 loading...
   </pre>
   <p class="muted">
-    Phase&nbsp;A polls every 5&nbsp;s; Phase&nbsp;B replaces this with
-    <code>hx-ext="sse"</code> and a push channel at
-    <code>/events/live-state</code>.
+    Live-state pushed via Server-Sent Events (REQ_F_FAS_003).
+    Falls back gracefully if HTMX's SSE extension can't reach the
+    channel &mdash; refresh the page to reconnect.
   </p>
 </section>
 {% endblock %}

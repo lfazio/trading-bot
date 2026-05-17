@@ -66,6 +66,16 @@ webapp = [
 [tool.setuptools.packages.find]
 include = ["trading_system*"]
 
+# CR-017 Phase A — bundle the FastAPI webapp's Jinja2 templates +
+# static assets into the wheel so the container deploy works
+# without a separate asset-copy step.
+[tool.setuptools.package-data]
+"trading_system.webapp" = [
+    "templates/*.html",
+    "templates/**/*.html",
+    "static/*",
+]
+
 # ---------- ruff ----------
 [tool.ruff]
 line-length = 100

@@ -40,12 +40,14 @@ def test_dashboard_renders_html_with_hx_attributes() -> None:
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
     body = response.text
-    # HTMX polling attributes — phase-A surface (Phase B replaces with sse).
-    assert 'hx-get="/api/accounts/default/live-state"' in body
-    assert "hx-trigger=" in body
-    assert "hx-swap=" in body
-    # Static htmx.min.js reference resolves through Starlette's url_for.
+    # Phase-B surface — HTMX SSE extension subscribes to the push channel.
+    assert 'hx-ext="sse"' in body
+    assert "sse-connect=" in body
+    assert "/events/live-state" in body
+    assert "sse-swap=" in body
+    # Static asset references resolve through Starlette's url_for.
     assert "htmx.min.js" in body
+    assert "htmx-sse.min.js" in body
     # No external CDN imports — REQ_SDS_FAS_003 / REQ_SDD_FAS_003 spirit.
     assert "https://unpkg.com" not in body
     assert "https://cdn." not in body

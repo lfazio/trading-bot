@@ -45,13 +45,17 @@ WORKDIR /build
 COPY pyproject.toml README.md ./
 COPY trading_system/ ./trading_system/
 
-# Build wheels for the project + the [webapp] + [reports] extras so
-# the runtime stage installs offline.
+# Build wheels for the project + the [webapp] extra so the runtime
+# stage installs offline. The [reports] extra (matplotlib + pandas)
+# is intentionally OUT of the runtime image — operators who want
+# trading-bot backtest --report-dir inside the container build a
+# separate trading-bot:reports tag or install in-place. Dropping it
+# keeps the runtime image close to the REQ_F_FAS_007 ≤ 200 MB target.
 # Phase-B addendum: `pip wheel --require-hashes -r requirements.lock`
 # replaces the resolver path with a SHA-256-pinned install
 # (REQ_SDD_FAS_007).
 RUN pip wheel --no-deps --wheel-dir /wheels . \
-    && pip wheel --wheel-dir /wheels '.[webapp,reports]'
+    && pip wheel --wheel-dir /wheels '.[webapp]'
 
 # ============================================================================
 # Stage 2 — runtime
