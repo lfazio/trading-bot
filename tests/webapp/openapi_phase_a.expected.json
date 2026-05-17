@@ -83,6 +83,28 @@
         "title": "PromoteRequest",
         "type": "object"
       },
+      "SessionRequest": {
+        "description": "Body for ``POST /api/session`` \u2014 the operator pastes a token\nissued via the operator-tooling pipeline. ``account_id`` is\n``\"household\"`` for read-scope sessions or the targeted account\nid for mutation-scope sessions.",
+        "properties": {
+          "account_id": {
+            "default": "household",
+            "description": "claim the token SHALL carry (defaults to the household sentinel)",
+            "title": "Account Id",
+            "type": "string"
+          },
+          "token": {
+            "description": "operator HMAC token",
+            "minLength": 1,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "SessionRequest",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -134,7 +156,7 @@
   "paths": {
     "/": {
       "get": {
-        "description": "Render the Phase-A dashboard.\n\nAuthenticated callers (household token) see the chrome plus an\nHTMX `hx-get` block that polls `/api/accounts/default/live-state`\nevery 5 s. Phase B swaps the poll for an SSE channel.",
+        "description": "Render the Phase-B dashboard.\n\nBrowser path is graceful: a missing or invalid session cookie\nredirects to ``/login`` rather than returning a raw 401 JSON.\nTooling (curl + httpx) still gets the JSON-shaped 401 from the\nother endpoints; only the HTML entry point is browser-friendly.",
         "operationId": "dashboard__get",
         "responses": {
           "200": {
@@ -309,6 +331,47 @@
         "summary": "Promote a registered strategy"
       }
     },
+    "/api/session": {
+      "delete": {
+        "operationId": "close_session_api_session_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Close the cookie session"
+      },
+      "post": {
+        "description": "Verifies the supplied operator token and sets the trading-session cookie (HttpOnly + Secure + SameSite=Strict). Subsequent GETs may omit the Authorization header.",
+        "operationId": "open_session_api_session_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open a cookie-backed session"
+      }
+    },
     "/events/backtests/{job_id}": {
       "get": {
         "operationId": "stream_backtest_events_backtests__job_id__get",
@@ -373,6 +436,25 @@
           }
         },
         "summary": "Get Health"
+      }
+    },
+    "/login": {
+      "get": {
+        "description": "Render the login form. No auth \u2014 operators paste a token to\nestablish a cookie session.",
+        "operationId": "login_login_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Login"
       }
     }
   }

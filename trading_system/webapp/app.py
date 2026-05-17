@@ -43,7 +43,9 @@ from trading_system.webapp.job_queue import InProcessJobQueue, JobQueue
 from trading_system.webapp.routers.api.backtests import router as backtests_router
 from trading_system.webapp.routers.api.live_state import router as live_state_router
 from trading_system.webapp.routers.api.registry import router as registry_router
+from trading_system.webapp.routers.api.session import router as session_router
 from trading_system.webapp.routers.views.dashboard import router as dashboard_router
+from trading_system.webapp.routers.views.login import router as login_router
 from trading_system.webapp.sse import router as sse_router
 
 
@@ -121,7 +123,9 @@ def create_app(state: WebappState) -> FastAPI:
     app.include_router(live_state_router)
     app.include_router(registry_router)
     app.include_router(backtests_router)
+    app.include_router(session_router)
     app.include_router(sse_router)
+    app.include_router(login_router)
     app.include_router(dashboard_router)
 
     return app

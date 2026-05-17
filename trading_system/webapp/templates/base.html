@@ -20,6 +20,7 @@
   <nav>
     <a href="/" class="current">dashboard</a>
     <a href="/docs">openapi</a>
+    <a href="#" onclick="fetch('/api/session',{method:'DELETE',credentials:'same-origin'}).then(()=>window.location='/login');return false">log out</a>
   </nav>
   <main>{% block content %}{% endblock %}</main>
 </body>

@@ -1,13 +1,15 @@
 """FastAPI dependency-injection wrappers around ``AccountScopedTokenVerifier``.
 
 REQ refs:
-- REQ_F_FAS_005 — Bearer-token authentication.
-- REQ_SDD_FAS_004 — auth dependencies + raw operator tokens never
-  persisted (the verifier compares HMACs, never raw strings).
+- REQ_F_FAS_005 — both ``Authorization: Bearer`` (for tooling) AND
+  HTTP-only ``trading-session`` cookies (for the HTMX browser path)
+  are accepted. Cookies set by ``POST /api/session`` carry the
+  exact operator token (so the verifier path is unchanged) and are
+  marked ``HttpOnly`` + ``Secure`` + ``SameSite=Strict``.
+- REQ_SDD_FAS_004 — raw operator tokens are never persisted server-
+  side; the cookie payload IS the operator token (encrypted in
+  flight by TLS; not readable by JS thanks to ``HttpOnly``).
 - REQ_NF_FAS_001 / REQ_F_WEB_005 — invariants preserved under FastAPI.
-
-Phase A scope ships **Bearer-token auth only**. The Phase-B cookie
-session lands once the operator wires the session-secret config.
 """
 
 from __future__ import annotations
@@ -24,6 +26,14 @@ from trading_system.models.identifiers import AccountId
 
 
 _BEARER_PREFIX = "Bearer "
+
+SESSION_COOKIE_NAME = "trading-session"
+"""Cookie name the browser uses to carry the operator token.
+
+``POST /api/session`` sets it; ``DELETE /api/session`` clears it.
+``GET`` requests that hit a household-gated endpoint accept either
+this cookie OR the ``Authorization: Bearer`` header.
+"""
 
 
 def _verifier_from_app(request: Request) -> AccountScopedTokenVerifier:
@@ -42,14 +52,22 @@ def _verifier_from_app(request: Request) -> AccountScopedTokenVerifier:
 
 
 def _extract_token(request: Request) -> str | None:
-    """Pull the operator token from ``Authorization: Bearer ...`` or
-    the legacy ``X-Operator-Token`` header (case-insensitive lookup)."""
+    """Pull the operator token from one of three sources, in order:
+
+    1. ``Authorization: Bearer <token>`` header — for curl + tooling.
+    2. ``trading-session`` cookie — for the HTMX browser path
+       (set by ``POST /api/session``).
+    3. ``X-Operator-Token`` header — legacy operator tooling.
+    """
     headers = request.headers
     auth = headers.get("authorization")
     if auth:
         if auth.startswith(_BEARER_PREFIX):
             return auth[len(_BEARER_PREFIX) :].strip() or None
         return auth.strip() or None
+    cookie_token = request.cookies.get(SESSION_COOKIE_NAME)
+    if cookie_token:
+        return cookie_token.strip() or None
     legacy = headers.get("x-operator-token")
     if legacy:
         return legacy.strip() or None

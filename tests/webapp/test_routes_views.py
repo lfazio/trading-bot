@@ -28,10 +28,14 @@ def _client() -> tuple[TestClient, str]:
     return TestClient(app), token
 
 
-def test_dashboard_requires_household_token() -> None:
+def test_dashboard_redirects_to_login_when_unauth() -> None:
+    """Phase-B browser path — the HTML entry point redirects to
+    /login instead of returning raw 401 JSON. Tooling paths still
+    get JSON 401s on the API endpoints."""
     client, _ = _client()
-    response = client.get("/")
-    assert response.status_code == 401
+    response = client.get("/", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
 
 
 def test_dashboard_renders_html_with_hx_attributes() -> None:

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}trading-bot &mdash; log in{% endblock %}
+{% block content %}
+<h1>log in</h1>
+<p class="muted">
+  Paste an operator token below. It will be stored in an
+  <code>HttpOnly</code> cookie so subsequent browser requests carry it
+  automatically; nothing is written to disk on the server.
+</p>
+
+<form id="login-form" onsubmit="return doLogin(event)">
+  <label>
+    Account claim
+    <select name="account_id">
+      <option value="household" selected>household (read-only)</option>
+      <option value="default">default (mutations)</option>
+    </select>
+  </label>
+  <br><br>
+  <label style="display:block">
+    Operator token
+    <textarea name="token" rows="3" cols="80" required></textarea>
+  </label>
+  <br>
+  <button type="submit">log in</button>
+</form>
+
+<pre id="error" style="color:#c33; margin-top:1rem"></pre>
+
+<p class="muted">
+  Don't have a token? Mint one with:
+  <code>python tools/issue_operator_token.py --account household --ttl 86400</code>
+  (the script is shipped in the repo; operators run it locally or via
+  <code>docker exec</code>).
+</p>
+
+<script>
+async function doLogin(event) {
+  event.preventDefault();
+  const form = document.getElementById('login-form');
+  const fd = new FormData(form);
+  const body = {};
+  fd.forEach((v, k) => { body[k] = v; });
+  const errorEl = document.getElementById('error');
+  errorEl.textContent = '';
+  try {
+    const response = await fetch('/api/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      credentials: 'same-origin'
+    });
+    if (response.ok) {
+      window.location = '/';
+      return false;
+    }
+    const text = await response.text();
+    errorEl.textContent = 'login failed (HTTP ' + response.status + '): ' + text;
+  } catch (e) {
+    errorEl.textContent = 'login error: ' + e.message;
+  }
+  return false;
+}
+</script>
+{% endblock %}
