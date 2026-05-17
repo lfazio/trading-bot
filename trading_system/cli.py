@@ -168,27 +168,38 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def _run_backtest(args: argparse.Namespace) -> int:
     """``trading-bot backtest`` — runs the demo + emits a report."""
-    result_or_err = run(
+    outcome_or_err = run(
         config_dir=args.config_dir,
         start=args.start,
         end=args.end,
         use_slippage=args.with_slippage,
     )
-    if isinstance(result_or_err, Err):
-        sys.stderr.write(f"trading-bot backtest: ERROR {result_or_err.error}\n")
+    if isinstance(outcome_or_err, Err):
+        sys.stderr.write(f"trading-bot backtest: ERROR {outcome_or_err.error}\n")
         return 1
+    outcome = outcome_or_err.value
 
-    # MVP-4 hook: emit a report directory. The DashboardView returned
-    # by `run` doesn't carry the full BacktestResult; the report
-    # emission lives downstream of the runtime once main.py
-    # threads the BacktestResult through (Phase-B follow-up).
-    # For MVP-v1 the CLI exits 0 on a successful run; the
-    # report-directory emission lands when main.run returns the
-    # BacktestResult alongside the DashboardView.
-    sys.stdout.write(
-        "trading-bot backtest: OK (run completed; report-artefact emission "
-        "lands when main.run returns a BacktestResult per CR-016 Phase-B)\n"
+    now = datetime.now(UTC)
+    out_dir = (
+        args.report_dir
+        if args.report_dir is not None
+        else Path("var") / "reports" / report_dir_name(now)
     )
+    report_res = write_report(
+        outcome.result,
+        config_hash=outcome.config_hash,
+        out_dir=out_dir,
+        seed=outcome.seed,
+        start_at=args.start,
+        end_at=args.end,
+        data_provider=outcome.data_provider,
+    )
+    if isinstance(report_res, Err):
+        sys.stderr.write(
+            f"trading-bot backtest: ERROR write_report {report_res.error.category}\n"
+        )
+        return 1
+    sys.stdout.write(f"trading-bot backtest: OK report written to {report_res.value}\n")
     return 0
 
 
@@ -275,13 +286,6 @@ def _run_validate_config(args: argparse.Namespace) -> int:
         f"{len(err_report.validated_files)} file(s) validated\n"
     )
     return 1
-
-
-# Avoid the unused-import warning on ``report_dir_name`` /
-# ``write_report`` — they are imported here so the Phase-B hook
-# that threads ``BacktestResult`` through can call them without a
-# fresh import. Stretch for MVP-v1.
-_ = (report_dir_name, write_report)
 
 
 if __name__ == "__main__":

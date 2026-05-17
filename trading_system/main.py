@@ -23,7 +23,9 @@ summary plus the headline dashboard view.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import sys
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -31,6 +33,7 @@ from typing import Any
 
 from trading_system.analytics import Analytics
 from trading_system.backtesting import Backtest, BacktestConfig
+from trading_system.backtesting.result import BacktestResult
 from trading_system.config import SystemConfig, load_system_config, validate_all
 from trading_system.dashboard import Dashboard, DashboardView
 from trading_system.data.fundamentals.composite import CompositeFundamentalsProvider
@@ -63,6 +66,24 @@ from trading_system.tax.config import TaxConfig
 DEFAULT_CONFIG_DIR = Path("config")
 DEFAULT_START = datetime(2026, 1, 1, tzinfo=UTC)
 DEFAULT_END = datetime(2026, 4, 1, tzinfo=UTC)
+
+
+@dataclass(frozen=True, slots=True)
+class RunOutcome:
+    """Bundle produced by a single ``run()`` invocation.
+
+    CR-016 Phase B — the CLI's ``backtest`` handler consumes this
+    to emit the 5-file report directory via
+    ``trading_system.analytics.write_report``. ``view`` keeps the
+    pre-Phase-B return shape so callers that only read the
+    dashboard stay one-line migrations away.
+    """
+
+    view: DashboardView
+    result: BacktestResult
+    config_hash: str
+    seed: int
+    data_provider: str
 
 
 # ----------------------------------------------------------------------
@@ -259,9 +280,15 @@ def run(  # noqa: PLR0913 — orchestration entry; one arg per pipeline stage's 
     timeframe: Timeframe = Timeframe.D1,
     use_slippage: bool = False,
     out_stream: Any = sys.stdout,
-) -> Result[DashboardView, str]:
-    """Run the full pipeline once; return the dashboard view on
-    success or a categorised Err."""
+) -> Result[RunOutcome, str]:
+    """Run the full pipeline once; return the dashboard view + the
+    raw BacktestResult on success, or a categorised Err.
+
+    The returned ``RunOutcome`` carries everything the CR-016 MVP-4
+    ``write_report`` surface needs (config_hash + seed + data
+    provider label) so the CLI can emit the 5-file report directory
+    without a second pass over the configuration.
+    """
     # 1. Configuration (REQ_O_003).
     sys_res = load_system_config(config_dir / "system.yaml")
     if isinstance(sys_res, Err):
@@ -347,7 +374,47 @@ def run(  # noqa: PLR0913 — orchestration entry; one arg per pipeline stage's 
     view = dashboard.render(end)
 
     _print_summary(view, sys_cfg, result, out_stream)
-    return Ok(view)
+    return Ok(
+        RunOutcome(
+            view=view,
+            result=result,
+            config_hash=_config_hash(sys_cfg, start, end, timeframe, use_slippage),
+            seed=sys_cfg.seed,
+            data_provider=sys_cfg.data.provider,
+        )
+    )
+
+
+def _config_hash(
+    sys_cfg: SystemConfig,
+    start: datetime,
+    end: datetime,
+    timeframe: Timeframe,
+    use_slippage: bool,
+) -> str:
+    """Deterministic SHA-256 over the inputs that fully determine
+    the backtest outcome. The manifest's ``config_hash`` matches the
+    CR-008 ``BacktestResultRepository`` replay-tuple convention so
+    two reports built from the same configuration bytes share a
+    config_hash."""
+    payload = "|".join(
+        (
+            str(sys_cfg.starting_capital.amount),
+            sys_cfg.starting_capital.currency.value,
+            str(sys_cfg.seed),
+            sys_cfg.mode,
+            sys_cfg.broker_adapter,
+            sys_cfg.data.provider,
+            sys_cfg.data.cache_root,
+            str(sys_cfg.data.bundled_fixtures),
+            sys_cfg.data.universe,
+            start.isoformat(),
+            end.isoformat(),
+            timeframe.value,
+            str(use_slippage),
+        )
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _eur_zero(sys_cfg: SystemConfig) -> Money:

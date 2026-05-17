@@ -38,15 +38,23 @@ def test_demo_runs_and_returns_dashboard_view() -> None:
         out_stream=out,
     )
     match res:
-        case Ok(view):
-            assert isinstance(view, DashboardView)
+        case Ok(outcome):
+            assert isinstance(outcome.view, DashboardView)
             # REQ_F_DSH_001 fields populated.
-            assert view.allocation, "allocation rows should be populated"
-            assert view.attribution, "attribution should at least carry the NAV row"
-            assert view.attribution[0].kind == "nav"
+            assert outcome.view.allocation, "allocation rows should be populated"
+            assert outcome.view.attribution, (
+                "attribution should at least carry the NAV row"
+            )
+            assert outcome.view.attribution[0].kind == "nav"
             # The mock provider with 3 stocks emits 3 ticks/day; over
             # ~31 days we get ~93 ticks => >= 30 equity points.
-            assert len(view.trade_history) >= 0
+            assert len(outcome.view.trade_history) >= 0
+            # CR-016 Phase B — outcome carries the BacktestResult and
+            # the report-emission knobs the CLI hands to write_report.
+            assert outcome.result is not None
+            assert outcome.config_hash and len(outcome.config_hash) == 64
+            assert outcome.seed >= 0
+            assert outcome.data_provider in ("mock", "yfinance")
         case Err(reason):
             raise AssertionError(f"main.run failed: {reason}")
 

@@ -52,6 +52,7 @@ def test_backtest_missing_optional_args_runs() -> None:
     args = parser.parse_args(["backtest"])
     assert args.cmd == "backtest"
     assert args.with_slippage is False
+    assert args.report_dir is None
 
 
 def test_backtest_unknown_flag_exits_two() -> None:
@@ -67,15 +68,25 @@ def test_backtest_with_slippage_flag_parses() -> None:
     assert args.with_slippage is True
 
 
-def test_backtest_subcommand_runs_through_dispatcher(
-    capsys: pytest.CaptureFixture[str],
+def test_backtest_subcommand_emits_report_directory(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """``main(['backtest'])`` exercises the full dispatcher path
-    against the shipped config + bundled fixtures + mock provider."""
-    exit_code = main(["backtest"])
+    """CR-016 Phase B — ``main(['backtest', '--report-dir', ...])``
+    exercises the full dispatcher path against the shipped config
+    + the bundled fixtures + the mock provider and SHALL emit the
+    5-file report directory at the requested path."""
+    report_dir = tmp_path / "report"
+    exit_code = main(["backtest", "--report-dir", str(report_dir)])
     assert exit_code == 0
     captured = capsys.readouterr()
     assert "trading-bot backtest: OK" in captured.out
+    assert str(report_dir) in captured.out
+    # All 5 MVP-4 artefacts land on disk.
+    assert (report_dir / "trades.csv").is_file()
+    assert (report_dir / "equity-curve.html").is_file()
+    assert (report_dir / "equity-curve.png").is_file()
+    assert (report_dir / "summary.json").is_file()
+    assert (report_dir / "manifest.json").is_file()
 
 
 # ---------------------------------------------------------------------------
