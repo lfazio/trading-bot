@@ -27,10 +27,15 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
+from trading_system.backtesting.monte_carlo.errors import MonteCarloError
+from trading_system.backtesting.monte_carlo.result import (
+    QUINTILE_KEYS,
+    MonteCarloResult,
+)
 from trading_system.backtesting.walk_forward import WFResult, detect_oos_collapse
 from trading_system.models.identifiers import StrategyId
 from trading_system.models.meta import ImprovementReport
-from trading_system.result import Err, Nothing, Ok, Some
+from trading_system.result import Err, Nothing, Ok, Result, Some
 from trading_system.strategy_lab.backtester import LabBacktester, LabBacktestResult
 from trading_system.strategy_lab.candidate import StrategyCandidate
 from trading_system.strategy_lab.evaluator import Evaluator
@@ -42,6 +47,7 @@ from trading_system.strategy_lab.risk_guard import RiskGuard
 from trading_system.strategy_lab.scoring import score_metrics
 
 WalkForwardRunner = Callable[[StrategyCandidate], WFResult]
+MCRunStep = Callable[[StrategyCandidate], Result[MonteCarloResult, MonteCarloError]]
 
 
 @dataclass(slots=True)
@@ -57,6 +63,14 @@ class LoopController:
     candidates_per_cycle: int
     git_sha: str
     walk_forward_runner: WalkForwardRunner | None = None
+    # CR-007 — optional Monte Carlo post-walk-forward gate. When set,
+    # ``mc_run_step`` is invoked per surviving candidate; the runner's
+    # 5th-percentile drawdown is compared against ``mc_drawdown_floor``
+    # and candidates above the floor are rejected with
+    # ``"mc:p5_drawdown_exceeds_phase_floor"``. None ⇒ MC step bypassed
+    # entirely (REQ_F_MCS_005, TC_MCS_008).
+    mc_run_step: MCRunStep | None = None
+    mc_drawdown_floor: Decimal | None = None
 
     def cycle(self, *, cycle_id: str, at: datetime) -> ImprovementReport:
         """Run one full pipeline cycle and return its ImprovementReport."""
@@ -85,6 +99,24 @@ class LoopController:
             if wf is not None and detect_oos_collapse(wf.windows):
                 rejected[c.id] = "oos_collapse"
                 continue
+            # Step 4b — Monte Carlo (CR-007 REQ_F_MCS_005). When the
+            # operator wires a runner, the candidate's 5th-percentile
+            # drawdown SHALL stay at or below ``mc_drawdown_floor`` —
+            # the phase's max-drawdown ceiling pulled from RiskConfig.
+            if self.mc_run_step is not None:
+                mc_outcome = self.mc_run_step(c)
+                match mc_outcome:
+                    case Err(mc_err):
+                        rejected[c.id] = f"mc:{mc_err.category}"
+                        continue
+                    case Ok(mc_result):
+                        if self.mc_drawdown_floor is not None:
+                            p5_drawdown = mc_result.drawdown_percentiles[
+                                QUINTILE_KEYS[0]  # 0.05
+                            ]
+                            if p5_drawdown > self.mc_drawdown_floor:
+                                rejected[c.id] = "mc:p5_drawdown_exceeds_phase_floor"
+                                continue
             metrics = self.evaluator.compute(lr.result, lr.capital_flow, wf=wf)
             verdict = self.risk_guard.evaluate(metrics)
             if not verdict.passed:
