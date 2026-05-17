@@ -201,6 +201,54 @@ python3 tools/traceability-report.py --report   # human-readable summary
 python3 tools/traceability-report.py --check    # CI gate; exit 1 on drift
 ```
 
+### Run a backtest from the CLI
+
+CR-016 ships the `trading-bot` console script — one-shot batch path,
+no HTTP surface. Install the `[reports]` extra to pull matplotlib for
+the equity-curve PNG.
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[reports]"
+
+trading-bot validate-config            # sanity-check config/
+trading-bot backtest                   # → var/reports/<utc-timestamp>/
+open var/reports/2024-baseline/equity-curve.html   # pre-recorded baseline
+```
+
+The 5-file report directory carries `trades.csv` + `equity-curve.{html,png}`
++ `summary.json` + `manifest.json` (with `config_hash` + `seed` +
+`png_sha256` for byte-identical replay verification). See
+[Wiki › Quickstart](https://github.com/lfazio/trading-bot/wiki/Quickstart)
+for the 5-minute path; [User-Manual](https://github.com/lfazio/trading-bot/wiki/User-Manual)
+covers custom configs + providers + persistence.
+
+### Run the webapp (browser dashboard + async backtests)
+
+CR-017 ships a FastAPI surface paired with an HTMX dashboard. The
+`/login` form sets an `HttpOnly` cookie so the browser path needs no
+custom headers. Async backtests submit through `POST /api/backtests`
+and stream progress via SSE.
+
+```bash
+# Mint a secret + a household token.
+export TRADING_BOT_OPERATOR_SECRET=$(python -c 'import secrets; print(secrets.token_hex(32))')
+export TRADING_BOT_TOKEN_TTL_SECONDS=86400
+.venv/bin/python tools/issue_operator_token.py --account household --ttl 86400
+
+# Container path (recommended for ops).
+docker compose up --build           # image ≈ 192 MB, non-root, HEALTHCHECK on /health
+
+# OR: local venv path.
+pip install -e ".[webapp]"
+.venv/bin/uvicorn --factory trading_system.webapp.app:default_app --host 0.0.0.0 --port 8000
+```
+
+Open `http://localhost:8000/`, paste the household token into the
+form, and the dashboard opens. The OpenAPI docs live at
+`http://localhost:8000/docs`. The stdlib `webui/` path (CR-004) stays
+as the zero-dependencies fallback — operators choose at deploy time.
+
 ### Edit documentation
 
 Edit pages in `Documentations/` as ordinary markdown. The submodule is a
