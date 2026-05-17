@@ -1,0 +1,39 @@
+# Quant hypothesis layer config — REQ_F_QNT_004 + REQ_SDD_QNT_008.
+#
+# Bounds for the five-gate HypothesisValidator + overfitting
+# thresholds for ``overfitting_gate``. The full default surface
+# from ``trading_system.strategy_lab.quant.validator.ValidatorConfig``
+# and ``trading_system.strategy_lab.quant.overfitting.OverfittingConfig``
+# applies when a field is omitted.
+quant:
+  validator:
+    # Metric bounds — operator-tuned plausibility ranges. The
+    # validator extracts numeric literals from the hypothesis claim
+    # and rejects out-of-range numbers with
+    # ``hypothesis:bounds:<metric>``.
+    bounds_table:
+      sharpe:                  {lo: -3,    hi: 3}
+      adjusted_sharpe:         {lo: -3,    hi: 3}
+      net_after_tax_return:    {lo: -1,    hi: 10}      # -100% .. +1000%
+      max_drawdown:            {lo: 0,     hi: 1}
+      information_coefficient: {lo: -1,    hi: 1}
+      stability:               {lo: 0,     hi: 1}
+      turnover:                {lo: 0,     hi: 1000}
+
+    metric_vocabulary:
+      - sharpe
+      - adjusted_sharpe
+      - net_after_tax_return
+      - max_drawdown
+      - information_coefficient
+      - stability
+      - turnover
+
+    min_duration_days_for_1d: 30
+    min_window_for_intraday_days: 1
+
+  overfitting:
+    # parameter_to_data_ratio above this trips overfitting_gate.
+    ratio_max: "0.10"
+    # information_coefficient below this trips overfitting_gate.
+    ic_floor:  "0.30"

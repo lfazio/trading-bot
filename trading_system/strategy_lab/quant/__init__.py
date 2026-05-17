@@ -39,7 +39,12 @@ from trading_system.strategy_lab.quant.library import (
     HypothesisLibrary,
     InMemoryHypothesisStore,
 )
+from trading_system.strategy_lab.quant.loader import (
+    QuantConfig,
+    load_quant_config,
+)
 from trading_system.strategy_lab.quant.overfitting import (
+    OverfittingConfig,
     adjusted_sharpe,
     information_coefficient,
     overfitting_gate,
@@ -69,9 +74,12 @@ __all__ = [
     "HypothesisState",
     "HypothesisValidator",
     "InMemoryHypothesisStore",
+    "OverfittingConfig",
+    "QuantConfig",
     "ValidatorConfig",
     "adjusted_sharpe",
     "information_coefficient",
+    "load_quant_config",
     "overfitting_gate",
     "parameter_to_data_ratio",
 ]

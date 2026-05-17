@@ -45,6 +45,8 @@ def test_shipped_config_dir_is_valid() -> None:
             assert "logging.yaml" in report.validated_files
             # notifications.yaml is optional; ships now so it should be validated.
             assert "notifications.yaml" in report.validated_files
+            # quant.yaml ships with a typed loader now.
+            assert "quant.yaml" in report.validated_files
             # Shape-only validators on tax / meta_loop / structured.
             assert "tax.yaml" in report.validated_files
             assert "meta_loop.yaml" in report.validated_files

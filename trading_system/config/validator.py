@@ -37,6 +37,7 @@ from trading_system.phase_engine.loader import load_phase_engine
 from trading_system.result import Err, Ok, Result, catch
 from trading_system.risk.loader import load_risk_config
 from trading_system.safety.loader import load_kill_switch_config
+from trading_system.strategy_lab.quant.loader import load_quant_config
 from trading_system.turbo_selector.loader import load_turbo_selector_config
 
 
@@ -73,6 +74,7 @@ _TYPED_LOADERS: tuple[tuple[str, Callable[[Path], Result[Any, str]], bool], ...]
     ("logging.yaml", load_logging_config, False),  # absent ⇒ defaults
     ("accounts.yaml", load_accounts_yaml, False),  # absent ⇒ single-account default
     ("notifications.yaml", load_notifications_config, False),  # absent ⇒ defaults
+    ("quant.yaml", load_quant_config, False),  # absent ⇒ defaults
 )
 
 
@@ -93,7 +95,6 @@ _SHAPE_ONLY: tuple[_ShapeOnly, ...] = (
     # Phase-B sub-CRs; the shape check here catches typos in the
     # operator's YAML file (REQ_SDS_CFG_002) ahead of the typed
     # loader landing.
-    _ShapeOnly("quant.yaml", "quant", required=False),
     _ShapeOnly("webui.yaml", "webui", required=False),
 )
 

@@ -20,6 +20,7 @@ fields — see ``trading_system/strategy_lab/metrics.py``).
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal
 
 from trading_system.result import Err, Ok, Result
@@ -29,6 +30,31 @@ from trading_system.strategy_lab.metrics import StrategyMetrics
 # Default thresholds — overrideable per-call.
 DEFAULT_RATIO_MAX: Decimal = Decimal("0.10")
 DEFAULT_IC_FLOOR: Decimal = Decimal("0.30")
+
+
+@dataclass(frozen=True, slots=True)
+class OverfittingConfig:
+    """Operator-tunable overfitting thresholds.
+
+    Mirrors ``overfitting_gate``'s defaults so a deployment without
+    ``config/quant.yaml`` keeps the documented v1 behaviour
+    (REQ_SDS_CFG_002).
+    """
+
+    ratio_max: Decimal = DEFAULT_RATIO_MAX
+    ic_floor: Decimal = DEFAULT_IC_FLOOR
+
+    def __post_init__(self) -> None:
+        if not (Decimal("0") < self.ratio_max <= Decimal("1")):
+            raise ValueError(
+                f"OverfittingConfig.ratio_max must lie in (0, 1], "
+                f"got {self.ratio_max}"
+            )
+        if not (Decimal("-1") <= self.ic_floor <= Decimal("1")):
+            raise ValueError(
+                f"OverfittingConfig.ic_floor must lie in [-1, 1], "
+                f"got {self.ic_floor}"
+            )
 
 
 def parameter_to_data_ratio(metrics: StrategyMetrics) -> Decimal:

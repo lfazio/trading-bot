@@ -38,9 +38,12 @@ def test_package_exports_documented_public_surface() -> None:
         "HypothesisState",
         "HypothesisValidator",
         "InMemoryHypothesisStore",
+        "OverfittingConfig",
+        "QuantConfig",
         "ValidatorConfig",
         "adjusted_sharpe",
         "information_coefficient",
+        "load_quant_config",
         "overfitting_gate",
         "parameter_to_data_ratio",
     }
@@ -57,11 +60,21 @@ def test_package_exports_documented_public_surface() -> None:
 
 
 def test_no_runtime_module_imports_strategy_lab_quant() -> None:
-    """No module under ``trading_system/`` outside
-    ``trading_system/strategy_lab/`` SHALL import
-    ``trading_system.strategy_lab.quant``. The runtime stays
-    offline-quant-blind so a packaging mistake can't accidentally
-    pull the meta-loop into production code paths."""
+    """No runtime decisioning module SHALL import
+    ``trading_system.strategy_lab.quant`` (REQ_NF_QNT_001). The
+    offline-only invariant keeps the meta-loop research code off
+    the trading critical path.
+
+    Documented exceptions:
+      - ``trading_system/config/validator.py`` imports
+        ``strategy_lab.quant.loader.load_quant_config`` so the C2
+        startup gate can validate ``config/quant.yaml`` against the
+        typed schema. This is config-validation only — the loader
+        returns a frozen ``QuantConfig`` and never instantiates a
+        HypothesisValidator / HypothesisLibrary. The trading hot
+        path stays offline-quant-blind.
+    """
+    allowed_callers = (_TRADING_SYSTEM_DIR / "config" / "validator.py",)
     offenders: list[str] = []
     for py_file in _TRADING_SYSTEM_DIR.rglob("*.py"):
         # Skip the package itself + every strategy_lab module.
@@ -70,6 +83,8 @@ def test_no_runtime_module_imports_strategy_lab_quant() -> None:
             continue
         except ValueError:
             pass
+        if py_file in allowed_callers:
+            continue
         tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom):
