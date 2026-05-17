@@ -39,3 +39,10 @@ Thumbs.db
 
 # Local tooling state
 .rtk/
+
+# Runtime artefacts — keep only the pre-recorded baseline (CR-016 MVP-6)
+# Each parent dir must be re-included before child unignores are reachable.
+var/*
+!var/reports/
+var/reports/*
+!var/reports/2024-baseline/
