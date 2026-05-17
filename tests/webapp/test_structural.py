@@ -29,6 +29,11 @@ _ALLOWED_PROJECT_IMPORT_PREFIXES = (
     "trading_system.analytics",
     "trading_system.persistence",
     "trading_system.result",
+    # CR-017 Phase B — the backtest JobQueue worker bridges into the
+    # public main.run entry point (same as trading_system/cli.py).
+    # Deferred-imported so the routes never pull in runtime internals
+    # at module load time; only the worker child process pays the cost.
+    "trading_system.main",
 )
 
 _FORBIDDEN_PROJECT_IMPORT_PREFIXES = (

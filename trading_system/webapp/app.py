@@ -27,6 +27,8 @@ Phase B follow-ups (deferred):
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -37,6 +39,8 @@ from fastapi.templating import Jinja2Templates
 
 from trading_system.accounts.token_verifier import AccountScopedTokenVerifier
 from trading_system.webapp.health import router as health_router
+from trading_system.webapp.job_queue import InProcessJobQueue, JobQueue
+from trading_system.webapp.routers.api.backtests import router as backtests_router
 from trading_system.webapp.routers.api.live_state import router as live_state_router
 from trading_system.webapp.routers.api.registry import router as registry_router
 from trading_system.webapp.routers.views.dashboard import router as dashboard_router
@@ -61,6 +65,7 @@ class WebappState:
     live_state_reader: Any | None = None
     registry_promoter: Any | None = None
     promotion_audit_notifier: Any | None = None
+    job_queue: JobQueue | None = None
     templates: Jinja2Templates = field(init=False)
 
     def __post_init__(self) -> None:
@@ -74,6 +79,17 @@ def create_app(state: WebappState) -> FastAPI:
     Phase A's wiring is operator-driven (the production deploy fills
     every field; tests fill the subset their endpoints exercise).
     """
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+        """REQ_SDD_FAS_005 — close the JobQueue executor on shutdown."""
+        try:
+            yield
+        finally:
+            queue = getattr(application.state, "job_queue", None)
+            if queue is not None and hasattr(queue, "close"):
+                queue.close()
+
     app = FastAPI(
         title="trading-bot webapp",
         description=(
@@ -82,6 +98,7 @@ def create_app(state: WebappState) -> FastAPI:
             "dashboard. Phase B adds SSE + JobQueue + cookie sessions."
         ),
         version="0.1.0",
+        lifespan=lifespan,
     )
 
     # Mount static assets first so the templates' url_for resolves.
@@ -97,11 +114,13 @@ def create_app(state: WebappState) -> FastAPI:
     app.state.live_state_reader = state.live_state_reader
     app.state.registry_promoter = state.registry_promoter
     app.state.promotion_audit_notifier = state.promotion_audit_notifier
+    app.state.job_queue = state.job_queue
 
     # Routers.
     app.include_router(health_router)
     app.include_router(live_state_router)
     app.include_router(registry_router)
+    app.include_router(backtests_router)
     app.include_router(sse_router)
     app.include_router(dashboard_router)
 
@@ -141,10 +160,13 @@ def default_app() -> FastAPI:
         secret=secret_env.encode("utf-8"),
         ttl_seconds=ttl_seconds,
     )
+    workers = int(os.environ.get("TRADING_BOT_JOB_WORKERS", "2"))
+    queue = InProcessJobQueue(workers=workers)
     return create_app(
         WebappState(
             token_verifier=verifier,
             live_state_reader=_DemoLiveStateReader(),
+            job_queue=queue,
         )
     )
 

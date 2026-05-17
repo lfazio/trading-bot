@@ -1,6 +1,45 @@
 {
   "components": {
     "schemas": {
+      "BacktestSubmitRequest": {
+        "description": "Body shape for ``POST /api/backtests``.\n\nMirrors the CLI's ``trading-bot backtest`` flags so operators\ncan drive a remote run with the same knobs they'd type locally.",
+        "properties": {
+          "account_id": {
+            "default": "default",
+            "title": "Account Id",
+            "type": "string"
+          },
+          "config_dir": {
+            "default": "config",
+            "description": "config directory inside the container/host",
+            "title": "Config Dir",
+            "type": "string"
+          },
+          "end": {
+            "description": "backtest end (ISO-8601 with timezone)",
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "description": "backtest start (ISO-8601 with timezone)",
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          },
+          "with_slippage": {
+            "default": false,
+            "title": "With Slippage",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "BacktestSubmitRequest",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -145,6 +184,79 @@
         "summary": "Read live state for an account"
       }
     },
+    "/api/backtests": {
+      "get": {
+        "operationId": "list_backtests_api_backtests_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List submitted backtests"
+      },
+      "post": {
+        "description": "Returns 202 + job_id. The worker runs in a separate process (REQ_NF_WEB_001 child-process isolation). Poll GET /api/backtests/{job_id} or subscribe to GET /events/backtests/{job_id} for progress.",
+        "operationId": "submit_backtest_api_backtests_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BacktestSubmitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit an async backtest"
+      }
+    },
+    "/api/backtests/{job_id}": {
+      "get": {
+        "operationId": "get_backtest_api_backtests__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read a single backtest's status + summary"
+      }
+    },
     "/api/registry/{strategy_id}/promote": {
       "post": {
         "description": "REQ_F_FAS_001 / REQ_F_FAS_005 \u2014 mutation endpoint gated by the\naccount-scoped operator token.",
@@ -195,6 +307,43 @@
           }
         },
         "summary": "Promote a registered strategy"
+      }
+    },
+    "/events/backtests/{job_id}": {
+      "get": {
+        "operationId": "stream_backtest_events_backtests__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "SSE progress stream for a backtest job"
       }
     },
     "/events/live-state": {
