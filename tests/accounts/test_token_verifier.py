@@ -30,6 +30,23 @@ _NOW = datetime(2026, 5, 16, 12, 0, tzinfo=UTC)
 
 
 # ---------------------------------------------------------------------------
+# Default _clock SHALL return a timezone-aware datetime so the
+# subtraction in verify() doesn't trip when issued_at carries an
+# offset (operators routinely call ``issue(now=datetime.now(UTC))``).
+# Regression for the user-manual snippet that surfaced this bug.
+# ---------------------------------------------------------------------------
+
+
+def test_default_clock_is_timezone_aware() -> None:
+    """The default ``_clock`` SHALL return a tz-aware datetime so a
+    token issued with ``datetime.now(UTC)`` verifies successfully
+    without the caller having to inject a clock."""
+    v = AccountScopedTokenVerifier(secret=b"shh")
+    token = v.issue(account_id="alpha", now=datetime.now(UTC))
+    assert v.verify(token, account_id="alpha") is True
+
+
+# ---------------------------------------------------------------------------
 # Invariants
 # ---------------------------------------------------------------------------
 

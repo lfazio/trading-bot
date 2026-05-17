@@ -19,7 +19,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 
 HOUSEHOLD_CLAIM: str = "household"
@@ -37,7 +37,11 @@ class AccountScopedTokenVerifier:
 
     secret: bytes
     ttl_seconds: int = 300
-    _clock: object = datetime.now  # injectable for tests
+    # Injectable for tests; the default SHALL return a tz-aware
+    # ``datetime`` so the subtraction in ``verify()`` doesn't trip
+    # when the issued token's timestamp carries an offset (which
+    # operator-tooled ``issue(now=datetime.now(UTC))`` always does).
+    _clock: object = staticmethod(lambda: datetime.now(UTC))
 
     def __post_init__(self) -> None:
         if not self.secret:
