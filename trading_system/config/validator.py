@@ -31,6 +31,7 @@ import yaml
 
 from trading_system.accounts.yaml_loader import load_accounts_yaml
 from trading_system.config.system import load_system_config
+from trading_system.notifications.loader import load_notifications_config
 from trading_system.observability.loader import load_logging_config
 from trading_system.phase_engine.loader import load_phase_engine
 from trading_system.result import Err, Ok, Result, catch
@@ -71,6 +72,7 @@ _TYPED_LOADERS: tuple[tuple[str, Callable[[Path], Result[Any, str]], bool], ...]
     ("turbos.yaml", load_turbo_selector_config, True),
     ("logging.yaml", load_logging_config, False),  # absent ⇒ defaults
     ("accounts.yaml", load_accounts_yaml, False),  # absent ⇒ single-account default
+    ("notifications.yaml", load_notifications_config, False),  # absent ⇒ defaults
 )
 
 
@@ -87,6 +89,12 @@ _SHAPE_ONLY: tuple[_ShapeOnly, ...] = (
     _ShapeOnly("tax.yaml", "tax", required=False),
     _ShapeOnly("meta_loop.yaml", "meta_loop", required=False),
     _ShapeOnly("structured.yaml", "structured", required=False),
+    # Phase-A YAMLs whose typed loaders land with their respective
+    # Phase-B sub-CRs; the shape check here catches typos in the
+    # operator's YAML file (REQ_SDS_CFG_002) ahead of the typed
+    # loader landing.
+    _ShapeOnly("quant.yaml", "quant", required=False),
+    _ShapeOnly("webui.yaml", "webui", required=False),
 )
 
 

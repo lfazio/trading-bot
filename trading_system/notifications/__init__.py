@@ -52,6 +52,12 @@ from trading_system.notifications.fanout import (
     NotificationFanOut,
     RetryPolicy,
 )
+from trading_system.notifications.loader import (
+    ApprovalConfig,
+    NotificationsConfig,
+    RetryConfig,
+    load_notifications_config,
+)
 from trading_system.notifications.payloads import (
     AnomalyAlert,
     ApprovalResponse,
@@ -67,6 +73,7 @@ __all__ = [
     "AlertChannel",
     "AnalyticsReader",
     "AnomalyAlert",
+    "ApprovalConfig",
     "ApprovalGate",
     "ApprovalResponse",
     "Error",
@@ -76,13 +83,16 @@ __all__ = [
     "NotificationChannel",
     "NotificationFanOut",
     "NotificationPayload",
+    "NotificationsConfig",
     "PortfolioReader",
     "RealizationLine",
     "RegistryReader",
     "ResponseInbox",
+    "RetryConfig",
     "RetryPolicy",
     "Summary",
     "SummaryPublisher",
     "TradeApprovalRequest",
     "canonical_json_line",
+    "load_notifications_config",
 ]

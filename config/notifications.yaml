@@ -1,0 +1,25 @@
+# Notifications config — REQ_F_NOT_002 + REQ_SDD_NOT_008.
+#
+# v1 ships ``local_log`` as the only channel; Phase B adds ``email``
+# and ``whatsapp``. Operators may comment out channels they don't
+# want; the list MUST be non-empty (LocalLogChannel is the
+# always-available baseline).
+notifications:
+  channels:
+    - local_log
+
+  retry:
+    max_attempts: 3
+    base_delay_seconds: 0.05
+    growth_factor: 2.0
+
+  approval:
+    timeout_seconds: 60
+    # Approval gate is a no-op below ``threshold_amount`` (REQ_F_NOT_004).
+    # Default 0 means every high-stakes call goes through the gate;
+    # phase-6 deployments typically raise this to ~1% of household
+    # equity so the operator isn't paged for routine trades.
+    threshold_amount: "0"
+    threshold_currency: EUR
+
+  local_log_path: var/logs/notifications.jsonl

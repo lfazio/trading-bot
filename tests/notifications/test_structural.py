@@ -24,6 +24,7 @@ def test_package_exports_documented_public_surface() -> None:
         "AlertChannel",
         "AnalyticsReader",
         "AnomalyAlert",
+        "ApprovalConfig",
         "ApprovalGate",
         "ApprovalResponse",
         "Error",
@@ -33,15 +34,18 @@ def test_package_exports_documented_public_surface() -> None:
         "NotificationChannel",
         "NotificationFanOut",
         "NotificationPayload",
+        "NotificationsConfig",
         "PortfolioReader",
         "RealizationLine",
         "RegistryReader",
         "ResponseInbox",
+        "RetryConfig",
         "RetryPolicy",
         "Summary",
         "SummaryPublisher",
         "TradeApprovalRequest",
         "canonical_json_line",
+        "load_notifications_config",
     }
     assert set(nots_pkg.__all__) == expected
     for name in expected:
