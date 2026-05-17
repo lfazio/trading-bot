@@ -1,0 +1,41 @@
+# EU dividend starter universe — 3 stocks aligned with the bundled
+# yfinance fixtures shipped under data/yfinance-fixtures/.
+#
+# This is the universe the bundled demo uses. Operators wanting a
+# broader universe (~30 EU dividend aristocrats, ~40 CAC40) point
+# the CLI at the larger presets shipped alongside this one + record
+# real Yahoo data via tools/yfinance_recorder.py.
+#
+# Stock IDs match the bundled-fixture symbol directories so the
+# YFinanceCache lookups resolve.
+
+name: eu-dividend-starter
+description: |
+  Three-stock EU dividend starter set aligned with the bundled
+  offline yfinance fixtures. Used by the trading-bot demo for the
+  zero-network 5-minute operator path (CR-016 MVP-v1).
+
+stocks:
+  - id: ASML.AS
+    symbol: ASML
+    exchange: AS              # Euronext Amsterdam
+    currency: EUR
+    isin: NL0010273215
+    sector: tech
+    country: NL
+
+  - id: BNP.PA
+    symbol: BNP
+    exchange: PA              # Euronext Paris
+    currency: EUR
+    isin: FR0000131104
+    sector: financials
+    country: FR
+
+  - id: SAN.PA
+    symbol: SAN
+    exchange: PA              # Euronext Paris
+    currency: EUR
+    isin: FR0000120578
+    sector: healthcare
+    country: FR

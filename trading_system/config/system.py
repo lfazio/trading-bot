@@ -14,7 +14,7 @@ REQ_SDS_CFG_001, REQ_SDD_API_004 (frozen Config), REQ_SDD_ERR_002
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -23,6 +23,47 @@ import yaml
 
 from trading_system.models.money import Currency, Money
 from trading_system.result import Err, Ok, Result, catch
+
+
+@dataclass(frozen=True, slots=True)
+class DataProviderConfig:
+    """Per-deployment data-provider selection — CR-016 MVP-2.
+
+    ``provider`` selects which ``MarketDataProvider`` the runtime
+    instantiates at startup:
+      - ``"mock"``  — ``MockMarketDataProvider`` (legacy demo path;
+        synthetic universe; zero network).
+      - ``"yfinance"`` — ``YFinanceMarketDataProvider`` reading
+        from ``cache_root``; auto-populates the cache from
+        ``data/yfinance-fixtures/`` when ``bundled_fixtures``
+        is true + the cache is empty.
+
+    ``cache_root`` defaults to ``.cache/yfinance/`` matching the
+    yfinance recorder's default. Operators with a private dataset
+    point at a different root.
+
+    ``bundled_fixtures`` (default ``True``) controls the offline
+    fallback path — when set, an empty cache at startup is
+    populated from the shipped fixtures so the demo runs without
+    network. Disable in production deployments that strictly want
+    live recordings.
+    """
+
+    provider: str = "mock"
+    cache_root: str = ".cache/yfinance"
+    bundled_fixtures: bool = True
+    universe: str = ""  # optional — MVP-3 universe preset name
+
+    def __post_init__(self) -> None:
+        if self.provider not in ("mock", "yfinance"):
+            raise ValueError(
+                f"DataProviderConfig.provider must be one of "
+                f"['mock', 'yfinance'], got {self.provider!r}"
+            )
+        if not self.cache_root.strip():
+            raise ValueError(
+                "DataProviderConfig.cache_root must be non-empty"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +79,10 @@ class SystemConfig:
     seed: int
     mode: str
     broker_adapter: str
+    # CR-016 MVP-2 — data-provider selection. Defaults preserve the
+    # pre-MVP-2 demo behaviour (mock provider) so existing
+    # deployments are bit-identical.
+    data: DataProviderConfig = field(default_factory=DataProviderConfig)
 
     def __post_init__(self) -> None:
         if self.starting_capital.amount <= 0:
@@ -133,12 +178,60 @@ def load_system_config(path: Path | str) -> Result[SystemConfig, str]:  # noqa: 
             f"(got {type(adapter_raw).__name__}) ({p})"
         )
 
+    # CR-016 MVP-2 — optional ``data:`` section.
+    data_section = raw.get("data", {})
+    if not isinstance(data_section, Mapping):
+        return Err(
+            f"config:schema: 'data' section must be a mapping "
+            f"(got {type(data_section).__name__}) ({p})"
+        )
+    data_kwargs: dict[str, Any] = {}
+    if "provider" in data_section:
+        v = data_section["provider"]
+        if not isinstance(v, str):
+            return Err(
+                f"config:schema: data.provider must be a string "
+                f"(got {type(v).__name__}) ({p})"
+            )
+        data_kwargs["provider"] = v
+    if "cache_root" in data_section:
+        v = data_section["cache_root"]
+        if not isinstance(v, str):
+            return Err(
+                f"config:schema: data.cache_root must be a string "
+                f"(got {type(v).__name__}) ({p})"
+            )
+        data_kwargs["cache_root"] = v
+    if "bundled_fixtures" in data_section:
+        v = data_section["bundled_fixtures"]
+        if not isinstance(v, bool):
+            return Err(
+                f"config:schema: data.bundled_fixtures must be a bool "
+                f"(got {type(v).__name__}) ({p})"
+            )
+        data_kwargs["bundled_fixtures"] = v
+    if "universe" in data_section:
+        v = data_section["universe"]
+        if not isinstance(v, str):
+            return Err(
+                f"config:schema: data.universe must be a string "
+                f"(got {type(v).__name__}) ({p})"
+            )
+        data_kwargs["universe"] = v
+    data_result = catch(lambda: DataProviderConfig(**data_kwargs), ValueError)
+    match data_result:
+        case Err(exc):
+            return Err(f"config:invariant: {exc!s} ({p})")
+        case Ok(data_cfg):
+            pass
+
     built = catch(
         lambda: SystemConfig(
             starting_capital=Money(amount_dec, cur),
             seed=seed_raw,
             mode=mode_raw,
             broker_adapter=adapter_raw,
+            data=data_cfg,
         ),
         ValueError,
     )

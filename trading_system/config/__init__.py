@@ -14,6 +14,7 @@ REQ_SDD_ERR_002 (categorised Errs).
 from __future__ import annotations
 
 from trading_system.config.system import (
+    DataProviderConfig,
     SystemConfig,
     load_system_config,
 )
@@ -23,6 +24,7 @@ from trading_system.config.validator import (
 )
 
 __all__ = [
+    "DataProviderConfig",
     "SystemConfig",
     "ValidationReport",
     "load_system_config",

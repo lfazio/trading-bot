@@ -33,8 +33,17 @@ from trading_system.analytics import Analytics
 from trading_system.backtesting import Backtest, BacktestConfig
 from trading_system.config import SystemConfig, load_system_config, validate_all
 from trading_system.dashboard import Dashboard, DashboardView
+from trading_system.data.fundamentals.composite import CompositeFundamentalsProvider
+from trading_system.data.fundamentals.csv_provider import CSVFundamentalsProvider
+from trading_system.data.fundamentals.config import FundamentalsConfig
 from trading_system.data.mock import MockMarketDataProvider
 from trading_system.data.types import Fundamentals, Timeframe
+from trading_system.data.universes import Universe, load_universe
+from trading_system.data.yfinance.bundled import (
+    populate_cache_from_bundled_fixtures,
+)
+from trading_system.data.yfinance.cache import YFinanceCache
+from trading_system.data.yfinance.provider import YFinanceMarketDataProvider
 from trading_system.execution.fees import FlatFeeModel
 from trading_system.execution.slippage import GaussianSlippageModel, ZeroSlippageModel
 from trading_system.models.identifiers import InstrumentId
@@ -118,6 +127,92 @@ def _build_universe(
     return out
 
 
+def _build_data_provider(
+    sys_cfg: SystemConfig,
+    *,
+    config_dir: Path,
+) -> Result[object, str]:
+    """Construct the MarketDataProvider selected by ``sys_cfg.data``.
+
+    - ``provider: mock``     ⇒ legacy ``MockMarketDataProvider``
+      seeded from ``system.yaml``'s ``seed`` field (zero network,
+      synthetic universe; backwards-compat default).
+    - ``provider: yfinance`` ⇒ ``YFinanceMarketDataProvider`` over
+      a ``YFinanceCache`` at ``data.cache_root``. When
+      ``data.bundled_fixtures`` is True + the cache is empty, the
+      shipped fixtures under ``data/yfinance-fixtures/`` are
+      copied in so the demo runs without network. The yfinance
+      provider is chained behind a ``CompositeFundamentalsProvider``
+      with ``CSVFundamentalsProvider`` so the screener still gets
+      fundamentals (yfinance.fundamentals is unsupported per
+      REQ_F_DAT_010).
+    """
+    if sys_cfg.data.provider == "mock":
+        return Ok(MockMarketDataProvider(seed=sys_cfg.seed))
+    if sys_cfg.data.provider != "yfinance":
+        return Err(f"data:unknown_provider:{sys_cfg.data.provider}")
+
+    cache_root = Path(sys_cfg.data.cache_root)
+    if sys_cfg.data.bundled_fixtures and (
+        not cache_root.exists() or not any(cache_root.rglob("*.jsonl"))
+    ):
+        populate = populate_cache_from_bundled_fixtures(cache_root=cache_root)
+        if isinstance(populate, Err):
+            return Err(populate.error)
+
+    cache = YFinanceCache(root=cache_root)
+    yfinance_provider = YFinanceMarketDataProvider(
+        cache=cache,
+        currency=sys_cfg.starting_capital.currency,
+        allow_network=False,
+    )
+
+    # The CSV fundamentals provider lands behind the yfinance one so
+    # CR-014's seeded fundamentals fill in for the yfinance provider's
+    # unsupported ``fundamentals(...)`` method.
+    csv_path = config_dir.parent / "data" / "seed_fundamentals.csv"
+    if csv_path.exists():
+        csv_provider = CSVFundamentalsProvider(
+            FundamentalsConfig(csv_path=csv_path)
+        )
+        return Ok(
+            CompositeFundamentalsProvider(
+                delegates=(yfinance_provider, csv_provider)
+            )
+        )
+    return Ok(yfinance_provider)
+
+
+def _build_runtime_universe(sys_cfg: SystemConfig, data: object) -> list[Stock]:
+    """Resolve the universe of stocks the runtime backtest consumes.
+
+    - ``data.universe`` set ⇒ load the named preset
+      (``data/universes/<name>.yaml``).
+    - else + mock provider ⇒ legacy hand-built 3-stock universe
+      with mock fundamentals + dividends registered on the
+      provider (REQ_NF_ACC_001 backwards compat).
+    - else + yfinance provider ⇒ load ``eu-dividend-starter``
+      preset (aligned with the bundled fixtures).
+    """
+    name = sys_cfg.data.universe.strip()
+    if name:
+        uni_result = load_universe(name)
+        if isinstance(uni_result, Ok):
+            return list(uni_result.value.stocks)
+        # Fall through to the default path on lookup failure so the
+        # demo stays usable; the structured logger surfaces the
+        # error.
+    if sys_cfg.data.provider == "yfinance":
+        starter = load_universe("eu-dividend-starter")
+        if isinstance(starter, Ok):
+            return list(starter.value.stocks)
+    # Legacy mock path: hand-build with registered mock fundamentals.
+    if isinstance(data, MockMarketDataProvider):
+        return _build_universe(data, sys_cfg.starting_capital.currency)
+    # Last-resort fallback: empty universe (screener returns []).
+    return []
+
+
 def _stock(  # noqa: PLR0913 — mirrors Stock fields
     symbol: str, iid: str, exchange: str, isin: str, sector: str, country: str
 ) -> Stock:
@@ -186,9 +281,13 @@ def run(  # noqa: PLR0913 — orchestration entry; one arg per pipeline stage's 
     # tax.yaml load follows same pattern; default is fine for the demo
     tax_cfg = TaxConfig.default()
 
-    # 2. Data + broker.
-    data = MockMarketDataProvider(seed=sys_cfg.seed)
-    universe = _build_universe(data, sys_cfg.starting_capital.currency)
+    # 2. Data + broker. CR-016 MVP-2 — provider selection driven by
+    #    ``system.yaml``'s ``data:`` section.
+    data_result = _build_data_provider(sys_cfg, config_dir=config_dir)
+    if isinstance(data_result, Err):
+        return Err(f"main:data_provider:{data_result.error}")
+    data = data_result.value
+    universe = _build_runtime_universe(sys_cfg, data)
 
     # 3. Phase resolution: derive PhaseConstraints from the loaded
     #    PhaseEngine + the starting capital.

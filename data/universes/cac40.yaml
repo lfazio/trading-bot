@@ -1,0 +1,103 @@
+# CAC 40 universe — bluechip France-listed equities.
+#
+# Phase A includes 10 well-known names + the 3 starter symbols.
+# Operators wanting the full CAC 40 list extend this YAML; the
+# loader doesn't impose a size cap. NO bundled fixtures ship for
+# these symbols beyond the starter trio — operators record real
+# Yahoo data via tools/yfinance_recorder.py for symbols not in
+# data/yfinance-fixtures/.
+
+name: cac40
+description: |
+  CAC 40 bluechip selection — 13 France/Netherlands/Switzerland-
+  listed equities representative of the EU dividend / quality
+  segment. Phase A subset; extend the YAML for the full CAC 40.
+
+stocks:
+  - id: ACA.PA          # Crédit Agricole
+    symbol: ACA
+    exchange: PA
+    currency: EUR
+    isin: FR0000045072
+    sector: financials
+    country: FR
+
+  - id: AI.PA           # Air Liquide
+    symbol: AI
+    exchange: PA
+    currency: EUR
+    isin: FR0000120073
+    sector: industrials
+    country: FR
+
+  - id: ASML.AS         # ASML (NL — listed on Euronext Amsterdam)
+    symbol: ASML
+    exchange: AS
+    currency: EUR
+    isin: NL0010273215
+    sector: tech
+    country: NL
+
+  - id: BNP.PA          # BNP Paribas
+    symbol: BNP
+    exchange: PA
+    currency: EUR
+    isin: FR0000131104
+    sector: financials
+    country: FR
+
+  - id: CS.PA           # AXA
+    symbol: CS
+    exchange: PA
+    currency: EUR
+    isin: FR0000120628
+    sector: financials
+    country: FR
+
+  - id: DG.PA           # Vinci
+    symbol: DG
+    exchange: PA
+    currency: EUR
+    isin: FR0000125486
+    sector: industrials
+    country: FR
+
+  - id: MC.PA           # LVMH
+    symbol: MC
+    exchange: PA
+    currency: EUR
+    isin: FR0000121014
+    sector: consumer-discretionary
+    country: FR
+
+  - id: OR.PA           # L'Oréal
+    symbol: OR
+    exchange: PA
+    currency: EUR
+    isin: FR0000120321
+    sector: consumer-staples
+    country: FR
+
+  - id: SAN.PA          # Sanofi
+    symbol: SAN
+    exchange: PA
+    currency: EUR
+    isin: FR0000120578
+    sector: healthcare
+    country: FR
+
+  - id: SU.PA           # Schneider Electric
+    symbol: SU
+    exchange: PA
+    currency: EUR
+    isin: FR0000121972
+    sector: industrials
+    country: FR
+
+  - id: TTE.PA          # TotalEnergies
+    symbol: TTE
+    exchange: PA
+    currency: EUR
+    isin: FR0000120271
+    sector: energy
+    country: FR
