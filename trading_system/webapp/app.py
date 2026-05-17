@@ -118,13 +118,13 @@ def default_app() -> FastAPI:
         the ``AccountScopedTokenVerifier`` consumes.
       - ``TRADING_BOT_TOKEN_TTL_SECONDS`` (optional, default ``300``).
 
-    ``live_state_reader`` / ``registry_promoter`` /
-    ``promotion_audit_notifier`` start unset; Phase B wires them via a
-    follow-up factory that consumes ``config/webapp.yaml`` + CR-008
-    repositories. Endpoints that depend on those slots fail-fast with
-    a 500 + a categorised ``webapp:reader_missing`` /
-    ``webapp:registry_promoter_missing`` body so the operator
-    diagnoses a half-wired deployment immediately.
+    A small ``_DemoLiveStateReader`` wires in so the dashboard is
+    end-to-end runnable on a fresh container: ``GET /`` renders, the
+    HTMX poll hits ``/api/accounts/default/live-state`` and the JSON
+    block fills. The ``registry_promoter`` slot stays unset — the
+    promotion endpoint surfaces a 500 ``webapp:registry_promoter_missing``
+    until Phase B wires the CR-008 ``RegistryRepository``. Operators
+    diagnose a half-wired deployment immediately.
     """
     import os
 
@@ -139,4 +139,40 @@ def default_app() -> FastAPI:
         secret=secret_env.encode("utf-8"),
         ttl_seconds=ttl_seconds,
     )
-    return create_app(WebappState(token_verifier=verifier))
+    return create_app(
+        WebappState(
+            token_verifier=verifier,
+            live_state_reader=_DemoLiveStateReader(),
+        )
+    )
+
+
+class _DemoLiveStateReader:
+    """Minimal in-process ``LiveStateReader`` so ``default_app()``'s
+    dashboard renders end-to-end on a fresh container.
+
+    Phase B replaces this with the runtime-wired reader that reads
+    through CR-008 repositories + the live ``Analytics`` /
+    ``Portfolio`` / ``Safety`` instances. The Phase-A demo reader is
+    deliberately small (no I/O, no clock-dependent state) so the
+    dashboard's HTMX poll converges on byte-identical responses.
+    """
+
+    def live_state(self, *, account_id, as_of):  # type: ignore[no-untyped-def]
+        # Import locally so this module's import graph stays free of
+        # the webui dependency at module load time (only paid when an
+        # operator actually boots ``default_app``).
+        from decimal import Decimal
+
+        from trading_system.models.phase import Phase
+        from trading_system.models.safety import KillSwitchState
+        from trading_system.webui.schemas import LiveStateResponse
+
+        return LiveStateResponse(
+            account_id=account_id,
+            as_of=as_of,
+            ks_state=KillSwitchState.ACTIVE,
+            phase=Phase(1),
+            open_positions_count=0,
+            equity_after_tax=Decimal("10000.00"),
+        )
