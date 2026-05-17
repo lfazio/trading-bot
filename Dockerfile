@@ -17,14 +17,17 @@
 # steps require a network fetch + a checked-in lockfile so they land
 # alongside the CI integration that asserts digest stability.
 
-ARG BASE_TAG=3.12-slim-bookworm
-# Future Phase-B addendum: `ARG BASE_DIGEST=sha256:<pinned>` so the
-# build is fully reproducible. Today the tag is the version pin.
+# REQ_NF_FAS_002 — pin the base image by digest so the build is
+# reproducible across registry-mirror churn. Operators regenerate the
+# digest by running ``docker pull python:3.12-slim-bookworm`` and
+# copying the reported sha256 here; update both stages in lockstep
+# (REQ_SDD_FAS_007 ARG-pattern; same digest binds builder + runtime).
+ARG BASE_DIGEST=sha256:d193c6f51a7dbd10395d6328de3a7edb0516fb0608ca138036576f574c3e07d2
 
 # ============================================================================
 # Stage 1 — builder
 # ============================================================================
-FROM python:${BASE_TAG} AS builder
+FROM python:3.12-slim-bookworm@${BASE_DIGEST} AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -42,25 +45,21 @@ RUN apt-get update \
 
 WORKDIR /build
 
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md requirements.lock ./
 COPY trading_system/ ./trading_system/
 
-# Build wheels for the project + the [webapp] extra so the runtime
-# stage installs offline. The [reports] extra (matplotlib + pandas)
-# is intentionally OUT of the runtime image — operators who want
-# trading-bot backtest --report-dir inside the container build a
-# separate trading-bot:reports tag or install in-place. Dropping it
-# keeps the runtime image close to the REQ_F_FAS_007 ≤ 200 MB target.
-# Phase-B addendum: `pip wheel --require-hashes -r requirements.lock`
-# replaces the resolver path with a SHA-256-pinned install
-# (REQ_SDD_FAS_007).
-RUN pip wheel --no-deps --wheel-dir /wheels . \
-    && pip wheel --wheel-dir /wheels '.[webapp]'
+# REQ_SDD_FAS_007 — install from a SHA-256-pinned lockfile. Any
+# tampered hash fails the build (TC_CONT_005). The project wheel
+# itself is built --no-deps from the local source; runtime deps
+# resolve exclusively from requirements.lock.
+RUN pip install --require-hashes --no-deps -r requirements.lock \
+    && pip wheel --no-deps --wheel-dir /wheels -r requirements.lock \
+    && pip wheel --no-deps --wheel-dir /wheels .
 
 # ============================================================================
 # Stage 2 — runtime
 # ============================================================================
-FROM python:${BASE_TAG} AS runtime
+FROM python:3.12-slim-bookworm@${BASE_DIGEST} AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
