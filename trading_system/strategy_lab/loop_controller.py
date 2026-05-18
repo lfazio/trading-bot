@@ -71,6 +71,15 @@ class LoopController:
     # entirely (REQ_F_MCS_005, TC_MCS_008).
     mc_run_step: MCRunStep | None = None
     mc_drawdown_floor: Decimal | None = None
+    # CR-001 Phase B step 2 — optional AnomalyAlert emitter
+    # (REQ_F_NOT_007 / REQ_SDD_NOT_006). When wired, every
+    # rejected candidate triggers one AnomalyAlert through the
+    # configured NotificationFanOut after the cycle completes
+    # (single batch so the fan-out's deterministic-ordering
+    # invariant holds). ``None`` is the documented no-op path
+    # for backtest + single-account demo callers
+    # (REQ_NF_NOT_001 mirror).
+    anomaly_emitter: object | None = None  # AnomalyEmitter; Protocol-shaped here to keep the import-graph closed
 
     def cycle(self, *, cycle_id: str, at: datetime) -> ImprovementReport:
         """Run one full pipeline cycle and return its ImprovementReport."""
@@ -160,6 +169,19 @@ class LoopController:
                 rejected[c.id] = f"registry_store_failed:{store_res.error}"
                 continue
             accepted_candidates.append(c)
+
+        # CR-001 Phase B step 2 — emit one AnomalyAlert per rejection
+        # through the configured fan-out (REQ_F_NOT_007 / REQ_SDD_NOT_006).
+        # Deferred-import keeps the optimizer's offline-only import-graph
+        # closed for callers that don't wire the emitter (REQ_NF_QNT_001
+        # mirror — the import cost is paid only when emission actually
+        # runs).
+        if self.anomaly_emitter is not None and rejected:
+            from trading_system.notifications.emitters import (
+                emit_strategy_rejections,
+            )
+
+            emit_strategy_rejections(self.anomaly_emitter, rejected)
 
         # Step 8 — report.
         return _build_report(

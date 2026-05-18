@@ -59,7 +59,7 @@ class RiskEngine:
     # Pre-trade gate (REQ_SDD_ALG_016)
     # ------------------------------------------------------------------
 
-    def pre_trade(
+    def pre_trade(  # noqa: PLR0913 — risk gate composition; one kwarg per opt-in surface
         self,
         proposal: TradeProposal,
         portfolio: PortfolioView,
@@ -68,6 +68,7 @@ class RiskEngine:
         *,
         correlation_lookup: Callable[[Instrument], Decimal | None] | None = None,
         cross_account_gate: Callable[[TradeProposal], Result[None, str]] | None = None,
+        approval_gate: Callable[[TradeProposal], Result[None, str]] | None = None,
     ) -> ValidationResult:
         # 1. Kill-switch check (REQ_S_KS_011)
         if self.safety.must_halt():
@@ -107,15 +108,37 @@ class RiskEngine:
         if regime in forbidden:
             return ValidationResult.reject("regime_forbidden")
 
-        # 7. Cross-account concentration (REQ_F_ACC_008 / REQ_SDS_ACC_004).
+        # 7. Approval gate (REQ_SDS_NOT_002 — CR-001 Phase B).
+        # Per the evaluation-order contract: per-account risk →
+        # approval → cross-account risk → submit. The gate runs
+        # AFTER the cheap per-account rejections (gates 1-6) and
+        # BEFORE the cross-account aggregation so multi-account
+        # deployments don't burn an operator-approval round-trip on
+        # a trade that would have been rejected by a per-account
+        # gate anyway. Backtest + single-account demo callers pass
+        # ``approval_gate=None`` and this gate is a no-op
+        # (REQ_NF_ACC_001 / REQ_NF_NOT_001 bit-identical).
+        #
+        # The gate is a Callable[[TradeProposal], Result[None, str]]
+        # rather than the concrete ApprovalGate so the risk engine
+        # stays free of an import on notifications/. The caller
+        # builds the closure that constructs the TradeApprovalRequest
+        # from the proposal + invokes ApprovalGate.evaluate; the
+        # closure's Err propagates here (default-deny on timeout
+        # surfaces as ``notifications:approval_timeout:<id>``).
+        if approval_gate is not None:
+            outcome = approval_gate(proposal)
+            if isinstance(outcome, Err):
+                return ValidationResult.reject(outcome.error)
+
+        # 8. Cross-account concentration (REQ_F_ACC_008 / REQ_SDS_ACC_004).
         # In single-account deployments the caller passes
         # ``cross_account_gate=None`` (default) and this gate is a
         # no-op — REQ_NF_ACC_001 backwards compatibility. Multi-
         # account callers pass a closure that captures the registry
-        # + household PortfolioGroup; the gate runs AFTER the
-        # cheaper per-account checks above so multi-account
-        # deployments aren't paying for cross-account work on
-        # trades that would have been rejected anyway.
+        # + household PortfolioGroup; the gate runs LAST so multi-
+        # account deployments aren't paying for cross-account work
+        # on trades that would have been rejected anyway.
         if cross_account_gate is not None:
             outcome = cross_account_gate(proposal)
             if isinstance(outcome, Err):
