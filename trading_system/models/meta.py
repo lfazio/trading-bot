@@ -89,6 +89,15 @@ class ImprovementReport:
 
     ``deltas`` carries metric-name → delta (e.g., {"return": Decimal("0.012"),
     "drawdown": Decimal("-0.005"), "sharpe": Decimal("0.18")}).
+
+    ``hypothesis_ids`` (CR-002 Phase B — REQ_F_QNT_005) — every
+    shipped strategy traces back to at least one VALIDATED
+    Hypothesis. The tuple holds the hypothesis ids the best
+    accepted candidate was generated from. Sorted lexicographically
+    so two reports built from the same hypothesis set serialise
+    byte-identically (REQ_NF_QNT_002 family). Empty on cold start
+    when no hypothesis-driven generator was wired; populated by
+    Phase-B generators that consume the ``HypothesisLibrary``.
     """
 
     cycle_id: str
@@ -99,6 +108,7 @@ class ImprovementReport:
     rejection_reasons: dict[StrategyId, str]
     generated_at: datetime
     notes: str = field(default="")
+    hypothesis_ids: tuple[str, ...] = field(default=())
 
     def __post_init__(self) -> None:
         if not self.cycle_id:
@@ -118,6 +128,29 @@ class ImprovementReport:
                 "ImprovementReport must record either an accepted best_strategy_id "
                 "or at least one rejection"
             )
+        # REQ_NF_QNT_002 family — hypothesis_ids MUST be sorted +
+        # de-duplicated so two reports with the same source
+        # hypothesis set produce byte-identical serialisations.
+        # Check entry-level invariants first so operators see the
+        # most-specific error even if the tuple is also unsorted.
+        if self.hypothesis_ids:
+            for hid in self.hypothesis_ids:
+                if not str(hid).strip():
+                    raise ValueError(
+                        "ImprovementReport.hypothesis_ids entries must be non-empty"
+                    )
+            seen = set(self.hypothesis_ids)
+            if len(seen) != len(self.hypothesis_ids):
+                raise ValueError(
+                    "ImprovementReport.hypothesis_ids must be unique; "
+                    f"got duplicates in {self.hypothesis_ids}"
+                )
+            if list(self.hypothesis_ids) != sorted(self.hypothesis_ids):
+                raise ValueError(
+                    "ImprovementReport.hypothesis_ids must be sorted "
+                    "lexicographically for replay determinism; "
+                    f"got {self.hypothesis_ids}"
+                )
 
 
 @dataclass(frozen=True, slots=True)

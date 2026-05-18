@@ -34,7 +34,17 @@ from trading_system.strategies.protocol import Strategy
 
 @dataclass(frozen=True, slots=True)
 class StrategyCandidate:
-    """One candidate strategy under evaluation in a meta-loop cycle."""
+    """One candidate strategy under evaluation in a meta-loop cycle.
+
+    ``hypothesis_ids`` (CR-002 Phase B — REQ_F_QNT_005) — every
+    candidate generated from a VALIDATED Hypothesis carries its
+    source-hypothesis ids here so the cycle's ``ImprovementReport``
+    can pin "this strategy traces back to hypothesis X, Y" without
+    a separate lookup. v1 hypothesis-naive generators leave the
+    tuple empty; Phase-B generator_v2 (CR-002 follow-up) populates
+    it. Sorted + de-duplicated; the constructor enforces the
+    invariant for byte-identical replay (REQ_NF_QNT_002 family).
+    """
 
     id: StrategyId
     strategy_factory: Callable[[], Strategy]
@@ -42,7 +52,24 @@ class StrategyCandidate:
     seed: int
     config_hash: str
     generated_at: datetime
+    hypothesis_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.config_hash:
             raise ValueError("StrategyCandidate.config_hash must be non-empty")
+        if self.hypothesis_ids:
+            for hid in self.hypothesis_ids:
+                if not str(hid).strip():
+                    raise ValueError(
+                        "StrategyCandidate.hypothesis_ids entries must be non-empty"
+                    )
+            if len(set(self.hypothesis_ids)) != len(self.hypothesis_ids):
+                raise ValueError(
+                    "StrategyCandidate.hypothesis_ids must be unique; "
+                    f"got duplicates in {self.hypothesis_ids}"
+                )
+            if list(self.hypothesis_ids) != sorted(self.hypothesis_ids):
+                raise ValueError(
+                    "StrategyCandidate.hypothesis_ids must be sorted "
+                    f"lexicographically; got {self.hypothesis_ids}"
+                )

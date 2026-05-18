@@ -233,6 +233,13 @@ def _build_report(  # noqa: PLR0913 — orchestration helper; flat shape matches
     best_id = accepted[0].id if accepted else None
     deltas = _build_deltas(scored, accepted, baseline_metrics)
     risk_assessment = _risk_assessment(scored, accepted, baseline_metrics)
+    # CR-002 Phase B (REQ_F_QNT_005) — aggregate the source-
+    # hypothesis ids of every accepted candidate, de-dup, sort
+    # lexicographically so the report serialises byte-identically
+    # for the same accepted-set across runs (REQ_NF_QNT_002 family).
+    aggregated_hypothesis_ids: tuple[str, ...] = tuple(
+        sorted({hid for c in accepted for hid in c.hypothesis_ids})
+    )
     return ImprovementReport(
         cycle_id=cycle_id,
         best_strategy_id=best_id,
@@ -242,6 +249,7 @@ def _build_report(  # noqa: PLR0913 — orchestration helper; flat shape matches
         rejection_reasons=dict(rejected),
         generated_at=at,
         notes=f"candidates={len(candidates)};accepted={len(accepted)}",
+        hypothesis_ids=aggregated_hypothesis_ids,
     )
 
 
