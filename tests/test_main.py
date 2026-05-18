@@ -55,6 +55,12 @@ def test_demo_runs_and_returns_dashboard_view() -> None:
             assert outcome.config_hash and len(outcome.config_hash) == 64
             assert outcome.seed >= 0
             assert outcome.data_provider in ("mock", "yfinance")
+            # CR-006 Phase B — RunOutcome surfaces the registry +
+            # household-drawdown observer. v1 ships a single default
+            # account per REQ_NF_ACC_001.
+            assert outcome.registry is not None
+            assert outcome.registry.size() == 1
+            assert outcome.household_drawdown_trip in (None, "DEGRADE", "KILL")
         case Err(reason):
             raise AssertionError(f"main.run failed: {reason}")
 

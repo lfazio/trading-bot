@@ -76,17 +76,23 @@ def test_phase_6_foundation_does_not_touch_execution_layer() -> None:
                 )
 
 
-def test_main_py_does_not_yet_use_accounts() -> None:
-    """REQ_F_ACC_003 / REQ_NF_ACC_001 — Phase-6 foundation is additive.
-    ``main.py`` SHALL keep working without ``accounts/`` in the
-    pipeline. The runtime-wiring follow-up rewires main.py;
-    the foundation slice does not."""
+def test_main_py_builds_account_registry() -> None:
+    """REQ_F_ACC_002 / REQ_F_ACC_003 — CR-006 Phase B replaces the
+    pre-Phase-B "main.py SHALL NOT import accounts/" invariant
+    with "main.py SHALL build the AccountRegistry via the factory".
+    The legacy single-account default per REQ_NF_ACC_001 is the
+    runtime's first registry consumer; multi-account deployments
+    layer on via ``accounts.yaml`` (Phase-B follow-up)."""
     main_py = _REPO_ROOT / "trading_system" / "main.py"
-    tree = ast.parse(main_py.read_text(encoding="utf-8"), filename=str(main_py))
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
-            module = node.module or ""
-            assert not module.startswith("trading_system.accounts"), (
-                "main.py imports trading_system.accounts — the Phase-6 "
-                "foundation slice should be additive"
-            )
+    text = main_py.read_text(encoding="utf-8")
+    # Phase B contract: main.py SHALL invoke the factory entry.
+    assert "build_default_registry" in text, (
+        "main.py does not call build_default_registry — Phase B wiring "
+        "missing per REQ_F_ACC_002 / REQ_F_ACC_003"
+    )
+    # The household-drawdown observer SHALL be wired so REQ_F_ACC_009
+    # actually fires on the demo path (no-op for under-threshold).
+    assert "HouseholdDrawdownTrigger" in text, (
+        "main.py does not import HouseholdDrawdownTrigger — REQ_F_ACC_009 "
+        "wiring missing"
+    )

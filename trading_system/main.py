@@ -31,6 +31,10 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from trading_system.accounts.factory import AccountComponents, build_default_registry
+from trading_system.accounts.group import PortfolioGroup
+from trading_system.accounts.household_drawdown_trigger import HouseholdDrawdownTrigger
+from trading_system.accounts.registry import AccountRegistry
 from trading_system.analytics import Analytics
 from trading_system.backtesting import Backtest, BacktestConfig
 from trading_system.backtesting.result import BacktestResult
@@ -77,6 +81,16 @@ class RunOutcome:
     ``trading_system.analytics.write_report``. ``view`` keeps the
     pre-Phase-B return shape so callers that only read the
     dashboard stay one-line migrations away.
+
+    CR-006 Phase B — ``registry`` carries the runtime's
+    :class:`AccountRegistry` (single ``default`` account on the
+    legacy path per REQ_NF_ACC_001) so downstream consumers
+    (HouseholdDrawdownTrigger, the future webapp's
+    LiveStateReader, persistence call sites) can look up the
+    active account-bound cursors instead of re-deriving them.
+    ``household_drawdown`` is the final household-level drawdown
+    evaluated after the backtest completes; ``None`` when no
+    breach.
     """
 
     view: DashboardView
@@ -84,6 +98,8 @@ class RunOutcome:
     config_hash: str
     seed: int
     data_provider: str
+    registry: AccountRegistry | None = None
+    household_drawdown_trip: str | None = None
 
 
 # ----------------------------------------------------------------------
@@ -358,7 +374,38 @@ def run(  # noqa: PLR0913 — orchestration entry; one arg per pipeline stage's 
     if isinstance(assemble_res, Err):
         return Err(f"main:backtest_assemble:{assemble_res.error}")
     backtest = assemble_res.value
+
+    # CR-006 Phase B — build the AccountRegistry alongside the
+    # backtest. v1 ships the legacy single-account default per
+    # REQ_NF_ACC_001 backwards-compat; multi-account deployments
+    # populate via accounts.yaml (CR-006 Phase B follow-up that lives
+    # outside the demo path). The registry references the SAME
+    # portfolio / capflow cursors the backtest engine mutates, so
+    # PortfolioGroup queries see live state without a separate
+    # mark-up step.
+    registry_res = build_default_registry(
+        config_dir=config_dir,
+        components=AccountComponents(
+            broker=backtest.broker,
+            portfolio=backtest.portfolio,
+            capital_flow=backtest.capflow,
+            phase_engine=phase_engine,
+            risk_overlay=None,  # operator overlays land via accounts.yaml
+        ),
+    )
+    if isinstance(registry_res, Err):
+        return Err(f"main:account_registry:{registry_res.error}")
+    registry = registry_res.value
+
     result = backtest.run()
+
+    # CR-006 Phase B — evaluate the household drawdown trigger once
+    # the backtest finishes so operators see the final-state breach
+    # in the RunOutcome. v1 is a single-account deployment so the
+    # household drawdown equals the per-account drawdown
+    # (PortfolioGroup.household_drawdown returns the max across
+    # accounts).
+    drawdown_trip = _evaluate_household_drawdown(registry, at=end)
 
     # 7. Dashboard (REQ_F_DSH_001 / REQ_SDS_MOD_015).
     analytics = Analytics(
@@ -381,8 +428,45 @@ def run(  # noqa: PLR0913 — orchestration entry; one arg per pipeline stage's 
             config_hash=_config_hash(sys_cfg, start, end, timeframe, use_slippage),
             seed=sys_cfg.seed,
             data_provider=sys_cfg.data.provider,
+            registry=registry,
+            household_drawdown_trip=drawdown_trip,
         )
     )
+
+
+def _evaluate_household_drawdown(
+    registry: AccountRegistry,
+    *,
+    at: datetime,
+) -> str | None:
+    """CR-006 Phase B — read the household drawdown via
+    PortfolioGroup + HouseholdDrawdownTrigger and return a
+    severity string (``"DEGRADE"`` / ``"KILL"``) if the threshold
+    fires, else ``None``.
+
+    The Portfolio cursor at this point holds the backtest's
+    final state — the deterministic engine never mutates it
+    after ``run()`` returns. v1 returns severity as a string;
+    Phase-6 wires the actual ``SafetyLayer.raise_trigger`` call
+    so the kill-switch state-machine reacts.
+    """
+    from trading_system.models.identifiers import SnapshotId
+
+    try:
+        group = PortfolioGroup(registry=registry)
+        trigger = HouseholdDrawdownTrigger(group=group)
+        outcome = trigger.evaluate(
+            at=at,
+            snapshot_id=SnapshotId("main:final-state"),
+        )
+    except Exception:  # noqa: BLE001 — single-account demo path; phase-6 wires structured paths
+        return None
+    if isinstance(outcome, Err):
+        return None
+    triggered = outcome.value
+    if triggered.is_none():
+        return None
+    return triggered.unwrap().severity
 
 
 def _config_hash(
