@@ -73,8 +73,22 @@ def test_no_runtime_module_imports_strategy_lab_quant() -> None:
         returns a frozen ``QuantConfig`` and never instantiates a
         HypothesisValidator / HypothesisLibrary. The trading hot
         path stays offline-quant-blind.
+      - ``trading_system/persistence/repositories/quant.py`` is the
+        CR-008 follow-up that backs the in-memory
+        ``HypothesisStore`` with a SQLite repository
+        (REQ_SDD_QNT_007). The repo lives in the persistence layer,
+        not the runtime tick path; the offline-only invariant
+        holds at the runtime-import level. Operator tooling
+        instantiates the repo out-of-band.
+      - ``trading_system/persistence/repositories/__init__.py``
+        re-exports ``HypothesisRepository`` for the same reason —
+        public surface for operator tooling.
     """
-    allowed_callers = (_TRADING_SYSTEM_DIR / "config" / "validator.py",)
+    allowed_callers = (
+        _TRADING_SYSTEM_DIR / "config" / "validator.py",
+        _TRADING_SYSTEM_DIR / "persistence" / "repositories" / "quant.py",
+        _TRADING_SYSTEM_DIR / "persistence" / "repositories" / "__init__.py",
+    )
     offenders: list[str] = []
     for py_file in _TRADING_SYSTEM_DIR.rglob("*.py"):
         # Skip the package itself + every strategy_lab module.
