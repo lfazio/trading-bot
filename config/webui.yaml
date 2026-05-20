@@ -1,0 +1,22 @@
+# CR-004 stdlib webui — operator-tunable knobs.
+#
+# Absent file ⇒ defaults (the loader falls back). REQ_SDD_WEB_008.
+#
+# Schema:
+#   host                       — bind address (default 127.0.0.1)
+#   port                       — TCP port (default 8080; 0 = ephemeral)
+#   idempotency_backend        — "memory" or "persistence"
+#                                "memory" — Phase-A in-process dict;
+#                                "persistence" — CR-008 SQLite-backed
+#                                (REQ_F_WEB_010 / REQ_SDS_WEB_004).
+#   idempotency_ttl_seconds    — TTL applied to every recorded key
+#                                (default 600).
+#   job_workers                — async-backtest worker pool size
+#                                (Phase-B JobQueue follow-up).
+
+webui:
+  host: 127.0.0.1
+  port: 8080
+  idempotency_backend: memory
+  idempotency_ttl_seconds: 600
+  job_workers: 2

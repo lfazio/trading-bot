@@ -101,3 +101,67 @@ def test_webui_does_not_reach_backtesting_or_strategy_lab_directly() -> None:
                         f"{py_file.name} imports {module} — "
                         f"webui Phase A must not depend on {prefix}"
                     )
+
+
+# ---------------------------------------------------------------------------
+# REQ_SDD_WEB_006 — routes-specific tightened audit
+# ---------------------------------------------------------------------------
+
+
+def test_routes_specifically_import_only_protocols_and_schemas() -> None:
+    """REQ_SDD_WEB_006 — every ``webui/routes/*.py`` SHALL go
+    through Protocol-shaped readers + ``webui.schemas`` /
+    ``webui.auth`` / ``webui.server`` only. Concrete
+    runtime types (Portfolio, Analytics, Registry, RiskEngine,
+    BrokerAdapter) SHALL be reached via the Protocol slot on
+    ``app.state``, never imported directly. This is a tighter
+    audit than the package-wide one above so route files stay
+    plumbing-only.
+    """
+    routes_dir = _WEBUI_DIR / "routes"
+    # Routes may freely import from these prefixes — everything
+    # else (concrete runtime types) is reached through a
+    # Protocol parameter the handler receives at construction.
+    allowed_project_prefixes = (
+        "trading_system.webui",
+        "trading_system.models",
+        "trading_system.accounts",
+        "trading_system.notifications",
+        "trading_system.persistence",  # Protocol slot for repos
+        "trading_system.result",
+    )
+    forbidden_concrete_modules = (
+        "trading_system.execution",
+        "trading_system.safety",
+        "trading_system.risk",
+        "trading_system.strategy_lab",
+        "trading_system.backtesting",
+        "trading_system.data",
+        "trading_system.portfolio",
+        "trading_system.analytics",
+        "trading_system.dashboard",
+    )
+    for py_file in routes_dir.rglob("*.py"):
+        tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
+        for node in ast.walk(tree):
+            modules: list[str] = []
+            if isinstance(node, ast.ImportFrom):
+                modules.append(node.module or "")
+            elif isinstance(node, ast.Import):
+                modules.extend(alias.name for alias in node.names)
+            for module in modules:
+                if not module.startswith("trading_system."):
+                    continue
+                for forbidden in forbidden_concrete_modules:
+                    assert not module.startswith(forbidden), (
+                        f"{py_file.name} imports {module} — "
+                        f"REQ_SDD_WEB_006 routes audit: routes SHALL NOT "
+                        f"reach {forbidden} directly; use a Protocol slot"
+                    )
+                assert any(
+                    module.startswith(p) for p in allowed_project_prefixes
+                ), (
+                    f"{py_file.name} imports {module} — "
+                    "not in the closed routes allow-list "
+                    "(REQ_SDD_WEB_006)"
+                )

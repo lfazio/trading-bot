@@ -85,6 +85,15 @@ class DecisionLine:
     action: str
     reason: str
 
+    def render_canonical(self) -> str:
+        """REQ_SDD_WEB_007 — canonical-JSON body for this row.
+
+        Sorted keys + ``Decimal`` as string + ISO-8601 datetimes
+        with timezone via the project-wide canonical serialiser.
+        Two calls with identical inputs produce byte-identical
+        strings (REQ_NF_WEB_002 family)."""
+        return canonical_json_line(self)
+
 
 @dataclass(frozen=True, slots=True)
 class LiveStateResponse:
@@ -107,6 +116,14 @@ class LiveStateResponse:
                 f"got {self.open_positions_count}"
             )
 
+    def render_canonical(self) -> str:
+        """REQ_SDD_WEB_007 — canonical-JSON body. Sorted keys +
+        Decimal as string + ISO-8601 datetimes with UTC offset.
+        The HTTP envelope's request_id / server_timestamp are
+        appended OUTSIDE this body so they don't break the
+        REQ_NF_WEB_002 byte-identical-replay contract."""
+        return canonical_json_line(self)
+
 
 @dataclass(frozen=True, slots=True)
 class PromoteResponse:
@@ -121,6 +138,12 @@ class PromoteResponse:
             raise ValueError("PromoteResponse.strategy_id must be non-empty")
         if not str(self.account_id).strip():
             raise ValueError("PromoteResponse.account_id must be non-empty")
+
+    def render_canonical(self) -> str:
+        """REQ_SDD_WEB_007 — canonical-JSON body for the promotion
+        response. Same sorted-key + Decimal-as-string contract as
+        the read responses; envelope fields go outside."""
+        return canonical_json_line(self)
 
 
 # Phase-B follow-ups will add SummaryResponse, BacktestArchiveResponse,

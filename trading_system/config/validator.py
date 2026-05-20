@@ -39,6 +39,7 @@ from trading_system.risk.loader import load_risk_config
 from trading_system.safety.loader import load_kill_switch_config
 from trading_system.strategy_lab.quant.loader import load_quant_config
 from trading_system.turbo_selector.loader import load_turbo_selector_config
+from trading_system.webui.loader import load_webui_config
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +76,7 @@ _TYPED_LOADERS: tuple[tuple[str, Callable[[Path], Result[Any, str]], bool], ...]
     ("accounts.yaml", load_accounts_yaml, False),  # absent ⇒ single-account default
     ("notifications.yaml", load_notifications_config, False),  # absent ⇒ defaults
     ("quant.yaml", load_quant_config, False),  # absent ⇒ defaults
+    ("webui.yaml", load_webui_config, False),   # CR-004 Phase B — absent ⇒ defaults
 )
 
 
@@ -95,7 +97,7 @@ _SHAPE_ONLY: tuple[_ShapeOnly, ...] = (
     # Phase-B sub-CRs; the shape check here catches typos in the
     # operator's YAML file (REQ_SDS_CFG_002) ahead of the typed
     # loader landing.
-    _ShapeOnly("webui.yaml", "webui", required=False),
+    # webui.yaml is now driven by the typed loader above; no shape-only entry.
 )
 
 
