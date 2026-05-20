@@ -124,4 +124,6 @@ def test_dashboard_accepts_cookie_session() -> None:
     )
     response = client.get("/")
     assert response.status_code == 200
-    assert "trading-bot dashboard" in response.text
+    # New chrome: brand is "trading bot" + "Dashboard" h1 on this page.
+    assert "Dashboard" in response.text
+    assert "trading" in response.text

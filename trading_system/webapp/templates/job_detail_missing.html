@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% set active_nav = 'jobs' %}
+{% block title %}Run not found &mdash; trading-bot{% endblock %}
+{% block content %}
+<h1>Run not found</h1>
+<p class="subhead">No backtest run matches <code>{{ job_id }}</code>.</p>
+<div class="alert warn">
+  The job may have been submitted to a different worker pool, or the
+  webapp restarted since the run was kicked off (the v1 InProcessJobQueue
+  keeps state in-memory). Submit a fresh run from the backtests page.
+</div>
+<a class="button" href="/jobs">Back to backtests</a>
+{% endblock %}

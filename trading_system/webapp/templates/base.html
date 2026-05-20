@@ -4,24 +4,25 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{% block title %}trading-bot{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}" />
   <script src="{{ url_for('static', path='htmx.min.js') }}" defer></script>
   <script src="{{ url_for('static', path='htmx-sse.min.js') }}" defer></script>
-  <style>
-    body { font-family: ui-monospace, monospace; max-width: 64rem; margin: 2rem auto; padding: 0 1rem; }
-    nav { border-bottom: 1px solid #ccc; padding-bottom: 0.5rem; margin-bottom: 1rem; }
-    nav a { margin-right: 1rem; text-decoration: none; color: inherit; }
-    nav a.current { font-weight: bold; }
-    .panel { border: 1px solid #ccc; padding: 1rem; margin: 1rem 0; }
-    .panel h2 { margin-top: 0; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.05em; }
-    .muted { color: #777; font-size: 0.9rem; }
-  </style>
 </head>
 <body>
-  <nav>
-    <a href="/" class="current">dashboard</a>
-    <a href="/docs">openapi</a>
-    <a href="#" onclick="fetch('/api/session',{method:'DELETE',credentials:'same-origin'}).then(()=>window.location='/login');return false">log out</a>
-  </nav>
-  <main>{% block content %}{% endblock %}</main>
+  {% if show_chrome|default(True) %}
+  <header class="topbar">
+    <div class="brand">trading&nbsp;<span class="muted">bot</span></div>
+    <nav>
+      <a href="/"     class="{% if active_nav == 'dashboard' %}current{% endif %}">Dashboard</a>
+      <a href="/jobs" class="{% if active_nav == 'jobs' %}current{% endif %}">Backtests</a>
+      <a href="/docs">API</a>
+    </nav>
+    <div class="topbar-actions">
+      {% if account_id %}<span class="badge accent">{{ account_id }}</span>{% endif %}
+      <button type="button" class="secondary" onclick="fetch('/api/session',{method:'DELETE',credentials:'same-origin'}).then(()=>window.location='/login')">Log out</button>
+    </div>
+  </header>
+  {% endif %}
+  <main class="page">{% block content %}{% endblock %}</main>
 </body>
 </html>

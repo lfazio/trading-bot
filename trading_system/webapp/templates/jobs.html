@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% set active_nav = 'jobs' %}
+{% block title %}Backtests &mdash; trading-bot{% endblock %}
+{% block content %}
+<h1>Backtests</h1>
+<p class="subhead">Submit a backtest run and monitor it without leaving the page.</p>
+
+<section class="card">
+  <h2>New run</h2>
+  <form hx-post="/jobs/submit"
+        hx-target="#jobs-section"
+        hx-swap="outerHTML"
+        hx-encoding="application/x-www-form-urlencoded"
+        hx-disabled-elt="find button">
+    <div class="card-grid">
+      <div class="field">
+        <label for="config_dir">Config directory</label>
+        <input type="text" id="config_dir" name="config_dir" value="config" required>
+      </div>
+      <div class="field">
+        <label for="start">Start <span class="hint">ISO-8601</span></label>
+        <input type="text" id="start" name="start" value="2024-01-02T00:00:00+00:00" required>
+      </div>
+      <div class="field">
+        <label for="end">End <span class="hint">ISO-8601</span></label>
+        <input type="text" id="end" name="end" value="2024-12-31T00:00:00+00:00" required>
+      </div>
+      <div class="field" style="align-self:end">
+        <label><input type="checkbox" name="with_slippage" value="on"> Apply slippage model</label>
+      </div>
+    </div>
+    <div class="row spread mt-1">
+      <span class="muted">Submission is non-blocking — the worker runs in a separate process.</span>
+      <button type="submit">Submit run</button>
+    </div>
+  </form>
+</section>
+
+{% include "partials/jobs_table.html" %}
+{% endblock %}

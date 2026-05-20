@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% set active_nav = 'jobs' %}
+{% block title %}Run {{ job.job_id[:8] }} &mdash; trading-bot{% endblock %}
+{% block content %}
+<div class="row spread">
+  <h1 class="mt-0 mb-0">Backtest run</h1>
+  <a class="button secondary" href="/jobs">&larr; Back to runs</a>
+</div>
+<p class="subhead">
+  <code>{{ job.job_id }}</code>
+</p>
+
+<section class="card"
+         hx-ext="sse"
+         sse-connect="/events/backtests/{{ job.job_id }}">
+  <div class="row spread">
+    <h2 class="mt-0 mb-0">Status</h2>
+    {% set tone = {
+      "pending":   "info",
+      "running":   "warn",
+      "completed": "success",
+      "failed":    "error",
+    }.get(job.status, "info") %}
+    <span id="job-status-badge" class="badge {{ tone }}">{{ job.status }}</span>
+  </div>
+  <div class="card-grid mt-1">
+    <div class="stat">
+      <span class="label">Submitted</span>
+      <span class="value mono muted" style="font-size:0.92rem">{{ job.submitted_at }}</span>
+    </div>
+    <div class="stat">
+      <span class="label">Started</span>
+      <span class="value mono muted" id="started-at" style="font-size:0.92rem">{{ job.started_at or "—" }}</span>
+    </div>
+    <div class="stat">
+      <span class="label">Completed</span>
+      <span class="value mono muted" id="completed-at" style="font-size:0.92rem">{{ job.completed_at or "—" }}</span>
+    </div>
+  </div>
+
+  {% if job.error_category %}
+    <div id="error-block" class="alert error mt-1">
+      Job failed: <code>{{ job.error_category }}</code>
+    </div>
+  {% else %}
+    <div id="error-block" class="alert error mt-1 hidden"></div>
+  {% endif %}
+
+  <!-- Hidden SSE sinks — the streaming endpoint emits one named event
+       per status transition. The script below mirrors the swapped
+       payload into the visible status block. -->
+  <script id="sse-state"
+          type="application/json"
+          sse-swap="pending,running,completed,failed"
+          hx-swap="innerHTML">{}</script>
+</section>
+
+<section class="card">
+  <h2>Result</h2>
+  <div id="summary-block">
+    {% if job.summary %}
+      <div class="card-grid">
+        {% for key, value in job.summary.items() %}
+        <div class="stat">
+          <span class="label">{{ key.replace('_', ' ') }}</span>
+          <span class="value mono numeric">{{ value }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted">No summary yet — waiting for the worker to finish.</p>
+    {% endif %}
+  </div>
+</section>
+
+<script>
+const STATUS_TONES = { pending: 'info', running: 'warn', completed: 'success', failed: 'error' };
+
+function renderState(raw) {
+  let data;
+  try { data = JSON.parse(raw); } catch (e) { return; }
+  if (!data.status) return;
+
+  // Status badge.
+  const badge = document.getElementById('job-status-badge');
+  badge.className = 'badge ' + (STATUS_TONES[data.status] || 'info');
+  badge.textContent = data.status;
+
+  // Timestamps.
+  if (data.started_at) document.getElementById('started-at').textContent = data.started_at;
+  if (data.completed_at) document.getElementById('completed-at').textContent = data.completed_at;
+
+  // Error.
+  const errorBlock = document.getElementById('error-block');
+  if (data.error_category) {
+    errorBlock.innerHTML = 'Job failed: <code>' + data.error_category + '</code>';
+    errorBlock.classList.remove('hidden');
+  }
+
+  // Summary.
+  if (data.summary && Object.keys(data.summary).length > 0) {
+    const block = document.getElementById('summary-block');
+    const grid = document.createElement('div');
+    grid.className = 'card-grid';
+    for (const [key, value] of Object.entries(data.summary)) {
+      const stat = document.createElement('div');
+      stat.className = 'stat';
+      const label = document.createElement('span');
+      label.className = 'label';
+      label.textContent = key.replace(/_/g, ' ');
+      const v = document.createElement('span');
+      v.className = 'value mono numeric';
+      v.textContent = value;
+      stat.appendChild(label);
+      stat.appendChild(v);
+      grid.appendChild(stat);
+    }
+    block.innerHTML = '';
+    block.appendChild(grid);
+  }
+}
+
+document.addEventListener('htmx:afterSwap', (e) => {
+  if (e.target && e.target.id === 'sse-state') {
+    renderState(e.target.textContent);
+  }
+});
+</script>
+{% endblock %}

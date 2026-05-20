@@ -1,0 +1,64 @@
+<section id="jobs-section"
+         class="card"
+         hx-get="/jobs/partial"
+         hx-trigger="every 3s"
+         hx-swap="outerHTML">
+  <div class="row spread">
+    <h2 class="mt-0 mb-0">Submitted runs</h2>
+    <span class="muted">{{ jobs|length }} total · auto-refreshes</span>
+  </div>
+
+  {% if submit_error %}
+    <div class="alert error" role="alert">
+      Submission rejected: <code>{{ submit_error }}</code>
+    </div>
+  {% endif %}
+
+  <table class="data mt-1">
+    <thead>
+      <tr>
+        <th>Job</th>
+        <th>Status</th>
+        <th>Submitted</th>
+        <th>Completed</th>
+        <th>Result</th>
+        <th class="right">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if jobs %}
+        {% for job in jobs %}
+        <tr>
+          <td class="mono"><code title="{{ job.job_id }}">{{ job.job_id[:12] }}…</code></td>
+          <td>
+            {% set tone = {
+              "pending":   "info",
+              "running":   "warn",
+              "completed": "success",
+              "failed":    "error",
+            }.get(job.status, "info") %}
+            <span class="badge {{ tone }}">{{ job.status }}</span>
+          </td>
+          <td class="mono muted">{{ job.submitted_at }}</td>
+          <td class="mono muted">{{ job.completed_at or "—" }}</td>
+          <td>
+            {% if job.error_category %}
+              <span class="muted">error: </span><code>{{ job.error_category }}</code>
+            {% elif job.summary %}
+              <span class="muted">trades</span> <strong>{{ job.summary.get("trades_count", "?") }}</strong>
+              <span class="muted">· equity</span> <strong>€ {{ job.summary.get("final_equity_after_tax", "?") }}</strong>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+          <td class="right">
+            <a class="button secondary" href="/jobs/{{ job.job_id }}">Details</a>
+          </td>
+        </tr>
+        {% endfor %}
+      {% else %}
+        <tr><td colspan="6" class="empty">no runs submitted yet — use the form above to start one</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</section>

@@ -40,6 +40,45 @@
         "title": "BacktestSubmitRequest",
         "type": "object"
       },
+      "Body_jobs_submit_jobs_submit_post": {
+        "properties": {
+          "account_id": {
+            "default": "default",
+            "title": "Account Id",
+            "type": "string"
+          },
+          "config_dir": {
+            "title": "Config Dir",
+            "type": "string"
+          },
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "with_slippage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "With Slippage"
+          }
+        },
+        "required": [
+          "config_dir",
+          "start",
+          "end"
+        ],
+        "title": "Body_jobs_submit_jobs_submit_post",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -436,6 +475,119 @@
           }
         },
         "summary": "Get Health"
+      }
+    },
+    "/jobs": {
+      "get": {
+        "operationId": "jobs_jobs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Jobs"
+      }
+    },
+    "/jobs/partial": {
+      "get": {
+        "operationId": "jobs_partial_jobs_partial_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Jobs-Partial"
+      }
+    },
+    "/jobs/submit": {
+      "post": {
+        "operationId": "jobs_submit_jobs_submit_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_jobs_submit_jobs_submit_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Jobs-Submit"
+      }
+    },
+    "/jobs/{job_id}": {
+      "get": {
+        "operationId": "job_detail_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Job-Detail"
       }
     },
     "/login": {

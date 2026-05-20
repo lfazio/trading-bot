@@ -1,20 +1,103 @@
 {% extends "base.html" %}
-{% block title %}trading-bot &mdash; dashboard{% endblock %}
+{% set active_nav = 'dashboard' %}
+{% block title %}Dashboard &mdash; trading-bot{% endblock %}
 {% block content %}
-<h1>trading-bot dashboard</h1>
-<p class="muted">Account: <code>{{ account_id }}</code></p>
+<h1>Dashboard</h1>
+<p class="subhead">Live state for <code>{{ account_id }}</code>, refreshed via Server-Sent Events.</p>
 
-<section class="panel" hx-ext="sse" sse-connect="/events/live-state?account_id={{ account_id }}">
+<section class="card"
+         hx-ext="sse"
+         sse-connect="/events/live-state?account_id={{ account_id }}">
   <h2>Live state</h2>
-  <pre id="live-state"
-       sse-swap="live-state"
-       hx-swap="innerHTML">
-loading...
-  </pre>
-  <p class="muted">
-    Live-state pushed via Server-Sent Events (REQ_F_FAS_003).
-    Falls back gracefully if HTMX's SSE extension can't reach the
-    channel &mdash; refresh the page to reconnect.
-  </p>
+  <div id="live-state-grid" class="card-grid">
+    <div class="stat">
+      <span class="label">Kill switch</span>
+      <span class="value" data-field="ks_state">—</span>
+    </div>
+    <div class="stat">
+      <span class="label">Phase</span>
+      <span class="value" data-field="phase">—</span>
+    </div>
+    <div class="stat">
+      <span class="label">Open positions</span>
+      <span class="value numeric" data-field="open_positions_count">—</span>
+    </div>
+    <div class="stat">
+      <span class="label">Equity (after tax)</span>
+      <span class="value numeric" data-field="equity_after_tax">—</span>
+    </div>
+    <div class="stat">
+      <span class="label">As of</span>
+      <span class="value muted" data-field="as_of" style="font-size:0.92rem">—</span>
+    </div>
+  </div>
+  <!-- Hidden sink for the raw SSE payload; a tiny script extracts
+       the fields into the stat grid above. -->
+  <script id="live-state-raw"
+          type="application/json"
+          sse-swap="live-state"
+          hx-swap="innerHTML">{}</script>
 </section>
+
+<section class="card">
+  <h2>Quick actions</h2>
+  <div class="row">
+    <a class="button" href="/jobs">Run a backtest</a>
+    <a class="button secondary" href="/docs">Inspect API</a>
+  </div>
+</section>
+
+<script>
+// Re-render the live-state grid whenever the hidden SSE sink swaps
+// in a fresh JSON payload. HTMX fires `htmx:afterSwap` on the
+// element that received the swap; we listen at the document level
+// so we don't have to manage subscriber lifetimes.
+const KS_TONES = { ACTIVE: 'success', DEGRADED: 'warn', TRIPPED: 'error' };
+function renderLiveState(raw) {
+  let data;
+  try { data = JSON.parse(raw); } catch (e) { return; }
+  const grid = document.getElementById('live-state-grid');
+  if (!grid) return;
+  const set = (field, value, badgeTone) => {
+    const el = grid.querySelector(`[data-field="${field}"]`);
+    if (!el) return;
+    if (badgeTone) {
+      el.innerHTML = '';
+      const b = document.createElement('span');
+      b.className = 'badge ' + badgeTone;
+      b.textContent = value;
+      el.appendChild(b);
+    } else {
+      el.textContent = value;
+    }
+  };
+  if (data.ks_state) set('ks_state', data.ks_state, KS_TONES[data.ks_state] || 'info');
+  if (data.phase !== undefined && data.phase !== null) {
+    set('phase', 'Phase ' + data.phase);
+  }
+  if (data.open_positions_count !== undefined) {
+    set('open_positions_count', String(data.open_positions_count));
+  }
+  if (data.equity_after_tax) {
+    // Already a decimal-as-string; show with EUR suffix.
+    set('equity_after_tax', '€ ' + data.equity_after_tax);
+  }
+  if (data.as_of) {
+    // Strip the timezone for compactness; full timestamp on hover.
+    const el = grid.querySelector('[data-field="as_of"]');
+    el.textContent = data.as_of.replace('T', ' ').replace(/\+00:00$/, ' UTC');
+    el.title = data.as_of;
+  }
+}
+document.addEventListener('htmx:afterSwap', (e) => {
+  if (e.target && e.target.id === 'live-state-raw') {
+    renderLiveState(e.target.textContent);
+  }
+});
+// Also render the initial empty payload so the dashes show until
+// the first SSE event arrives.
+document.addEventListener('DOMContentLoaded', () => {
+  renderLiveState(document.getElementById('live-state-raw').textContent);
+});
+</script>
 {% endblock %}

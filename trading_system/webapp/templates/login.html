@@ -1,48 +1,86 @@
 {% extends "base.html" %}
-{% block title %}trading-bot &mdash; log in{% endblock %}
+{% set show_chrome = False %}
+{% block title %}Sign in &mdash; trading-bot{% endblock %}
 {% block content %}
-<h1>log in</h1>
-<p class="muted">
-  Paste an operator token below. It will be stored in an
-  <code>HttpOnly</code> cookie so subsequent browser requests carry it
-  automatically; nothing is written to disk on the server.
-</p>
+<style>
+  /* Page-specific: centered card. Defined inline because it's
+     used only on this one page; no need to bloat app.css. */
+  main.page.login-shell {
+    max-width: 30rem;
+    margin: 6rem auto 0;
+  }
+  .login-card { padding: 2rem; }
+  .login-card .brand-row { margin-bottom: 1.5rem; }
+  .login-card .brand-row .brand {
+    font-size: 1.5rem; font-weight: 600;
+  }
+</style>
+<script>
+// Override the main wrapper class so the login page gets its own
+// max-width without affecting the rest of the app.
+document.querySelector('main.page').classList.add('login-shell');
+</script>
 
-<form id="login-form" onsubmit="return doLogin(event)">
-  <label>
-    Account claim
-    <select name="account_id">
-      <option value="household" selected>household (read-only)</option>
-      <option value="default">default (mutations)</option>
-    </select>
-  </label>
-  <br><br>
-  <label style="display:block">
-    Operator token
-    <textarea name="token" rows="3" cols="80" required></textarea>
-  </label>
-  <br>
-  <button type="submit">log in</button>
-</form>
+<div class="card login-card">
+  <div class="brand-row">
+    <div class="brand">trading <span class="muted">bot</span></div>
+    <p class="muted mt-0 mb-0">Operator console</p>
+  </div>
 
-<pre id="error" style="color:#c33; margin-top:1rem"></pre>
+  <div id="error-banner" class="alert error hidden" role="alert"></div>
 
-<p class="muted">
-  Don't have a token? Mint one with:
-  <code>python tools/issue_operator_token.py --account household --ttl 86400</code>
-  (the script is shipped in the repo; operators run it locally or via
-  <code>docker exec</code>).
-</p>
+  <form id="login-form" onsubmit="return doLogin(event)" autocomplete="off">
+    <div class="field">
+      <label for="account_id">
+        Claim
+        <span class="hint">read-only or per-account mutations</span>
+      </label>
+      <select id="account_id" name="account_id">
+        <option value="household" selected>household (read-only)</option>
+        <option value="default">default (mutations)</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="token">Operator token</label>
+      <textarea id="token" name="token" rows="3" required autofocus
+                placeholder="paste the HMAC-signed operator token"></textarea>
+    </div>
+
+    <div class="row spread mt-1">
+      <a href="#" onclick="toggleHelp(); return false" class="muted">How do I get a token?</a>
+      <button type="submit">Sign in</button>
+    </div>
+  </form>
+
+  <div id="help" class="alert info hidden mt-2">
+    Mint a household token locally with:
+    <pre style="margin:0.5rem 0 0">python tools/issue_operator_token.py --account household --ttl 86400</pre>
+    The token is stored in an <code>HttpOnly</code> cookie scoped to this
+    origin; nothing is written to disk on the server.
+  </div>
+</div>
 
 <script>
+function toggleHelp() {
+  document.getElementById('help').classList.toggle('hidden');
+}
+
 async function doLogin(event) {
   event.preventDefault();
   const form = document.getElementById('login-form');
   const fd = new FormData(form);
   const body = {};
   fd.forEach((v, k) => { body[k] = v; });
-  const errorEl = document.getElementById('error');
-  errorEl.textContent = '';
+
+  const banner = document.getElementById('error-banner');
+  banner.classList.add('hidden');
+  banner.textContent = '';
+
+  const submitBtn = form.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Signing in…';
+
   try {
     const response = await fetch('/api/session', {
       method: 'POST',
@@ -54,10 +92,15 @@ async function doLogin(event) {
       window.location = '/';
       return false;
     }
-    const text = await response.text();
-    errorEl.textContent = 'login failed (HTTP ' + response.status + '): ' + text;
+    const data = await response.json().catch(() => ({}));
+    banner.textContent = 'Sign-in failed: ' + (data.detail || response.statusText);
+    banner.classList.remove('hidden');
   } catch (e) {
-    errorEl.textContent = 'login error: ' + e.message;
+    banner.textContent = 'Sign-in error: ' + e.message;
+    banner.classList.remove('hidden');
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Sign in';
   }
   return false;
 }
