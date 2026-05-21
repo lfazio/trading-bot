@@ -16,30 +16,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from trading_system.models.phase import MarketRegime
+from trading_system.models.phase import MarketRegime, TransitionEvent
 from trading_system.result import Nothing, Option, Some
 
-
-@dataclass(frozen=True, slots=True)
-class TransitionEvent:
-    """A confirmed regime transition."""
-
-    from_regime: MarketRegime
-    to_regime: MarketRegime
-    at: datetime
-    confirmation_periods: int
-
-    def __post_init__(self) -> None:
-        if self.from_regime == self.to_regime:
-            raise ValueError(
-                "TransitionEvent.from_regime and to_regime must differ "
-                f"(got {self.from_regime})"
-            )
-        if self.confirmation_periods < 1:
-            raise ValueError(
-                "TransitionEvent.confirmation_periods must be >= 1, "
-                f"got {self.confirmation_periods}"
-            )
+# ``TransitionEvent`` now lives in ``trading_system.models.phase`` so
+# the regime + persistence layers can both depend on the model
+# without creating a package import cycle (REQ_SDD_IMP_003). The
+# re-export here preserves the existing
+# ``from trading_system.regime.transition import TransitionEvent``
+# call sites — no caller needs to update.
+__all__ = ["TransitionEvent", "TransitionTracker"]
 
 
 @dataclass(slots=True)

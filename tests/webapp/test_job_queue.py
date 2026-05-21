@@ -25,6 +25,13 @@ from trading_system.accounts.token_verifier import (
     HOUSEHOLD_CLAIM,
     AccountScopedTokenVerifier,
 )
+
+# REQ_TP_FIX_001 — this file's tests drive a real
+# ProcessPoolExecutor and use ``time.sleep`` / ``asyncio.sleep`` to
+# wait on worker progress. Mark the whole module wallclock so it's
+# excluded from the default CI run; operators opt in via
+# ``pytest -m wallclock``.
+pytestmark = pytest.mark.wallclock
 from trading_system.webapp import WebappState, create_app
 from trading_system.webapp.job_queue import (
     InProcessJobQueue,

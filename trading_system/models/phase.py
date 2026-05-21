@@ -13,6 +13,7 @@ REQ refs:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from decimal import Decimal
 from enum import IntEnum, StrEnum
 
@@ -61,6 +62,35 @@ class MarketRegime(StrEnum):
     BEAR = "bear"
     SIDEWAYS = "sideways"
     HIGH_VOL = "high_vol"
+
+
+@dataclass(frozen=True, slots=True)
+class TransitionEvent:
+    """A confirmed regime transition (REQ_F_RGM_005 / REQ_SDD_RGM_004).
+
+    Lives in ``models/`` (not ``regime/``) so both the ``regime``
+    detector layer and the ``persistence`` repository can import it
+    without creating a package cycle (REQ_SDD_IMP_003). The
+    ``regime.transition`` module re-exports the symbol for
+    backwards compatibility with existing imports.
+    """
+
+    from_regime: MarketRegime
+    to_regime: MarketRegime
+    at: datetime
+    confirmation_periods: int
+
+    def __post_init__(self) -> None:
+        if self.from_regime == self.to_regime:
+            raise ValueError(
+                "TransitionEvent.from_regime and to_regime must differ "
+                f"(got {self.from_regime})"
+            )
+        if self.confirmation_periods < 1:
+            raise ValueError(
+                "TransitionEvent.confirmation_periods must be >= 1, "
+                f"got {self.confirmation_periods}"
+            )
 
 
 @dataclass(frozen=True, slots=True)

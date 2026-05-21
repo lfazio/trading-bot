@@ -25,7 +25,7 @@ from trading_system.models.phase import MarketRegime
 from trading_system.models.rationale import TradeRationale
 from trading_system.models.safety import KillSwitchState
 from trading_system.models.trading import Trade
-from trading_system.regime.transition import TransitionEvent
+from trading_system.models.phase import TransitionEvent
 from trading_system.safety.snapshot import AuditSnapshot
 from trading_system.strategy_lab.metrics import StrategyMetrics
 from trading_system.strategy_lab.registry import RegistryEntry

@@ -27,7 +27,7 @@ from trading_system.persistence.mappers import (
     row_to_transition_event,
     transition_event_to_row,
 )
-from trading_system.regime.transition import TransitionEvent
+from trading_system.models.phase import TransitionEvent
 from trading_system.result import Err, Nothing, Ok, Option, Result, Some
 
 
