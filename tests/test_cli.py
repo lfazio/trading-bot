@@ -74,7 +74,13 @@ def test_backtest_subcommand_emits_report_directory(
     """CR-016 Phase B — ``main(['backtest', '--report-dir', ...])``
     exercises the full dispatcher path against the shipped config
     + the bundled fixtures + the mock provider and SHALL emit the
-    5-file report directory at the requested path."""
+    5-file report directory at the requested path.
+
+    Skipped when ``matplotlib`` (the ``[reports]`` extra) isn't
+    installed — the PNG renderer needs it; envs without the extra
+    (slim webapp container) skip cleanly rather than fail on
+    import. Install with ``pip install -e .[reports]`` to run."""
+    pytest.importorskip("matplotlib")
     report_dir = tmp_path / "report"
     exit_code = main(["backtest", "--report-dir", str(report_dir)])
     assert exit_code == 0

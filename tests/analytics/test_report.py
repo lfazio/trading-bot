@@ -1,4 +1,11 @@
-"""Tests for the CR-016 MVP-4 report artefacts (TC_RPT_001..009)."""
+"""Tests for the CR-016 MVP-4 report artefacts (TC_RPT_001..009).
+
+The renderer's PNG step uses ``matplotlib`` which ships in the
+optional ``[reports]`` extra; envs without the extra (e.g., the
+slim webapp container or a fresh ``pip install -e .`` without
+extras) skip these tests cleanly rather than fail on import.
+Install with ``pip install -e .[reports]`` to run them locally.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +15,14 @@ import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+
+import pytest
+
+# REQ_NF_RPT_001 — the renderer drives ``matplotlib`` for the PNG
+# step; the module is optional (CR-016 [reports] extra). Skip the
+# whole file when matplotlib isn't installed so envs without the
+# extra report "skipped" instead of "failed".
+pytest.importorskip("matplotlib")
 
 from trading_system.analytics.report import write_report, report_dir_name
 from trading_system.analytics.summary_json import build_summary
