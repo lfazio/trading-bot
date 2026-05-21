@@ -138,6 +138,7 @@ asyncio_mode = "strict"
 markers = [
     "wallclock: tests that use real wall-clock time (excluded from default CI run)",
     "perf: performance benchmark tests",
+    "docker: tests that shell out to the docker daemon (opt-in via -m docker)",
 ]
 
 # ---------- coverage ----------

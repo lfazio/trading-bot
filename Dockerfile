@@ -24,14 +24,25 @@
 # (REQ_SDD_FAS_007 ARG-pattern; same digest binds builder + runtime).
 ARG BASE_DIGEST=sha256:d193c6f51a7dbd10395d6328de3a7edb0516fb0608ca138036576f574c3e07d2
 
+# REQ_NF_FAS_002 — declared at top level so both builder + runtime
+# stages inherit the value. BuildKit honours ``SOURCE_DATE_EPOCH``
+# automatically: when set, tar-entry mtimes in image layers are
+# rewritten to this epoch so layer content-hashes are stable across
+# rebuilds. CI passes ``--build-arg SOURCE_DATE_EPOCH=...`` to bind
+# the value; the tests in tests/webapp/test_container_reproducibility.py
+# build twice with the same epoch and assert layer-digest equality.
+ARG SOURCE_DATE_EPOCH
+
 # ============================================================================
 # Stage 1 — builder
 # ============================================================================
 FROM python:3.12-slim-bookworm@${BASE_DIGEST} AS builder
+ARG SOURCE_DATE_EPOCH
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
 
 # Build deps — only present in the builder stage so the runtime
 # layer stays slim (REQ_F_FAS_007 ≤ 200 MB target).
@@ -60,11 +71,13 @@ RUN pip install --require-hashes --no-deps -r requirements.lock \
 # Stage 2 — runtime
 # ============================================================================
 FROM python:3.12-slim-bookworm@${BASE_DIGEST} AS runtime
+ARG SOURCE_DATE_EPOCH
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH} \
     TRADING_BOT_CONFIG_DIR=/config
 
 # Runtime libs — no compilers, no -dev headers. Keeps the layer slim.
