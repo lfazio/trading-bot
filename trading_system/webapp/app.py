@@ -145,13 +145,17 @@ def default_app() -> FastAPI:
         the ``AccountScopedTokenVerifier`` consumes.
       - ``TRADING_BOT_TOKEN_TTL_SECONDS`` (optional, default ``300``).
 
-    A small ``_DemoLiveStateReader`` wires in so the dashboard is
-    end-to-end runnable on a fresh container: ``GET /`` renders, the
-    HTMX poll hits ``/api/accounts/default/live-state`` and the JSON
-    block fills. The ``registry_promoter`` slot stays unset — the
-    promotion endpoint surfaces a 500 ``webapp:registry_promoter_missing``
-    until Phase B wires the CR-008 ``RegistryRepository``. Operators
-    diagnose a half-wired deployment immediately.
+    A ``RuntimeLiveStateReader`` over an unattached
+    ``RuntimeStateBag`` wires in so the dashboard is end-to-end
+    runnable on a fresh container. With no Portfolio/Safety/Phase
+    references attached the reader returns bootstrap defaults
+    (Phase 1, KS ACTIVE, zero positions, equity =
+    ``TRADING_BOT_STARTING_CAPITAL`` env var or ``0``). Operators
+    attach a live trading process by constructing a populated bag
+    via a small wiring script that re-builds the reader. The
+    ``registry_promoter`` slot stays unset — the promotion endpoint
+    surfaces a 500 ``webapp:registry_promoter_missing`` until Phase
+    B wires the CR-008 ``RegistryRepository``.
     """
     import os
 
@@ -171,58 +175,43 @@ def default_app() -> FastAPI:
     return create_app(
         WebappState(
             token_verifier=verifier,
-            live_state_reader=_DemoLiveStateReader(),
+            live_state_reader=_default_live_state_reader(),
             job_queue=queue,
         )
     )
 
 
-class _DemoLiveStateReader:
-    """Minimal in-process ``LiveStateReader`` so ``default_app()``'s
-    dashboard renders end-to-end on a fresh container.
+def _default_live_state_reader():  # type: ignore[no-untyped-def]
+    """Build the default ``LiveStateReader`` for ``default_app()``.
 
-    Implements both the request-response surface (``live_state``)
-    and the SSE streaming surface (``subscribe``) so the Phase-B
-    dashboard's `hx-ext="sse"` channel works on the same reader the
-    polling endpoint uses.
+    The reader pulls live state from a ``RuntimeStateBag`` whose
+    view fields stay ``None`` at boot — operators attach a Portfolio
+    / Safety / Phase view from a co-located trading process via a
+    small wiring script.
 
-    Phase B follow-up replaces this with the runtime-wired reader
-    that reads through CR-008 repositories + the live ``Analytics`` /
-    ``Portfolio`` / ``Safety`` instances. The Phase-A demo reader is
-    deliberately small (no I/O, no clock-dependent state beyond the
-    one ``as_of`` timestamp) so subscribers see byte-identical
-    payloads modulo the timestamp.
+    With no views attached, the reader returns the bootstrap
+    defaults (Phase 1, KS ACTIVE, zero positions, equity =
+    ``TRADING_BOT_STARTING_CAPITAL`` env var or ``0``). This makes
+    the dashboard honest about its data source: empty deployment
+    shows zero equity rather than a fake ``10000.00``.
     """
+    import os
+    from decimal import Decimal
 
-    def live_state(self, *, account_id, as_of):  # type: ignore[no-untyped-def]
-        return self._snapshot(account_id=account_id, as_of=as_of)
+    from trading_system.webapp.state_readers import (
+        RuntimeLiveStateReader,
+        RuntimeStateBag,
+    )
 
-    async def subscribe(self, *, account_id):  # type: ignore[no-untyped-def]
-        """REQ_F_FAS_003 — yields one snapshot every 5 s."""
-        from trading_system.webapp.sse import demo_subscribe
+    starting_capital_raw = os.environ.get("TRADING_BOT_STARTING_CAPITAL", "0")
+    try:
+        starting_capital = Decimal(starting_capital_raw)
+    except (ValueError, ArithmeticError):
+        starting_capital = Decimal("0")
+    return RuntimeLiveStateReader(
+        bag=RuntimeStateBag(
+            bootstrap_equity_after_tax=starting_capital,
+        ),
+    )
 
-        async for snapshot in demo_subscribe(
-            self._snapshot,
-            account_id=account_id,
-            tick_seconds=5.0,
-        ):
-            yield snapshot
 
-    def _snapshot(self, *, account_id, as_of):  # type: ignore[no-untyped-def]
-        # Import locally so this module's import graph stays free of
-        # the webui dependency at module load time (only paid when an
-        # operator actually boots ``default_app``).
-        from decimal import Decimal
-
-        from trading_system.models.phase import Phase
-        from trading_system.models.safety import KillSwitchState
-        from trading_system.webui.schemas import LiveStateResponse
-
-        return LiveStateResponse(
-            account_id=account_id,
-            as_of=as_of,
-            ks_state=KillSwitchState.ACTIVE,
-            phase=Phase(1),
-            open_positions_count=0,
-            equity_after_tax=Decimal("10000.00"),
-        )
