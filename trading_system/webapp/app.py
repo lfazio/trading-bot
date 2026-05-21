@@ -143,7 +143,12 @@ def default_app() -> FastAPI:
 
       - ``TRADING_BOT_OPERATOR_SECRET`` (required) — HMAC-SHA256 key
         the ``AccountScopedTokenVerifier`` consumes.
-      - ``TRADING_BOT_TOKEN_TTL_SECONDS`` (optional, default ``300``).
+      - ``TRADING_BOT_TOKEN_TTL_SECONDS`` (optional, default ``86400``
+        = 24h). Matches ``tools/issue_operator_token.py``'s default
+        so a freshly-minted household token works for the rest of
+        the operator's day without re-issuance. Operators who want
+        short-lived tokens (CI flows, paranoid prod) override the
+        env var.
 
     A ``RuntimeLiveStateReader`` over an unattached
     ``RuntimeStateBag`` wires in so the dashboard is end-to-end
@@ -165,7 +170,7 @@ def default_app() -> FastAPI:
             "webapp:missing_operator_secret: set "
             "TRADING_BOT_OPERATOR_SECRET before booting the webapp"
         )
-    ttl_seconds = int(os.environ.get("TRADING_BOT_TOKEN_TTL_SECONDS", "300"))
+    ttl_seconds = int(os.environ.get("TRADING_BOT_TOKEN_TTL_SECONDS", "86400"))
     verifier = AccountScopedTokenVerifier(
         secret=secret_env.encode("utf-8"),
         ttl_seconds=ttl_seconds,

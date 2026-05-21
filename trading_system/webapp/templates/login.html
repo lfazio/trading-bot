@@ -92,8 +92,23 @@ async function doLogin(event) {
       window.location = '/';
       return false;
     }
+    // The webapp returns canonical-JSON errors in the shape
+    // {"error":"<categorised-reason>"}. FastAPI's default 422 /
+    // validation errors use {"detail":[...]}. Show whichever is
+    // present so operators can see the actual cause.
     const data = await response.json().catch(() => ({}));
-    banner.textContent = 'Sign-in failed: ' + (data.detail || response.statusText);
+    const reason =
+      data.error ||
+      (typeof data.detail === 'string' ? data.detail
+        : Array.isArray(data.detail) ? JSON.stringify(data.detail)
+        : null) ||
+      response.statusText ||
+      ('HTTP ' + response.status);
+    banner.innerHTML =
+      'Sign-in failed (HTTP ' + response.status + '): <code>' + reason + '</code>' +
+      (reason === 'registry:token_invalid'
+        ? '<br><span style="font-size:0.85em">Most likely: token expired (default TTL 24h) or wrong claim (household vs default).</span>'
+        : '');
     banner.classList.remove('hidden');
   } catch (e) {
     banner.textContent = 'Sign-in error: ' + e.message;
