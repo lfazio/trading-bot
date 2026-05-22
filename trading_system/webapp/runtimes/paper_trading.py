@@ -56,6 +56,7 @@ from trading_system.models.identifiers import AccountId, InstrumentId, StrategyI
 from trading_system.models.instrument import Instrument
 from trading_system.models.money import Money
 from trading_system.models.phase import AllocationBucket, MarketRegime, PhaseConstraints
+from trading_system.persistence.repositories.portfolio import PortfolioRepository
 from trading_system.portfolio.portfolio import Portfolio
 from trading_system.result import Err, Nothing, Ok, Option, Result, Some
 from trading_system.strategies.protocol import Strategy
@@ -175,6 +176,15 @@ class PaperTradingRuntime:
     # ``CoreStrategy``); v1 wiring lands the live yfinance provider here
     # in step (b).
     market_data_provider: MarketDataProvider | None = None
+    # CR-019 step 1 (b) — REQ_F_PAP_003: when the operator wires a
+    # ``PortfolioRepository``, every recorded equity point lands in
+    # SQLite under the session's ``account_id``. ``None`` keeps the
+    # runtime in pure in-memory mode (tests, smoke checks, the v1
+    # demo path before the webapp owns a connection). Persistence
+    # failures DO NOT halt the tick — they surface as the tick's
+    # ``Err`` so the dashboard can show "saving disabled" without
+    # ripping the live session apart.
+    equity_repo: PortfolioRepository | None = None
     spread_pct: Decimal = Decimal("0.001")
 
     _alive: bool = field(default=True, init=False)
@@ -343,12 +353,21 @@ class PaperTradingRuntime:
         self.portfolio.record_equity(tick.at)
         # Read the freshly-appended point.
         curve = self.portfolio.equity_curve
-        if curve:
-            latest = curve[-1]
-            self._equity_points.append(latest)
-            return Ok(Some(latest))
-        # Portfolio refused to record (e.g., empty pre-tax state); return Nothing.
-        return Ok(Nothing())
+        if not curve:
+            # Portfolio refused to record (e.g., empty pre-tax state).
+            return Ok(Nothing())
+        latest = curve[-1]
+        self._equity_points.append(latest)
+
+        # 5. Persist the equity point (REQ_F_PAP_003).
+        if self.equity_repo is not None:
+            persist_result = self.equity_repo.append_equity_point(
+                latest, account_id=self.session.account_id
+            )
+            if isinstance(persist_result, Err):
+                return Err(f"paper:persist_equity_point:{persist_result.error}")
+
+        return Ok(Some(latest))
 
 
 # ---------------------------------------------------------------------------
@@ -394,14 +413,27 @@ class RuntimeRegistry:
     def live_account_ids(self) -> tuple[AccountId, ...]:
         return tuple(sorted(self._live.keys()))
 
-    # CR-019 step 1 (b) will add ``resume_from_persistence`` reading
-    # paper-* prefixed rows from the CR-008 PortfolioRepository.
-    # Stubbed here so the eventual wiring point is fixed in the
-    # type surface.
-    def resume_from_persistence(self) -> int:
-        """Re-register every persisted live session. v1 returns 0
-        (persistence wiring lands in CR-019 step 1 (b))."""
-        return 0
+    def resume_from_persistence(
+        self, repo: PortfolioRepository
+    ) -> Result[tuple[AccountId, ...], str]:
+        """Discover every ``paper-*`` account_id that has at least
+        one persisted equity-point row (REQ_F_PAP_003).
+
+        The v1 surface is **discovery only** — the registry does
+        NOT auto-revive live ticking because the session metadata
+        (universe, strategy_id, instrument) is not yet persisted;
+        an operator picks one of the returned ids from the
+        recovery wizard and re-supplies the missing inputs to
+        rehydrate a runtime. The persisted equity series is the
+        durable artefact — the runtime's `.equity_history()` after
+        rehydration concatenates the persisted history with new
+        ticks (the in-memory accumulator is hydrated from
+        `repo.equity_curve(account_id=...)` at rehydration time).
+
+        Returns the discovered account_ids on success;
+        ``Err("persistence:...")`` on a repository-layer failure.
+        """
+        return repo.list_account_ids_with_prefix(PAPER_ACCOUNT_PREFIX)
 
 
 # ---------------------------------------------------------------------------

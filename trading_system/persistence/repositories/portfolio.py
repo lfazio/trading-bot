@@ -107,6 +107,37 @@ class PortfolioRepository:
             return Err(f"persistence:corrupt:equity_points:parse:{e}")
         return Ok(points)
 
+    def list_account_ids_with_prefix(
+        self, prefix: str
+    ) -> Result[tuple[AccountId, ...], str]:
+        """Return every distinct ``account_id`` present in
+        ``equity_points`` matching ``prefix``, ordered ascending.
+
+        Consumed by CR-019 step 1 (b) (REQ_F_PAP_003) — the
+        paper-trading runtime registry calls this with
+        ``"paper-"`` to enumerate resumable sessions after a
+        webapp restart.
+
+        Returns an empty tuple when no rows match; the call is
+        cheap (single indexed query) but issued once per restart.
+        """
+        if not prefix:
+            return Err("persistence:bad_prefix:empty")
+        try:
+            cursor = self.conn.execute(
+                "SELECT DISTINCT account_id FROM equity_points "
+                "WHERE account_id LIKE ? "
+                "ORDER BY account_id ASC",
+                (prefix + "%",),
+            )
+        except sqlite3.Error as e:
+            return Err(f"persistence:corrupt:equity_points:list:{e}")
+        try:
+            ids = tuple(AccountId(row["account_id"]) for row in cursor.fetchall())
+        except (ValueError, KeyError) as e:
+            return Err(f"persistence:corrupt:equity_points:list_parse:{e}")
+        return Ok(ids)
+
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------

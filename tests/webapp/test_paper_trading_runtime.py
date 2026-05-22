@@ -358,12 +358,6 @@ def test_registry_stop_unknown_account_returns_err() -> None:
     assert result.error.startswith("paper:not_live:")
 
 
-def test_registry_resume_from_persistence_returns_zero_in_v1() -> None:
-    """v1 stub — the persistence-wired version lands in step 1 (b)."""
-    reg = RuntimeRegistry()
-    assert reg.resume_from_persistence() == 0
-
-
 def test_registry_rejects_already_stopped_runtime() -> None:
     runtime, _ = _build(bars=[_bar(close="100", day=0)])
     runtime.stop()
@@ -371,3 +365,142 @@ def test_registry_rejects_already_stopped_runtime() -> None:
     result = reg.start(runtime)
     assert isinstance(result, Err)
     assert result.error.startswith("paper:session_already_stopped:")
+
+
+# ---------------------------------------------------------------------------
+# CR-019 step 1 (b) — persistence wiring (REQ_F_PAP_003)
+# ---------------------------------------------------------------------------
+
+
+def _migrated_repo(tmp_path):  # type: ignore[no-untyped-def]
+    """Build a SQLite ``PortfolioRepository`` against a fresh
+    ``tmp_path``-scoped DB file, migrated to the current schema.
+    Each call returns a fresh repo so tests are isolated."""
+    from pathlib import Path
+
+    from trading_system.persistence.connection import Connection
+    from trading_system.persistence.migrations.runner import MigrationRunner
+    from trading_system.persistence.repositories.portfolio import (
+        PortfolioRepository,
+    )
+
+    migrations_dir = (
+        Path(__file__).resolve().parent.parent.parent
+        / "trading_system"
+        / "persistence"
+        / "migrations"
+    )
+    db_path = tmp_path / "paper-trading.db"
+    conn = Connection.open(db_path).unwrap()
+    MigrationRunner(conn=conn, migrations_dir=migrations_dir).run().unwrap()
+    return PortfolioRepository(conn=conn)
+
+
+def test_tick_once_persists_equity_point_when_repo_wired(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """REQ_F_PAP_003 — every tick that records an equity point
+    SHALL also persist that point via the wired
+    ``PortfolioRepository``."""
+    repo = _migrated_repo(tmp_path)
+    runtime, _ = _build(bars=[_bar(close="100", day=0), _bar(close="101", day=1)])
+    runtime.equity_repo = repo
+    runtime.tick_once().unwrap()
+    runtime.tick_once().unwrap()
+    persisted = repo.equity_curve(account_id=runtime.session.account_id).unwrap()
+    assert len(persisted) == 2
+    # The persisted order matches the in-memory order.
+    in_memory = runtime.equity_history()
+    assert [p.at for p in persisted] == [p.at for p in in_memory]
+
+
+def test_tick_once_returns_err_when_persist_fails() -> None:
+    """Persistence failures SHALL surface as a categorised
+    ``paper:persist_equity_point:<reason>`` Err so the dashboard
+    can flag the saving-disabled state without crashing the
+    runtime."""
+
+    @dataclass(slots=True)
+    class _FailingRepo:
+        """Stand-in repo that fails every append. The runtime only
+        consumes the ``append_equity_point`` method on the
+        ``equity_repo`` slot, so structural typing is enough."""
+
+        def append_equity_point(self, point, *, account_id):  # type: ignore[no-untyped-def]
+            del point, account_id
+            return Err("persistence:integrity:equity_points:simulated")
+
+    runtime, _ = _build(bars=[_bar(close="100", day=0)])
+    runtime.equity_repo = _FailingRepo()  # type: ignore[assignment]
+    result = runtime.tick_once()
+    assert isinstance(result, Err)
+    assert result.error.startswith("paper:persist_equity_point:")
+    assert "persistence:integrity" in result.error
+
+
+def test_list_account_ids_with_prefix_filters_correctly(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """``PortfolioRepository.list_account_ids_with_prefix`` SHALL
+    return only the matching account_ids in ascending order."""
+    from datetime import UTC, datetime
+    from decimal import Decimal as _Decimal
+
+    from trading_system.models.flow import EquityPoint
+    from trading_system.models.money import Currency, Money
+
+    repo = _migrated_repo(tmp_path)
+    # Seed three accounts: two paper-*, one default.
+    point = EquityPoint(
+        at=datetime(2026, 5, 22, 12, 0, tzinfo=UTC),
+        equity_gross=Money(_Decimal("100"), Currency.EUR),
+        equity_after_tax=Money(_Decimal("99"), Currency.EUR),
+        drawdown_pct=_Decimal("0"),
+    )
+    for aid in ("paper-2026-05-22T01:00:00+00:00", "paper-2026-05-22T02:00:00+00:00", "default"):
+        repo.append_equity_point(point, account_id=AccountId(aid)).unwrap()
+    paper_ids = repo.list_account_ids_with_prefix("paper-").unwrap()
+    assert paper_ids == (
+        AccountId("paper-2026-05-22T01:00:00+00:00"),
+        AccountId("paper-2026-05-22T02:00:00+00:00"),
+    )
+
+
+def test_list_account_ids_with_prefix_rejects_empty_prefix(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    repo = _migrated_repo(tmp_path)
+    result = repo.list_account_ids_with_prefix("")
+    assert isinstance(result, Err)
+    assert result.error == "persistence:bad_prefix:empty"
+
+
+def test_registry_resume_from_persistence_discovers_paper_accounts(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """REQ_F_PAP_003 — ``resume_from_persistence`` SHALL return
+    every ``paper-*`` account_id that has at least one persisted
+    equity_point row."""
+    from datetime import UTC, datetime
+    from decimal import Decimal as _Decimal
+
+    from trading_system.models.flow import EquityPoint
+    from trading_system.models.money import Currency, Money
+
+    repo = _migrated_repo(tmp_path)
+    # Seed two paper sessions worth of equity points.
+    base_point = EquityPoint(
+        at=datetime(2026, 5, 22, 12, 0, tzinfo=UTC),
+        equity_gross=Money(_Decimal("1000"), Currency.EUR),
+        equity_after_tax=Money(_Decimal("997"), Currency.EUR),
+        drawdown_pct=_Decimal("0"),
+    )
+    for aid in ("paper-2026-05-22T01:00:00+00:00", "paper-2026-05-22T02:00:00+00:00"):
+        repo.append_equity_point(base_point, account_id=AccountId(aid)).unwrap()
+    reg = RuntimeRegistry()
+    result = reg.resume_from_persistence(repo)
+    assert isinstance(result, Ok)
+    assert result.value == (
+        AccountId("paper-2026-05-22T01:00:00+00:00"),
+        AccountId("paper-2026-05-22T02:00:00+00:00"),
+    )
+
+
+def test_registry_resume_from_persistence_empty_returns_empty_tuple(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    repo = _migrated_repo(tmp_path)
+    reg = RuntimeRegistry()
+    result = reg.resume_from_persistence(repo)
+    assert isinstance(result, Ok)
+    assert result.value == ()
