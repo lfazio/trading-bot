@@ -825,6 +825,44 @@
         },
         "summary": "Post Step3"
       }
+    },
+    "/paper-sessions/{account_id}/stop": {
+      "post": {
+        "description": "Stop the paper-trading runtime keyed on ``account_id``.\n\nAuth: any valid token claim (household OR per-account) is\naccepted \u2014 the dashboard view uses the same gate. Mutation\nis idempotent: stopping a non-existent / already-stopped\nsession is a no-op (the redirect still lands the operator\nback on the dashboard).",
+        "operationId": "post_stop_paper_sessions__account_id__stop_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Stop"
+      }
     }
   }
 }

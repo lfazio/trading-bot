@@ -66,6 +66,13 @@
       Cached data — live feed degraded
     </span>
     <a href="/onboarding" class="button" style="margin-left:1em">Start new paper session</a>
+    {% if account_id in live_paper_sessions %}
+    <form method="post" action="/paper-sessions/{{ account_id | urlencode }}/stop"
+          style="display:inline; margin-left:0.5em"
+          onsubmit="return confirm('Stop session {{ account_id }}?');">
+      <button type="submit" class="button secondary">Stop session</button>
+    </form>
+    {% endif %}
   </p>
   <p class="subhead" data-field="paper_session_meta" style="margin-top:0.5em">—</p>
   <div id="paper-state-grid" class="card-grid">
