@@ -45,9 +45,40 @@ _FORBIDDEN_PROJECT_IMPORT_PREFIXES = (
     "trading_system.backtesting",
 )
 
+# CR-019 carve-out: ``webapp/runtimes/`` is the documented
+# composition layer that wraps the existing simulation surface
+# (LocalBrokerAdapter + Portfolio + Backtest engine pieces) with
+# a live data feed for paper-trading mode (REQ_F_PAP_001 /
+# REQ_SDS_WEB2_004 / REQ_SDD_WEB2_003). Reach into
+# ``execution.*`` / ``data.*`` / ``backtesting.*`` is part of the
+# documented architecture; the routes layer remains tight (the
+# router-specific audit below still bans those imports for
+# ``webapp/routers/``).
+_RUNTIMES_ALLOWED_EXTRA_PREFIXES = (
+    "trading_system.execution",
+    "trading_system.backtesting",
+    "trading_system.data",
+    "trading_system.portfolio",
+    "trading_system.tax",
+    "trading_system.strategies",
+)
+
 
 def _python_files() -> list[Path]:
     return sorted(_PACKAGE_DIR.rglob("*.py"))
+
+
+def _is_runtimes_file(py_file: Path) -> bool:
+    """REQ_F_PAP_001 carve-out — files under
+    ``trading_system/webapp/runtimes/`` are exempted from the
+    routers-tight import-graph audit because the runtime layer
+    is the documented composition point for paper trading (and,
+    later, live trading)."""
+    try:
+        rel = py_file.relative_to(_PACKAGE_DIR)
+    except ValueError:
+        return False
+    return rel.parts[:1] == ("runtimes",)
 
 
 # ---------------------------------------------------------------------------
@@ -58,9 +89,15 @@ def _python_files() -> list[Path]:
 def test_webapp_import_graph_closed() -> None:
     """REQ_SDD_FAS_001 — every project-local import SHALL match an
     allow-listed prefix; ``execution`` / ``safety`` / ``risk`` /
-    ``strategy_lab`` / ``data`` / ``backtesting`` SHALL NOT appear."""
+    ``strategy_lab`` / ``data`` / ``backtesting`` SHALL NOT appear
+    outside the documented CR-019 runtime composition layer
+    (``webapp/runtimes/``)."""
     for py_file in _python_files():
         tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
+        is_runtime = _is_runtimes_file(py_file)
+        allowed = _ALLOWED_PROJECT_IMPORT_PREFIXES
+        if is_runtime:
+            allowed = allowed + _RUNTIMES_ALLOWED_EXTRA_PREFIXES
         for node in ast.walk(tree):
             modules: list[str] = []
             if isinstance(node, ast.ImportFrom):
@@ -70,13 +107,32 @@ def test_webapp_import_graph_closed() -> None:
             for module in modules:
                 if not module.startswith("trading_system."):
                     continue
-                for forbidden in _FORBIDDEN_PROJECT_IMPORT_PREFIXES:
-                    assert not module.startswith(forbidden), (
-                        f"{py_file.relative_to(_REPO_ROOT)} imports {module} — "
-                        f"REQ_SDD_FAS_001 forbids {forbidden}.*"
+                if not is_runtime:
+                    for forbidden in _FORBIDDEN_PROJECT_IMPORT_PREFIXES:
+                        assert not module.startswith(forbidden), (
+                            f"{py_file.relative_to(_REPO_ROOT)} imports {module} — "
+                            f"REQ_SDD_FAS_001 forbids {forbidden}.*"
+                        )
+                # The runtime carve-out is documented in
+                # ``_RUNTIMES_ALLOWED_EXTRA_PREFIXES``. ``safety`` /
+                # ``risk`` / ``strategy_lab`` stay forbidden even
+                # inside the runtime layer (the live-trading
+                # amendment will revisit the risk-engine slot
+                # explicitly).
+                if is_runtime:
+                    runtime_still_forbidden = (
+                        "trading_system.safety",
+                        "trading_system.risk",
+                        "trading_system.strategy_lab",
                     )
+                    for forbidden in runtime_still_forbidden:
+                        assert not module.startswith(forbidden), (
+                            f"{py_file.relative_to(_REPO_ROOT)} imports "
+                            f"{module} — REQ_SDD_FAS_001 forbids "
+                            f"{forbidden}.* even in the runtime layer"
+                        )
                 assert any(
-                    module.startswith(p) for p in _ALLOWED_PROJECT_IMPORT_PREFIXES
+                    module.startswith(p) for p in allowed
                 ), (
                     f"{py_file.relative_to(_REPO_ROOT)} imports {module} — "
                     "not in the closed allow-list (REQ_SDD_FAS_001)"
