@@ -76,11 +76,13 @@ def test_backtest_subcommand_emits_report_directory(
     + the bundled fixtures + the mock provider and SHALL emit the
     5-file report directory at the requested path.
 
-    Skipped when ``matplotlib`` (the ``[reports]`` extra) isn't
-    installed — the PNG renderer needs it; envs without the extra
-    (slim webapp container) skip cleanly rather than fail on
-    import. Install with ``pip install -e .[reports]`` to run."""
-    pytest.importorskip("matplotlib")
+    Skipped when ``plotly`` + ``kaleido`` (the ``[reports]`` extra)
+    aren't installed — the renderer needs them (CR-020); envs
+    without the extra (slim webapp container) skip cleanly rather
+    than fail on import. Install with
+    ``pip install -e .[reports]`` to run."""
+    pytest.importorskip("plotly")
+    pytest.importorskip("kaleido")
     report_dir = tmp_path / "report"
     exit_code = main(["backtest", "--report-dir", str(report_dir)])
     assert exit_code == 0

@@ -3,8 +3,9 @@
 
 Five files under ``out_dir``:
 - ``trades.csv``        — per-fill log (REQ_F_RPT_002).
-- ``equity-curve.png``  — matplotlib chart for embedding.
-- ``equity-curve.html`` — base64-embedded PNG wrapper; no JS deps.
+- ``equity-curve.png``  — Plotly figure rendered via Kaleido (CR-020).
+- ``equity-curve.html`` — self-contained interactive Plotly page;
+  the Plotly JS bundle is inlined (no CDN, no Node toolchain).
 - ``summary.json``      — dashboard payload (machine-readable).
 - ``manifest.json``     — 7-key run metadata (REQ_F_RPT_003).
 
@@ -108,10 +109,16 @@ def write_report(
     write_err = _atomic_write_bytes(out_dir / "equity-curve.png", png_bytes)
     if write_err is not None:
         return Err(write_err)
-    write_err = _atomic_write_text(
-        out_dir / "equity-curve.html",
-        render_equity_html(png_bytes),
-    )
+    try:
+        html_text = render_equity_html(result.equity_curve)
+    except Exception as e:  # noqa: BLE001
+        return Err(
+            ReportError(
+                category="webui:report_render:equity-curve.html",
+                detail=str(e),
+            )
+        )
+    write_err = _atomic_write_text(out_dir / "equity-curve.html", html_text)
     if write_err is not None:
         return Err(write_err)
 

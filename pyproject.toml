@@ -42,12 +42,15 @@ yfinance = [
     "yfinance>=0.2",
     "pandas>=2.0",
 ]
-# CR-016 MVP-4: report-artefact PNG renderer. matplotlib is the only
-# new dependency; bundled with the ``reports`` extra so operators
-# who don't need charts skip the ~30 MB install:
+# CR-016 MVP-4 + CR-020: report-artefact renderer. Plotly emits the
+# interactive HTML (Plotly JS inlined, no CDN — REQ_NF_WEB2_001) and
+# Kaleido drives the deterministic Kaleido static PNG export. Bundled
+# with the ``reports`` extra so operators who don't render charts skip
+# the install (~100 MB transitive due to Kaleido's bundled Chromium):
 #     pip install trading-bot[reports]
 reports = [
-    "matplotlib>=3.7",
+    "plotly>=5.20",
+    "kaleido>=1.0.0",
 ]
 # CR-017 Phase A: FastAPI webapp + HTMX dashboard. Heavy install
 # (~30 MB transitive); operators who don't want the dashboard keep the

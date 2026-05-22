@@ -1,85 +1,194 @@
-"""Equity-curve chart renderer — REQ_F_RPT_001 family.
+"""Equity-curve chart renderer — REQ_F_RPT_001 family (CR-020).
 
-Two renderers:
-- ``render_equity_png(curve) -> bytes`` — matplotlib PNG at a
-  fixed ``figsize=(10, 4)`` / ``dpi=100`` for replay determinism
-  (REQ_NF_RPT_001: same matplotlib version + same input ⇒ same
-  pixel bytes).
-- ``render_equity_html(png_bytes) -> str`` — single-file static
-  HTML wrapping the PNG via base64. No JavaScript / external
-  CSS / network references; opens cleanly when copied off the host.
+Three renderers, all backed by Plotly + Kaleido (matplotlib was
+retired by CR-020):
 
-matplotlib is imported lazily inside ``render_equity_png`` so
-modules that don't render charts (most of the runtime) don't pay
-the import cost.
+- ``render_equity_png(curve) -> bytes`` — 1000 x 400 px @ scale=1
+  PNG produced via Kaleido's static-export backend
+  (``Figure.to_image(format="png", ...)``). Replay-deterministic:
+  same pinned Plotly + Kaleido versions + same input ⇒ same PNG
+  bytes (REQ_NF_RPT_001).
+- ``render_equity_html(curve) -> str`` — self-contained
+  interactive HTML page; Plotly JS is inlined via
+  ``include_plotlyjs="inline"`` (no CDN reference, no Node
+  toolchain reach — REQ_SDS_FAS_003 / REQ_NF_WEB2_001). Opens in
+  any browser without network access. Surfaces hover tooltips,
+  zoom, range slider, and download-PNG controls.
+- ``render_equity_comparison_html(curves) -> str`` — overlays
+  two equity curves on a single Plotly figure with the legend
+  toggle (consumed by the CR-019 compare-two-runs backtest
+  panel; REQ_F_WEB2_005).
+
+Plotly + Kaleido are imported lazily inside each renderer so the
+runtime modules that never emit reports don't pay the import
+cost.
 """
 
 from __future__ import annotations
 
-import base64
-import io
+from typing import Sequence
 
 
-def render_equity_png(curve: tuple) -> bytes:
-    """Render the after-tax equity curve as a PNG.
+# Fixed Plotly figure dimensions — REQ_NF_RPT_001 + REQ_SDD_RPT_004.
+# Dashboards embedding the PNG depend on these dims (no layout shift
+# vs. the pre-CR-020 matplotlib chart at figsize=(10, 4) @ dpi=100).
+_FIG_WIDTH = 1000
+_FIG_HEIGHT = 400
+_FIG_SCALE = 1
 
-    Empty curve ⇒ a placeholder chart with a single text label so
-    the report directory still contains a valid PNG (avoids a
-    branch in ``write_report`` where the operator might face a
-    missing file when the demo run produces zero trades).
+# Plotly config — kills the modebar logo (which carries an
+# ``<a href="https://plotly.com/">`` reach when rendered) and
+# stops the modebar entirely so the HTML stays inert at page-load.
+_PLOTLY_CONFIG = {"displaylogo": False, "displayModeBar": False}
+
+
+def _build_equity_figure(curve: Sequence[object]):
+    """Construct a ``plotly.graph_objects.Figure`` from an equity curve.
+
+    Empty curve ⇒ a placeholder figure carrying a single annotation
+    so the report directory still contains a renderable artefact
+    (avoids a branch in ``write_report`` where a zero-trade demo
+    run might face a missing file).
     """
-    # Lazy import — matplotlib is heavy + not every consumer needs it.
-    import matplotlib  # type: ignore[import-untyped]
-    matplotlib.use("Agg")  # non-interactive backend
-    import matplotlib.pyplot as plt  # type: ignore[import-untyped]
+    import plotly.graph_objects as go  # type: ignore[import-untyped]
 
-    fig, ax = plt.subplots(figsize=(10, 4), dpi=100)
     if not curve:
-        ax.text(
-            0.5,
-            0.5,
-            "No equity-curve data — backtest produced zero trades",
-            transform=ax.transAxes,
-            horizontalalignment="center",
-            verticalalignment="center",
-            fontsize=12,
+        fig = go.Figure()
+        fig.add_annotation(
+            x=0.5,
+            y=0.5,
+            xref="paper",
+            yref="paper",
+            text="No equity-curve data — backtest produced zero trades",
+            showarrow=False,
+            font=dict(size=14),
         )
-        ax.set_xlabel("")
-        ax.set_ylabel("")
+        fig.update_xaxes(visible=False)
+        fig.update_yaxes(visible=False)
     else:
-        xs = [p.at for p in curve]
-        ys = [float(p.equity_after_tax.amount) for p in curve]
-        currency = curve[0].equity_after_tax.currency.value
-        ax.plot(xs, ys, label="Equity (after tax)", color="#1f77b4")
-        ax.set_xlabel("Date")
-        ax.set_ylabel(f"Equity ({currency})")
-        ax.legend(loc="upper left")
-        ax.grid(True, alpha=0.3)
-    ax.set_title("trading-bot — equity curve")
-    fig.tight_layout()
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png")
-    plt.close(fig)
-    return buf.getvalue()
+        xs = [p.at for p in curve]  # type: ignore[attr-defined]
+        ys = [
+            float(p.equity_after_tax.amount) for p in curve  # type: ignore[attr-defined]
+        ]
+        currency = curve[0].equity_after_tax.currency.value  # type: ignore[attr-defined]
+        fig = go.Figure(
+            data=[
+                go.Scatter(
+                    x=xs,
+                    y=ys,
+                    mode="lines",
+                    name="Equity (after tax)",
+                    line=dict(color="#1f77b4", width=2),
+                    hovertemplate=(
+                        "%{x|%Y-%m-%d}<br>"
+                        f"%{{y:,.2f}} {currency}<extra></extra>"
+                    ),
+                )
+            ]
+        )
+        fig.update_xaxes(title_text="Date", rangeslider_visible=True)
+        fig.update_yaxes(title_text=f"Equity ({currency})")
+
+    fig.update_layout(
+        title="trading-bot — equity curve",
+        width=_FIG_WIDTH,
+        height=_FIG_HEIGHT,
+        template="plotly_white",
+        margin=dict(l=60, r=30, t=60, b=50),
+        showlegend=True,
+    )
+    return fig
 
 
-def render_equity_html(png_bytes: bytes) -> str:
-    """Single-file HTML wrapper. No JS dependencies; the PNG is
-    base64-embedded so the file opens cleanly when copied off the
-    host."""
-    b64 = base64.b64encode(png_bytes).decode("ascii")
-    return (
-        "<!doctype html>\n"
-        "<html lang=\"en\">\n"
-        "<head>\n"
-        "  <meta charset=\"utf-8\">\n"
-        "  <title>trading-bot equity curve</title>\n"
-        "  <style>body{font-family:system-ui,sans-serif;margin:2em;}"
-        "img{max-width:100%;height:auto;border:1px solid #ddd;}</style>\n"
-        "</head>\n"
-        "<body>\n"
-        "  <h1>trading-bot — equity curve</h1>\n"
-        f"  <img src=\"data:image/png;base64,{b64}\" alt=\"equity curve\" />\n"
-        "</body>\n"
-        "</html>\n"
+def render_equity_png(curve: Sequence[object]) -> bytes:
+    """Render the after-tax equity curve as a PNG via Kaleido
+    (REQ_SDD_RPT_004)."""
+    fig = _build_equity_figure(curve)
+    return fig.to_image(
+        format="png",
+        width=_FIG_WIDTH,
+        height=_FIG_HEIGHT,
+        scale=_FIG_SCALE,
+    )
+
+
+def render_equity_html(curve: Sequence[object]) -> str:
+    """Render a self-contained interactive HTML page (REQ_F_RPT_001,
+    REQ_SDD_RPT_004).
+
+    The Plotly JS bundle is inlined via ``include_plotlyjs="inline"``;
+    the file SHALL NOT reference any CDN; the modebar is disabled so
+    the rendered DOM never inserts an ``<a href="plotly.com">`` logo.
+    """
+    fig = _build_equity_figure(curve)
+    return fig.to_html(
+        full_html=True,
+        include_plotlyjs="inline",
+        config=_PLOTLY_CONFIG,
+    )
+
+
+def render_equity_comparison_html(
+    curves: Sequence[tuple[str, Sequence[object]]],
+) -> str:
+    """Overlay multiple equity curves on a single Plotly figure with
+    a legend toggle (REQ_F_WEB2_005 — CR-019 compare-two-runs
+    backtest panel).
+
+    ``curves`` is a sequence of ``(label, curve)`` pairs. One entry
+    ⇒ a single trace (degrades cleanly). Two entries is the
+    expected case (two backtest runs side-by-side). Three or more
+    are supported; legend toggles let the operator drop traces.
+    """
+    import plotly.graph_objects as go  # type: ignore[import-untyped]
+
+    fig = go.Figure()
+    currency = ""
+    for label, curve in curves:
+        if not curve:
+            continue
+        if not currency:
+            currency = curve[0].equity_after_tax.currency.value  # type: ignore[attr-defined]
+        xs = [p.at for p in curve]  # type: ignore[attr-defined]
+        ys = [
+            float(p.equity_after_tax.amount) for p in curve  # type: ignore[attr-defined]
+        ]
+        # Plotly's default colorway gives distinct colours per trace.
+        fig.add_trace(
+            go.Scatter(
+                x=xs,
+                y=ys,
+                mode="lines",
+                name=label,
+                line=dict(width=2),
+                hovertemplate=(
+                    f"{label}<br>%{{x|%Y-%m-%d}}<br>"
+                    f"%{{y:,.2f}} {currency}<extra></extra>"
+                ),
+            )
+        )
+    if not fig.data:
+        fig.add_annotation(
+            x=0.5,
+            y=0.5,
+            xref="paper",
+            yref="paper",
+            text="No equity-curve data in comparison set",
+            showarrow=False,
+            font=dict(size=14),
+        )
+    fig.update_xaxes(title_text="Date", rangeslider_visible=True)
+    fig.update_yaxes(title_text=f"Equity ({currency or 'EUR'})")
+    fig.update_layout(
+        title="trading-bot — equity curve comparison",
+        width=_FIG_WIDTH,
+        height=_FIG_HEIGHT,
+        template="plotly_white",
+        margin=dict(l=60, r=30, t=60, b=50),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+    )
+    return fig.to_html(
+        full_html=True,
+        include_plotlyjs="inline",
+        config=_PLOTLY_CONFIG,
     )

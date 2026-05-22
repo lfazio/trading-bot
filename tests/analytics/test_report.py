@@ -1,15 +1,15 @@
-"""Tests for the CR-016 MVP-4 report artefacts (TC_RPT_001..009).
+"""Tests for the CR-016 MVP-4 report artefacts (TC_RPT_001..010).
 
-The renderer's PNG step uses ``matplotlib`` which ships in the
-optional ``[reports]`` extra; envs without the extra (e.g., the
-slim webapp container or a fresh ``pip install -e .`` without
-extras) skip these tests cleanly rather than fail on import.
-Install with ``pip install -e .[reports]`` to run them locally.
+The renderer drives ``plotly`` + ``kaleido`` (CR-020 amendment;
+matplotlib was retired). Both ship in the optional ``[reports]``
+extra; envs without the extra (e.g., the slim webapp container or
+a fresh ``pip install -e .`` without extras) skip these tests
+cleanly rather than fail on import. Install with
+``pip install -e .[reports]`` to run them locally.
 """
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import json
 from datetime import UTC, datetime, timedelta
@@ -18,11 +18,13 @@ from pathlib import Path
 
 import pytest
 
-# REQ_NF_RPT_001 — the renderer drives ``matplotlib`` for the PNG
-# step; the module is optional (CR-016 [reports] extra). Skip the
-# whole file when matplotlib isn't installed so envs without the
-# extra report "skipped" instead of "failed".
-pytest.importorskip("matplotlib")
+# REQ_NF_RPT_001 / REQ_SDD_RPT_004 — the renderer drives Plotly
+# for the interactive HTML and Kaleido for the static PNG; both
+# are optional (CR-020 [reports] extra). Skip the whole file when
+# either isn't installed so envs without the extra report
+# "skipped" instead of "failed".
+pytest.importorskip("plotly")
+pytest.importorskip("kaleido")
 
 from trading_system.analytics.report import write_report, report_dir_name
 from trading_system.analytics.summary_json import build_summary
@@ -332,9 +334,9 @@ def test_byte_identical_replay_trades_summary_manifest(tmp_path: Path) -> None:
     """REQ_NF_RPT_001 — two write_report calls with identical inputs
     produce byte-identical trades.csv + summary.json + manifest.json.
 
-    The PNG pixel determinism is best-effort under the same matplotlib
-    version; the test verifies the manifest's png_sha256 round-trips
-    identically on the same host."""
+    The PNG pixel determinism is best-effort under the same Plotly +
+    Kaleido versions (CR-020); the test verifies the manifest's
+    png_sha256 round-trips identically on the same host."""
     a = tmp_path / "a"
     b = tmp_path / "b"
     result = _empty_result()
@@ -368,27 +370,55 @@ def test_byte_identical_replay_trades_summary_manifest(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_equity_curve_html_embeds_png_base64(tmp_path: Path) -> None:
+def test_equity_curve_html_uses_inline_plotly_bundle(tmp_path: Path) -> None:
+    """TC_RPT_008 (CR-020 amendment) — the HTML SHALL carry Plotly's
+    inline-JS markers (``Plotly.newPlot`` reach + an inline
+    ``<script type="text/javascript">`` block), confirming the
+    Plotly bundle was inlined rather than CDN-referenced."""
     out_dir = _write(tmp_path, _empty_result())
     html = (out_dir / "equity-curve.html").read_text(encoding="utf-8")
-    png_bytes = (out_dir / "equity-curve.png").read_bytes()
-    expected_b64 = base64.b64encode(png_bytes).decode("ascii")
-    assert expected_b64 in html
-    # Decoding the base64 back ⇒ same PNG bytes.
-    start = html.index("base64,") + len("base64,")
-    end = html.index('"', start)
-    assert base64.b64decode(html[start:end]) == png_bytes
+    assert "Plotly.newPlot" in html
+    # An inline <script type="text/javascript"> block is the Plotly
+    # bundle reach. Plotly may emit either ``type="text/javascript"``
+    # or no type attribute at all — accept both.
+    assert "<script" in html and "</script>" in html
 
 
-def test_equity_curve_html_has_no_javascript_or_network_refs(tmp_path: Path) -> None:
+def test_equity_curve_html_has_no_external_resource_refs(tmp_path: Path) -> None:
+    """TC_RPT_008 (CR-020 amendment) — the HTML document chrome
+    SHALL NOT reference any external CDN / stylesheet / script
+    source; opening the file offline SHALL render the chart with
+    no network call.
+
+    The audit strips out the inlined ``<script>`` bundle bodies
+    before checking — Plotly's source carries a ``plotly.com``
+    string literal inside the modebar Logo function (which is
+    dead code, since the modebar is disabled at config time); the
+    test cares about the HTML chrome's *outgoing* references, not
+    string literals embedded in inline JS source.
+    """
+    import re
+
     out_dir = _write(tmp_path, _empty_result())
-    html = (out_dir / "equity-curve.html").read_text(encoding="utf-8").lower()
-    # No script tags / src URLs / external CSS imports.
-    assert "<script" not in html
-    assert "</script" not in html
-    assert "http://" not in html
-    assert "https://" not in html
-    assert "@import" not in html
+    html = (out_dir / "equity-curve.html").read_text(encoding="utf-8")
+    # No external <script src="..."> tags (the Plotly bundle is inlined).
+    assert not re.search(r'<script[^>]+\bsrc\s*=', html), (
+        "external script reference found — Plotly bundle is not inlined"
+    )
+    # No external stylesheet links.
+    assert not re.search(
+        r'<link[^>]+rel\s*=\s*"stylesheet"[^>]+\bhref\s*=', html
+    ), "external stylesheet reference found"
+    # Strip inline <script>...</script> bodies so the chrome-only
+    # audit doesn't trip on JS source-code string literals.
+    chrome = re.sub(r"<script\b[^>]*>.*?</script>", "", html, flags=re.DOTALL)
+    for url_attr_match in re.finditer(r'(?:href|src)\s*=\s*"([^"]+)"', chrome):
+        ref = url_attr_match.group(1)
+        assert (
+            "cdn.plot.ly" not in ref
+            and "plot.ly" not in ref
+            and "plotly.com" not in ref
+        ), f"forbidden CDN reference in document-chrome href/src: {ref}"
 
 
 # ---------------------------------------------------------------------------
@@ -425,17 +455,126 @@ def test_report_module_does_not_reach_decisioning_layers() -> None:
         py_file = analytics_dir / name
         tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
         for node in ast.walk(tree):
+            modules: list[str] = []
             if isinstance(node, ast.ImportFrom):
-                module = node.module or ""
+                modules.append(node.module or "")
+            elif isinstance(node, ast.Import):
+                modules.extend(alias.name for alias in node.names)
+            for module in modules:
                 for prefix in forbidden_prefixes:
                     assert not module.startswith(prefix), (
                         f"{name} imports {module} — REQ_SDS_RPT_001"
                     )
+                # CR-020: matplotlib was retired. The renderer SHALL
+                # NOT reach back into matplotlib.
+                assert not module.startswith("matplotlib"), (
+                    f"{name} imports {module} — matplotlib retired by CR-020"
+                )
 
 
 # ---------------------------------------------------------------------------
 # report_dir_name helper
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# TC_RPT_010 — comparison helper (CR-019/CR-020)
+# ---------------------------------------------------------------------------
+
+
+def test_render_equity_comparison_html_overlays_two_curves() -> None:
+    """TC_RPT_010 — `render_equity_comparison_html` overlays two
+    equity curves on a single self-contained Plotly figure with a
+    legend toggle (REQ_F_WEB2_005). No CDN reference."""
+    import re
+
+    from trading_system.analytics.equity_chart import (
+        render_equity_comparison_html,
+    )
+
+    curve_a = (
+        EquityPoint(
+            at=_NOW,
+            equity_gross=Money(Decimal("1000"), Currency.EUR),
+            equity_after_tax=Money(Decimal("1000"), Currency.EUR),
+            drawdown_pct=Decimal("0"),
+        ),
+        EquityPoint(
+            at=_NOW + timedelta(days=1),
+            equity_gross=Money(Decimal("1010"), Currency.EUR),
+            equity_after_tax=Money(Decimal("1007"), Currency.EUR),
+            drawdown_pct=Decimal("0.005"),
+        ),
+    )
+    curve_b = (
+        EquityPoint(
+            at=_NOW,
+            equity_gross=Money(Decimal("1000"), Currency.EUR),
+            equity_after_tax=Money(Decimal("1000"), Currency.EUR),
+            drawdown_pct=Decimal("0"),
+        ),
+        EquityPoint(
+            at=_NOW + timedelta(days=1),
+            equity_gross=Money(Decimal("1020"), Currency.EUR),
+            equity_after_tax=Money(Decimal("1014"), Currency.EUR),
+            drawdown_pct=Decimal("0"),
+        ),
+    )
+    html = render_equity_comparison_html(
+        [("run-a", curve_a), ("run-b", curve_b)]
+    )
+    # Self-contained Plotly page.
+    assert "Plotly.newPlot" in html
+    # Both labels appear (legend traces).
+    assert "run-a" in html and "run-b" in html
+    # No external <script src=...> or <link rel=stylesheet href=...>.
+    assert not re.search(r'<script[^>]+\bsrc\s*=', html)
+    assert not re.search(
+        r'<link[^>]+rel\s*=\s*"stylesheet"[^>]+\bhref\s*=', html
+    )
+    # The chrome SHALL NOT carry CDN hrefs (Plotly bundle internals
+    # are excluded via the inline-<script> stripping pattern used in
+    # TC_RPT_008).
+    chrome = re.sub(r"<script\b[^>]*>.*?</script>", "", html, flags=re.DOTALL)
+    for url_attr_match in re.finditer(r'(?:href|src)\s*=\s*"([^"]+)"', chrome):
+        ref = url_attr_match.group(1)
+        assert (
+            "cdn.plot.ly" not in ref
+            and "plot.ly" not in ref
+            and "plotly.com" not in ref
+        ), f"forbidden CDN reference in document-chrome href/src: {ref}"
+
+
+def test_render_equity_comparison_html_handles_single_curve() -> None:
+    """Single-entry comparison degrades cleanly — renders one trace
+    without crashing on the missing second curve."""
+    from trading_system.analytics.equity_chart import (
+        render_equity_comparison_html,
+    )
+
+    curve = (
+        EquityPoint(
+            at=_NOW,
+            equity_gross=Money(Decimal("1000"), Currency.EUR),
+            equity_after_tax=Money(Decimal("1000"), Currency.EUR),
+            drawdown_pct=Decimal("0"),
+        ),
+    )
+    html = render_equity_comparison_html([("solo", curve)])
+    assert "Plotly.newPlot" in html
+    assert "solo" in html
+
+
+def test_render_equity_comparison_html_handles_all_empty() -> None:
+    """All-empty case still renders a placeholder figure."""
+    from trading_system.analytics.equity_chart import (
+        render_equity_comparison_html,
+    )
+
+    html = render_equity_comparison_html([("empty", ())])
+    assert "Plotly.newPlot" in html
+    # The placeholder annotation reaches into the rendered figure JSON.
+    assert "No equity-curve data" in html
 
 
 def test_report_dir_name_has_filesystem_safe_chars() -> None:
