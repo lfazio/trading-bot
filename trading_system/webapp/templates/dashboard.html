@@ -12,6 +12,39 @@
   {% endif %}
 </p>
 
+<!-- REQ_F_WEB2_002 — three-position mode switch. `live` is
+     disabled-with-tooltip until the live-trading amendment lands. -->
+<nav role="tablist" aria-label="Trading mode" class="mode-switch row" style="margin-bottom:1em; gap:0.25em">
+  {% set _modes = [
+    ('paper',    'Paper trading',      '/?mode=paper' + ('&account_id=' + (account_id|urlencode) if account_id else ''),                'Watch the chosen strategy trade against simulated bars.'),
+    ('backtest', 'Backtest',           '/jobs',                                                                                          'Submit a deterministic historical run from the Backtests page.'),
+  ] %}
+  {% for key, label, href, hint in _modes %}
+  <a href="{{ href }}"
+     role="tab"
+     aria-selected="{{ 'true' if active_mode == key else 'false' }}"
+     aria-label="{{ label }} mode"
+     title="{{ hint }}"
+     class="button {% if active_mode == key %}{% else %}secondary{% endif %}">
+    {{ label }}
+  </a>
+  {% endfor %}
+  <!-- live: disabled-with-tooltip. role="tab" + aria-disabled
+       so assistive tech announces the disabled state -->
+  <button type="button"
+          role="tab"
+          aria-selected="false"
+          aria-disabled="true"
+          aria-label="Live trading mode — disabled until broker adapter is selected"
+          title="Live trading is gated on broker-adapter selection (REQ_F_BRK_003); a separate SRS amendment will enable this control."
+          disabled
+          class="button secondary"
+          style="opacity:0.55; cursor:not-allowed">
+    Live trading
+    <span aria-hidden="true">🔒</span>
+  </button>
+</nav>
+
 {% if live_paper_sessions %}
 <form method="get" action="/" class="row" style="margin-bottom:1em">
   <label for="session-switch">Active paper session:</label>

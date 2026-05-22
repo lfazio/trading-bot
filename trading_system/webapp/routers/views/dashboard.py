@@ -72,11 +72,19 @@ def get_dashboard(request: Request):
             live_paper_sessions = tuple(str(a) for a in registry.live_account_ids())
         except Exception:  # noqa: BLE001 — defensive
             live_paper_sessions = ()
+    # REQ_F_WEB2_002 — three-position mode switch. ``live`` is
+    # disabled until the live-trading amendment lands (gated on
+    # REQ_F_BRK_003 broker-adapter selection); the template renders
+    # the disabled button with the documented tooltip.
+    mode_raw = request.query_params.get("mode", "paper").strip().lower()
+    if mode_raw not in ("paper", "backtest", "live"):
+        mode_raw = "paper"
     return _templates(request).TemplateResponse(
         request=request,
         name="dashboard.html",
         context={
             "account_id": account_id,
             "live_paper_sessions": live_paper_sessions,
+            "active_mode": mode_raw,
         },
     )
