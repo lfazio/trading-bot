@@ -34,12 +34,14 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 
 # REQ id format: REQ_<CATEGORY>[_<SUBJECT>...]_<NUMBER>
-# Examples: REQ_O_001, REQ_F_CAP_001, REQ_NF_LIF_002
-REQ_RE = re.compile(r"\bREQ_[A-Z]+(?:_[A-Z]+)*_\d+\b")
+# Examples: REQ_O_001, REQ_F_CAP_001, REQ_NF_LIF_002, REQ_F_WEB2_001
+# Subject segments accept digits after the leading uppercase letter so
+# disambiguating families (WEB / WEB2, V1 / V2) stay readable.
+REQ_RE = re.compile(r"\bREQ_[A-Z][A-Z0-9]*(?:_[A-Z][A-Z0-9]*)*_\d+\b")
 
 # SRS bullet line: "- **REQ_F_CAP_001** — statement. *V: T*"
 SRS_LINE_RE = re.compile(
-    r"^\s*[-*]\s*\*\*(?P<id>REQ_[A-Z]+(?:_[A-Z]+)*_\d+)\*\*\s*[—\-]\s*(?P<stmt>.+?)\s*$"
+    r"^\s*[-*]\s*\*\*(?P<id>REQ_[A-Z][A-Z0-9]*(?:_[A-Z][A-Z0-9]*)*_\d+)\*\*\s*[—\-]\s*(?P<stmt>.+?)\s*$"
 )
 V_SUFFIX_RE = re.compile(r"\s*\*V:[^*]*\*\s*$")
 
