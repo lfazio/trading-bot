@@ -349,6 +349,28 @@ async def post_finish(request: Request) -> RedirectResponse:
 
     from urllib.parse import quote as _urlquote
 
+    # Log the session start into the operator inbox if wired.
+    inbox = getattr(request.app.state, "notification_inbox", None)
+    if inbox is not None and hasattr(inbox, "append"):
+        from trading_system.webapp.inbox import InboxEntry
+
+        try:
+            inbox.append(
+                InboxEntry(
+                    at=datetime.now(tz=UTC),
+                    category="paper-session",
+                    code="session_started",
+                    severity="info",
+                    message=(
+                        f"Paper session started · universe={state.universe} · "
+                        f"strategy={state.strategy} · capital=€ {capital_amount}"
+                    ),
+                    account_id=str(account_id),
+                )
+            )
+        except Exception:  # noqa: BLE001 — inbox failures stay non-fatal
+            pass
+
     response = RedirectResponse(
         url=f"/?account_id={_urlquote(str(account_id), safe='')}",
         status_code=303,

@@ -41,6 +41,7 @@ from trading_system.accounts.token_verifier import AccountScopedTokenVerifier
 from trading_system.webapp.health import router as health_router
 from trading_system.webapp.job_queue import InProcessJobQueue, JobQueue
 from trading_system.webapp.routers.api.backtests import router as backtests_router
+from trading_system.webapp.routers.api.inbox import router as inbox_api_router
 from trading_system.webapp.routers.api.live_state import router as live_state_router
 from trading_system.webapp.routers.api.paper_state import router as paper_state_router
 from trading_system.webapp.routers.api.registry import router as registry_router
@@ -48,6 +49,9 @@ from trading_system.webapp.routers.api.session import router as session_router
 from trading_system.webapp.routers.views.dashboard import router as dashboard_router
 from trading_system.webapp.routers.views.jobs import router as jobs_view_router
 from trading_system.webapp.routers.views.login import router as login_router
+from trading_system.webapp.routers.views.notifications import (
+    router as notifications_router,
+)
 from trading_system.webapp.routers.views.onboarding import router as onboarding_router
 from trading_system.webapp.routers.views.paper_session import (
     router as paper_session_router,
@@ -74,6 +78,7 @@ class WebappState:
     live_state_reader: Any | None = None
     paper_state_reader: Any | None = None
     runtime_registry: Any | None = None
+    notification_inbox: Any | None = None
     registry_promoter: Any | None = None
     promotion_audit_notifier: Any | None = None
     job_queue: JobQueue | None = None
@@ -144,6 +149,7 @@ def create_app(state: WebappState) -> FastAPI:
     app.state.live_state_reader = state.live_state_reader
     app.state.paper_state_reader = state.paper_state_reader
     app.state.runtime_registry = state.runtime_registry
+    app.state.notification_inbox = state.notification_inbox
     app.state.registry_promoter = state.registry_promoter
     app.state.promotion_audit_notifier = state.promotion_audit_notifier
     app.state.job_queue = state.job_queue
@@ -152,11 +158,13 @@ def create_app(state: WebappState) -> FastAPI:
     app.include_router(health_router)
     app.include_router(live_state_router)
     app.include_router(paper_state_router)
+    app.include_router(inbox_api_router)
     app.include_router(registry_router)
     app.include_router(backtests_router)
     app.include_router(session_router)
     app.include_router(sse_router)
     app.include_router(login_router)
+    app.include_router(notifications_router)
     app.include_router(onboarding_router)
     app.include_router(paper_session_router)
     app.include_router(reports_router)
@@ -210,15 +218,18 @@ def default_app() -> FastAPI:
     )
     workers = int(os.environ.get("TRADING_BOT_JOB_WORKERS", "2"))
     queue = InProcessJobQueue(workers=workers)
+    from trading_system.webapp.inbox import InboxChannel
     from trading_system.webapp.runtimes.paper_trading import RuntimeRegistry
 
     registry = RuntimeRegistry()
+    inbox = InboxChannel()
     return create_app(
         WebappState(
             token_verifier=verifier,
             live_state_reader=_default_live_state_reader(),
             paper_state_reader=_default_paper_state_reader(registry=registry),
             runtime_registry=registry,
+            notification_inbox=inbox,
             job_queue=queue,
         )
     )

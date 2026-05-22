@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% set active_nav = 'notifications' %}
+{% block title %}Notifications &mdash; trading-bot{% endblock %}
+{% block content %}
+<h1>Notifications</h1>
+<p class="subhead">
+  Recent operator-facing events. Ring-buffered to the last 100 entries.
+  {% if entries %}
+    <span class="muted">({{ entries|length }} shown, newest first)</span>
+  {% else %}
+    <span class="muted">(nothing here yet)</span>
+  {% endif %}
+</p>
+
+<section class="card">
+  {% if entries %}
+  <table class="data-table" style="width:100%">
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Severity</th>
+        <th>Category</th>
+        <th>Code</th>
+        <th>Message</th>
+        <th>Account</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in entries %}
+      {% set tone = {'info':'info', 'warn':'warn', 'error':'error'}.get(e.severity, 'info') %}
+      <tr>
+        <td class="muted" style="font-size:0.9rem">{{ e.at.isoformat() }}</td>
+        <td><span class="badge {{ tone }}">{{ e.severity }}</span></td>
+        <td><code>{{ e.category }}</code></td>
+        <td><code>{{ e.code }}</code></td>
+        <td>{{ e.message }}</td>
+        <td>{% if e.account_id %}<code>{{ e.account_id }}</code>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No notifications yet. Events from session lifecycle
+  (started / stopped) and any future kill-switch / anomaly events
+  will appear here.</p>
+  {% endif %}
+</section>
+{% endblock %}

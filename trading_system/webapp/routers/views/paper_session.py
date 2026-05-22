@@ -57,12 +57,35 @@ async def post_stop(
         )
 
     registry = getattr(request.app.state, "runtime_registry", None)
+    runtime_was_live = False
     if registry is not None:
         result = registry.stop(AccountId(account_id))
         # Err just means the runtime wasn't there to begin with;
         # the operator might have refreshed twice. Silent on
         # this since the UI result is the same.
-        if isinstance(result, Err):
+        runtime_was_live = not isinstance(result, Err)
+
+    # Log the session-stop into the inbox if wired (only when
+    # we actually stopped a registered session — refreshes don't
+    # spam the log).
+    inbox = getattr(request.app.state, "notification_inbox", None)
+    if runtime_was_live and inbox is not None and hasattr(inbox, "append"):
+        from datetime import UTC, datetime
+
+        from trading_system.webapp.inbox import InboxEntry
+
+        try:
+            inbox.append(
+                InboxEntry(
+                    at=datetime.now(tz=UTC),
+                    category="paper-session",
+                    code="session_stopped",
+                    severity="info",
+                    message="Paper session stopped by operator.",
+                    account_id=account_id,
+                )
+            )
+        except Exception:  # noqa: BLE001 — inbox failures stay non-fatal
             pass
 
     response = RedirectResponse(url="/", status_code=303)

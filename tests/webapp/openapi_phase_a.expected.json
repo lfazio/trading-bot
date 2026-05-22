@@ -387,6 +387,23 @@
         "summary": "Read a single backtest's status + summary"
       }
     },
+    "/api/inbox": {
+      "get": {
+        "description": "Returns the bounded ring buffer of recent operator-facing notifications, newest LAST. The body is canonical-JSON; equal buffer states produce byte-identical bodies.",
+        "operationId": "get_inbox_api_inbox_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Notifications inbox snapshot"
+      }
+    },
     "/api/registry/{strategy_id}/promote": {
       "post": {
         "description": "REQ_F_FAS_001 / REQ_F_FAS_005 \u2014 mutation endpoint gated by the\naccount-scoped operator token.",
@@ -693,6 +710,25 @@
           }
         },
         "summary": "Login"
+      }
+    },
+    "/notifications": {
+      "get": {
+        "description": "Render the inbox panel. Auth: any valid claim.",
+        "operationId": "notifications_notifications_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Notifications"
       }
     },
     "/onboarding": {
