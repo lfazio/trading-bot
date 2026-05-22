@@ -27,7 +27,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from trading_system.backtesting.walk_forward import WalkForwardWindow
@@ -130,28 +130,56 @@ def test_step_segments_are_contiguous_non_overlapping(
         assert oos_end - valid_end == oos
 
 
-@given(
-    train=_DURATIONS,
-    valid=_DURATIONS,
-    oos=_DURATIONS,
-    period_days=st.integers(min_value=30, max_value=2000),
-)
+@st.composite
+def _window_and_multi_step_period(draw):  # type: ignore[no-untyped-def]
+    """Generate a (window, period_days) pair guaranteed to yield
+    ≥ 2 boundary steps without relying on ``assume`` filtering.
+
+    Previously this property used
+    ``assume(len(boundaries) >= 2)``, but for random
+    ``(train, valid, oos, period_days)`` quads most generated
+    cases produce 0 or 1 boundaries, tripping Hypothesis's
+    ``filter_too_much`` health check intermittently. Composing
+    the period_days from a multiplier of the full-window width
+    makes ≥ 2 boundaries unconditional — no filtering, no flake.
+    """
+    train = draw(_DURATIONS)
+    valid = draw(_DURATIONS)
+    oos = draw(_DURATIONS)
+    full_window_days = (train + valid + oos).days
+    # Need at least one extra ``valid`` past the first window's
+    # oos_end to get a second step; n_extra_steps ∈ [1, 5] for
+    # bounded but varied coverage.
+    n_extra_steps = draw(st.integers(min_value=1, max_value=5))
+    period_days = full_window_days + n_extra_steps * valid.days
+    return train, valid, oos, period_days
+
+
+@given(spec=_window_and_multi_step_period())
 @settings(max_examples=200)
 def test_step_advances_by_valid_width(
-    train: timedelta,
-    valid: timedelta,
-    oos: timedelta,
-    period_days: int,
+    spec: tuple[timedelta, timedelta, timedelta, int],
 ) -> None:
     """REQ_SDD_ALG_004 — the rolling step advances by ``valid``
-    so consecutive OOS slices don't overlap."""
+    so consecutive OOS slices don't overlap.
+
+    Uses a composite strategy that guarantees ≥ 2 boundary
+    steps so no ``assume()`` filtering is needed (which
+    previously tripped Hypothesis's ``filter_too_much`` health
+    check intermittently)."""
+    train, valid, oos, period_days = spec
     window = WalkForwardWindow(train=train, valid=valid, oos=oos)
     start = datetime(2026, 1, 1, tzinfo=UTC)
     end = start + timedelta(days=period_days)
     boundaries = _step_boundaries(
         period_start=start, period_end=end, window=window
     )
-    assume(len(boundaries) >= 2)
+    # Composite strategy guarantees ≥ 2 boundaries by construction.
+    assert len(boundaries) >= 2, (
+        f"composite generated < 2 boundaries: "
+        f"train={train.days}d valid={valid.days}d oos={oos.days}d "
+        f"period={period_days}d boundaries={len(boundaries)}"
+    )
     for i in range(1, len(boundaries)):
         prev_train_start = boundaries[i - 1][0]
         cur_train_start = boundaries[i][0]
