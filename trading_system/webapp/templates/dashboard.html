@@ -93,6 +93,14 @@
       <span class="value numeric" data-field="paper_points">0</span>
     </div>
     <div class="stat">
+      <span class="label">Trades executed</span>
+      <span class="value numeric" data-field="paper_trades">0</span>
+    </div>
+    <div class="stat">
+      <span class="label">Open positions</span>
+      <span class="value numeric" data-field="paper_positions">0</span>
+    </div>
+    <div class="stat">
       <span class="label">Last tick</span>
       <span class="value muted" data-field="paper_last_tick" style="font-size:0.92rem">—</span>
     </div>
@@ -212,6 +220,8 @@ function renderPaperState(raw) {
     set('paper_equity', '—');
   }
   set('paper_points', String(data.equity_points_count || 0));
+  set('paper_trades', String(data.trades_count || 0));
+  set('paper_positions', String(data.open_positions_count || 0));
   // Last tick / degraded-since timestamps.
   const fmt = (ts) => ts ? ts.replace('T', ' ').replace(/\+00:00$/, ' UTC') : '—';
   set('paper_last_tick', fmt(data.last_tick_at));

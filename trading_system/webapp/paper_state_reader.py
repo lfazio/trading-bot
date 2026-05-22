@@ -129,6 +129,26 @@ class RuntimePaperStateReader:
                 latest_close = runtime.latest_close()
             except Exception:  # noqa: BLE001 — defensive
                 latest_close = None
+        # Trade + open-positions counts — surfaced for the panel
+        # so the operator sees the strategy actually trading.
+        trades_count = 0
+        if hasattr(runtime, "trade_history"):
+            try:
+                trades_count = len(runtime.trade_history())
+            except Exception:  # noqa: BLE001
+                trades_count = 0
+        open_positions_count = 0
+        portfolio = getattr(runtime, "portfolio", None)
+        if portfolio is not None and hasattr(portfolio, "positions"):
+            try:
+                positions = portfolio.positions()
+                open_positions_count = sum(
+                    1
+                    for p in positions.values()
+                    if getattr(p, "quantity", 0) != 0
+                )
+            except Exception:  # noqa: BLE001
+                open_positions_count = 0
         return PaperStateResponse(
             account_id=account_id,
             as_of=as_of,
@@ -143,6 +163,8 @@ class RuntimePaperStateReader:
             starting_capital=starting_capital_amount,
             instrument_symbol=instrument_symbol,
             latest_close=latest_close,
+            trades_count=trades_count,
+            open_positions_count=open_positions_count,
         )
 
     async def subscribe(

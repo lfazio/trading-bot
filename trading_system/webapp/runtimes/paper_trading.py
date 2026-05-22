@@ -42,8 +42,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Literal, Protocol, runtime_checkable
+from typing import Literal, Protocol, TYPE_CHECKING, runtime_checkable
 
+from trading_system.backtesting.broker import BacktestBroker
 from trading_system.backtesting.market_replay import _bar_to_tick
 from trading_system.data.provider import MarketDataProvider
 from trading_system.data.types import Bar
@@ -52,15 +53,19 @@ from trading_system.execution.local import LocalBrokerAdapter
 from trading_system.execution.slippage import ZeroSlippageModel
 from trading_system.execution.types import Tick
 from trading_system.models.flow import EquityPoint
-from trading_system.models.identifiers import AccountId, InstrumentId, StrategyId
-from trading_system.models.instrument import Instrument
+from trading_system.models.identifiers import AccountId, InstrumentId, OrderId, StrategyId
+from trading_system.models.instrument import Instrument, InstrumentClass, Stock
+from trading_system.models.meta import TradeProposal, ValidationResult
 from trading_system.models.money import Money
 from trading_system.models.phase import AllocationBucket, MarketRegime, PhaseConstraints
+from trading_system.models.trading import Order, OrderType, Trade
 from trading_system.persistence.repositories.portfolio import PortfolioRepository
 from trading_system.portfolio.portfolio import Portfolio
 from trading_system.result import Err, Nothing, Ok, Option, Result, Some
+from trading_system.screener.engine import ScoredStock, ScoreBreakdown
 from trading_system.strategies.protocol import Strategy
 from trading_system.strategies.state import MarketState
+from trading_system.tax.config import TaxConfig
 
 
 PAPER_ACCOUNT_PREFIX = "paper-"
@@ -98,6 +103,58 @@ class BarSource(Protocol):
 
     def next_bar(self) -> Result[Option[Bar], str]: ...
     def latest_cached(self) -> Result[Option[Bar], str]: ...
+
+
+# ---------------------------------------------------------------------------
+# Instrument-class → allocation bucket map (mirrors risk.mapping)
+# ---------------------------------------------------------------------------
+
+
+def _bucket_for_class(cls: InstrumentClass) -> AllocationBucket:
+    """First-bucket mapping for ``portfolio.apply`` — every fill
+    has to land in a single bucket for the cost-basis ledger.
+
+    Same mapping as ``trading_system.risk.mapping.buckets_for_class``
+    but returning a single bucket (the first one in the bucket
+    tuple). Defined locally so the runtime layer doesn't have to
+    import ``risk`` (forbidden by the structural audit).
+    """
+    if cls is InstrumentClass.STOCK:
+        return AllocationBucket.STOCK
+    if cls is InstrumentClass.TURBO:
+        return AllocationBucket.TURBO
+    if cls is InstrumentClass.STRUCTURED:
+        return AllocationBucket.STRUCTURED
+    return AllocationBucket.STOCK  # CASH falls back to STOCK bucket
+
+
+# ---------------------------------------------------------------------------
+# RiskGate Protocol — Protocol-shaped callable signature
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class RiskGate(Protocol):
+    """Protocol-shaped callable wrapping the project's
+    ``RiskEngine.pre_trade`` so the runtime layer can gate
+    proposals without importing ``trading_system.risk`` (the
+    structural audit forbids ``safety`` / ``risk`` /
+    ``strategy_lab`` reach from ``webapp/runtimes/``).
+
+    Operators construct the closure outside ``webapp/`` and
+    attach it to ``PaperTradingRuntime.risk_gate`` — when
+    ``None``, the runtime accepts every proposal without
+    gating (v1 paper-trading does this; the live-trading
+    amendment makes it mandatory).
+    """
+
+    def __call__(
+        self,
+        proposal: TradeProposal,
+        portfolio: Portfolio,
+        constraints: PhaseConstraints,
+        regime: MarketRegime,
+    ) -> ValidationResult: ...
 
 
 # ---------------------------------------------------------------------------
@@ -185,12 +242,26 @@ class PaperTradingRuntime:
     # ``Err`` so the dashboard can show "saving disabled" without
     # ripping the live session apart.
     equity_repo: PortfolioRepository | None = None
+    # CR-019 step 1 (b) follow-up — Protocol-shaped risk-gate
+    # closure. ``None`` accepts every proposal; operators wire a
+    # closure that delegates to ``trading_system.risk.RiskEngine``
+    # for production. See the ``RiskGate`` Protocol above.
+    risk_gate: RiskGate | None = None
+    # Tax config for the portfolio.apply call. Defaults to the
+    # France CTO 30% flat rate via the ``TaxConfig.cto_default``
+    # factory so the v1 demo path works out of the box.
+    tax_config: TaxConfig | None = None
     spread_pct: Decimal = Decimal("0.001")
 
     _alive: bool = field(default=True, init=False)
     _degraded_since: datetime | None = field(default=None, init=False)
     _last_tick_at: datetime | None = field(default=None, init=False)
     _equity_points: list[EquityPoint] = field(default_factory=list, init=False)
+    _trades: list[Trade] = field(default_factory=list, init=False)
+    _rejected: list[tuple[TradeProposal, tuple[str, ...]]] = field(
+        default_factory=list, init=False
+    )
+    _next_order_seq: int = field(default=0, init=False)
 
     # ------------------------------------------------------------------
     # Public surface
@@ -219,6 +290,84 @@ class PaperTradingRuntime:
     def equity_history(self) -> tuple[EquityPoint, ...]:
         """Read-only view of the equity series accumulated so far."""
         return tuple(self._equity_points)
+
+    def trade_history(self) -> tuple[Trade, ...]:
+        """Read-only view of every fill recorded by this session."""
+        return tuple(self._trades)
+
+    def rejected_proposals(
+        self,
+    ) -> tuple[tuple[TradeProposal, tuple[str, ...]], ...]:
+        """Risk-gate rejections — for the dashboard's "recent
+        decisions" panel."""
+        return tuple(self._rejected)
+
+    def _build_screener_ranking(self) -> tuple[ScoredStock, ...]:
+        """v1 paper-trading: rank just the runtime's instrument.
+
+        Only ``Stock`` instances appear in the screener-ranking
+        Protocol (REQ_SDS_MOD_005). For non-stock instruments the
+        ranking is empty — the strategy's STOCK-bucket allocation
+        target produces no proposals + the portfolio drifts on
+        marks alone.
+        """
+        if not isinstance(self.instrument, Stock):
+            return ()
+        return (
+            ScoredStock(
+                stock=self.instrument,
+                score=Decimal("0.5"),
+                breakdown=ScoreBreakdown(
+                    stability=Decimal("0.5"),
+                    yield_quality=Decimal("0.5"),
+                    valuation=Decimal("0.5"),
+                ),
+            ),
+        )
+
+    def _submit_proposal(
+        self, proposal: TradeProposal, tick: Tick
+    ) -> None:
+        """Convert a ``TradeProposal`` to a market ``Order`` + submit
+        through the broker; on a successful fill, apply it to the
+        portfolio. Errs are swallowed (the broker may reject for
+        insufficient cash, currency mismatch, etc.) — the rejection
+        is observable through ``self.broker`` state if operators
+        want to log them later.
+        """
+        equity = self.portfolio.equity_after_tax().amount
+        if equity <= 0 or tick.last <= 0:
+            return
+        raw_qty = (equity * proposal.size_pct_of_capital) / tick.last
+        if raw_qty <= 0:
+            return
+        self._next_order_seq += 1
+        order = Order(
+            id=OrderId(
+                f"paper-{self.session.account_id}-{self._next_order_seq:08d}"
+            ),
+            instrument=proposal.instrument,
+            side=proposal.side,
+            quantity=raw_qty,
+            type=OrderType.MARKET,
+            stop_loss=proposal.stop_loss,
+            created_at=tick.at,
+            source_strategy=self.strategy.id,
+        )
+        # Wrap the LocalBrokerAdapter so submit returns the Trade
+        # directly (the bare adapter only returns OrderId).
+        wrapped = BacktestBroker(adapter=self.broker)
+        match wrapped.submit(order):
+            case Ok(trade):
+                tax_cfg = self.tax_config or TaxConfig.default()
+                bucket = _bucket_for_class(proposal.instrument.cls)
+                self.portfolio.apply(trade, order, bucket, tax_cfg)
+                self._trades.append(trade)
+            case Err(_):
+                # Broker rejected (insufficient cash, currency
+                # mismatch, etc.). Silently skip — the rest of
+                # the tick still records the equity point.
+                return
 
     def latest_close(self) -> Decimal | None:
         """Most recent bar close emitted by the BarSource — surfaced
@@ -324,8 +473,8 @@ class PaperTradingRuntime:
     def _apply_bar(self, bar: Bar) -> Result[Option[EquityPoint], str]:
         """Apply one bar through the engine pieces:
         broker tick → portfolio mark → strategy evaluate →
-        proposals (currently logged, not gated; full risk-engine
-        wiring is step (b)) → record equity.
+        risk-gate → broker.submit (CR-019 step 1 (b) follow-up) →
+        record equity.
         """
         # 1. Convert Bar → Tick + forward to the broker.
         tick: Tick = _bar_to_tick(self.instrument, bar, self.spread_pct)
@@ -335,33 +484,37 @@ class PaperTradingRuntime:
         # 2. Mark portfolio at the latest price.
         self.portfolio.mark({self.instrument.id: tick.last})
 
-        # 3. Evaluate the strategy.
+        # 3. Evaluate the strategy (only when a MarketDataProvider
+        # is wired — strategies that consult historical bars need
+        # ``state.market``). The wizard's finish handler hands a
+        # ``SimulatedMarketDataProvider`` so the live demo path
+        # works end-to-end.
+        proposals: list[TradeProposal] = []
         if self.market_data_provider is not None:
+            ranking = self._build_screener_ranking()
             state = MarketState(
                 at=tick.at,
                 portfolio=self.portfolio,
                 constraints=self.phase_constraints,
                 regime=self.regime,
-                screener_ranking=(),
+                screener_ranking=ranking,
                 market=self.market_data_provider,
             )
-            _proposals = self.strategy.evaluate(state)
-        else:
-            # No market data provider wired — v1 paper-trading slice
-            # focuses on the broker + portfolio tick loop. Skip
-            # strategy evaluation; equity-curve snapshots still
-            # record so the dashboard renders. Step 1 (b) lands
-            # the strategy + risk wiring with the live yfinance
-            # provider in this slot.
-            _proposals = []
-        # NOTE: full risk-engine gating + broker.submit wiring lands
-        # in CR-019 step 1 (b) (REQ_F_WEB2_004 backtest workflow +
-        # the per-strategy attribution panel). v1 records equity
-        # snapshots so the dashboard renders the live curve;
-        # proposals are observed but not executed yet. This keeps
-        # the first slice small + deterministic. The deferred wiring
-        # is tracked in CR-019's open-question 2.
-        del _proposals
+            proposals = list(self.strategy.evaluate(state))
+
+        # 4. Gate + submit each proposal.
+        for proposal in proposals:
+            if self.risk_gate is not None:
+                verdict = self.risk_gate(
+                    proposal,
+                    self.portfolio,
+                    self.phase_constraints,
+                    self.regime,
+                )
+                if not verdict.passed:
+                    self._rejected.append((proposal, verdict.reasons))
+                    continue
+            self._submit_proposal(proposal, tick)
 
         # 4. Record equity point.
         self.portfolio.record_equity(tick.at)

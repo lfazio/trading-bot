@@ -504,3 +504,103 @@ def test_registry_resume_from_persistence_empty_returns_empty_tuple(tmp_path) ->
     result = reg.resume_from_persistence(repo)
     assert isinstance(result, Ok)
     assert result.value == ()
+
+
+# ---------------------------------------------------------------------------
+# CR-019 step 1 (b) follow-up — strategy + risk-gate wiring inside tick_once
+# ---------------------------------------------------------------------------
+
+
+def test_tick_runs_strategy_and_submits_when_market_data_wired() -> None:
+    """REQ_F_WEB2_001 follow-up — when the runtime carries both a
+    market_data_provider and a Strategy, `tick_once` SHALL invoke
+    the strategy and submit any non-empty proposals through the
+    broker."""
+    from trading_system.webapp.runtimes.simulated_bar_source import (
+        SimulatedBarSource,
+        SimulatedMarketDataProvider,
+    )
+    from trading_system.webapp.runtimes.strategy_factory import build_strategy
+
+    # Run a few simulator ticks first so the strategy has bar
+    # history to look at.
+    src = SimulatedBarSource(
+        instrument_id=_stock().id,
+        seed=1,
+        start_at=_T0,
+    )
+    # We need to feed bars into the simulator's history before the
+    # runtime ticks; _build below uses a stub source. Use the
+    # simulator-backed setup directly.
+    from trading_system.webapp.runtimes.paper_trading import build_runtime
+
+    runtime_res = build_runtime(
+        session=_session(),
+        instrument=_stock(),
+        strategy=build_strategy(
+            "CoreStrategy",
+            strategy_id=StrategyId("CoreStrategy"),
+        ),  # type: ignore[arg-type]
+        bar_source=src,
+        phase_constraints=_constraints(),
+        regime=MarketRegime.SIDEWAYS,
+    )
+    assert isinstance(runtime_res, Ok)
+    runtime = runtime_res.value
+    runtime.market_data_provider = SimulatedMarketDataProvider(
+        source=src, instrument=_stock()
+    )
+    # Drive enough ticks for the strategy to converge — CoreStrategy
+    # rebalances toward the STOCK allocation target on the first
+    # call when the portfolio is empty.
+    for _ in range(3):
+        runtime.tick_once()
+    # The strategy should have produced at least one submitted
+    # trade — and the open-positions count reflects it.
+    assert len(runtime.trade_history()) >= 1
+    assert len([p for p in runtime.portfolio.positions().values() if p.quantity != 0]) >= 1
+
+
+def test_tick_rejects_proposal_when_risk_gate_returns_reject() -> None:
+    """When a risk_gate is wired and rejects a proposal, the
+    runtime SHALL skip the broker.submit call. The rejected
+    proposal is observable via `rejected_proposals`."""
+    from trading_system.models.meta import ValidationResult
+    from trading_system.webapp.runtimes.paper_trading import build_runtime
+    from trading_system.webapp.runtimes.simulated_bar_source import (
+        SimulatedBarSource,
+        SimulatedMarketDataProvider,
+    )
+    from trading_system.webapp.runtimes.strategy_factory import build_strategy
+
+    src = SimulatedBarSource(
+        instrument_id=_stock().id, seed=1, start_at=_T0
+    )
+    runtime_res = build_runtime(
+        session=_session(),
+        instrument=_stock(),
+        strategy=build_strategy(
+            "CoreStrategy",
+            strategy_id=StrategyId("CoreStrategy"),
+        ),  # type: ignore[arg-type]
+        bar_source=src,
+        phase_constraints=_constraints(),
+        regime=MarketRegime.SIDEWAYS,
+    )
+    runtime = runtime_res.unwrap()
+    runtime.market_data_provider = SimulatedMarketDataProvider(
+        source=src, instrument=_stock()
+    )
+    # Risk gate that always rejects.
+    runtime.risk_gate = (  # type: ignore[assignment]
+        lambda proposal, portfolio, constraints, regime: ValidationResult.reject(
+            "test:always_reject"
+        )
+    )
+    for _ in range(3):
+        runtime.tick_once()
+    assert len(runtime.trade_history()) == 0
+    # At least one rejection was recorded.
+    rejected = runtime.rejected_proposals()
+    assert len(rejected) >= 1
+    assert rejected[0][1] == ("test:always_reject",)

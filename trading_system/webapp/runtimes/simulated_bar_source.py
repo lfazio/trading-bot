@@ -29,9 +29,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from trading_system.data.types import Bar
+from trading_system.data.types import Bar, Fundamentals, Timeframe
 from trading_system.models.identifiers import InstrumentId
-from trading_system.result import Nothing, Ok, Option, Result, Some
+from trading_system.models.instrument import Instrument
+from trading_system.models.trading import Dividend
+from trading_system.result import Err, Nothing, Ok, Option, Result, Some
 
 
 @dataclass(slots=True)
@@ -62,6 +64,7 @@ class SimulatedBarSource:
     _rng: random.Random = field(init=False, repr=False)
     _last_at: datetime | None = field(default=None, init=False)
     _last_bar: Bar | None = field(default=None, init=False)
+    _history: list[Bar] = field(default_factory=list, init=False, repr=False)
     _last_close: Decimal = field(init=False)
 
     def __post_init__(self) -> None:
@@ -108,8 +111,15 @@ class SimulatedBarSource:
         )
         self._last_at = now
         self._last_bar = bar
+        self._history.append(bar)
         self._last_close = new_close
         return Ok(Some(bar))
+
+    def history(self) -> tuple[Bar, ...]:
+        """Read-only snapshot of every bar emitted so far. Consumed
+        by the SimulatedMarketDataProvider so the strategy step can
+        see a rolling lookback window."""
+        return tuple(self._history)
 
     def latest_cached(self) -> Result[Option[Bar], str]:
         """Return the most recently emitted bar, if any.
@@ -121,3 +131,56 @@ class SimulatedBarSource:
         if self._last_bar is None:
             return Ok(Nothing())
         return Ok(Some(self._last_bar))
+
+
+@dataclass(slots=True)
+class SimulatedMarketDataProvider:
+    """``MarketDataProvider`` Protocol adapter over a single
+    ``SimulatedBarSource``.
+
+    The provider's bar window is the source's emitted history
+    (every ``next_bar()`` call appends one bar). ``latest`` returns
+    the most recent bar; range queries return the slice in
+    [start, end]. Fundamentals + dividends return categorised
+    ``data:not_found`` Errs — the simulator doesn't model them and
+    strategies that reach for them will see the documented
+    not-found path.
+    """
+
+    source: SimulatedBarSource
+    instrument: Instrument
+
+    def bars(
+        self,
+        instrument: Instrument,
+        timeframe: Timeframe,
+        start: datetime,
+        end: datetime,
+    ) -> Result[list[Bar], str]:
+        del timeframe  # the simulator has one cadence
+        if instrument.id != self.instrument.id:
+            return Err(f"data:not_found:instrument:{instrument.id}")
+        if start > end:
+            return Err("data:invalid_range")
+        history = self.source.history()
+        in_range = [b for b in history if start <= b.at <= end]
+        return Ok(in_range)
+
+    def latest(self, instrument: Instrument) -> Result[Bar, str]:
+        if instrument.id != self.instrument.id:
+            return Err(f"data:not_found:instrument:{instrument.id}")
+        history = self.source.history()
+        if not history:
+            return Err("data:no_as_of")
+        return Ok(history[-1])
+
+    def dividends(
+        self, instrument: Instrument, year: int
+    ) -> Result[list[Dividend], str]:
+        del instrument, year
+        return Ok([])  # simulator doesn't model dividends
+
+    def fundamentals(
+        self, instrument: Instrument
+    ) -> Result[Fundamentals, str]:
+        return Err(f"data:not_found:fundamentals:{instrument.id}")

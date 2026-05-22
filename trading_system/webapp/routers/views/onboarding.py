@@ -41,6 +41,7 @@ from trading_system.webapp.runtimes.paper_trading import (
 )
 from trading_system.webapp.runtimes.simulated_bar_source import (
     SimulatedBarSource,
+    SimulatedMarketDataProvider,
 )
 from trading_system.webapp.wizard_state import (
     ALLOWED_STRATEGIES,
@@ -278,21 +279,29 @@ async def post_finish(request: Request) -> RedirectResponse:
         seed=abs(hash(str(account_id))) % (2**31),
     )
 
-    # No-op strategy stub so the runtime composes; the runtime's
-    # strategy step is skipped when market_data_provider is None
-    # (see paper_trading.PaperTradingRuntime._apply_bar) so the
-    # specific strategy instance is never invoked.
-    class _NoopStrategy:
-        id = StrategyId(state.strategy)
+    # Build the chosen strategy instance via the runtime-layer
+    # factory (the views layer can't import strategies directly —
+    # closed import graph).
+    from trading_system.webapp.runtimes.strategy_factory import build_strategy
 
-        def evaluate(self, market_state) -> list:  # noqa: ANN001
-            del market_state
-            return []
+    strategy = build_strategy(
+        state.strategy, strategy_id=StrategyId(state.strategy)
+    )
+    if strategy is None:
+        return _render(  # type: ignore[return-value]
+            request,
+            state,
+            error=f"webapp:onboarding:bad_strategy:{state.strategy}",
+            status_code=400,
+        )
+    # The factory already wires the documented defaults for fee +
+    # tax. The runtime falls back to TaxConfig.default() internally
+    # when ``tax_config`` is None.
 
     runtime_result = build_runtime(
         session=session,
         instrument=instrument,
-        strategy=_NoopStrategy(),  # type: ignore[arg-type]
+        strategy=strategy,
         bar_source=bar_source,
         phase_constraints=constraints,
         regime=MarketRegime.SIDEWAYS,
@@ -309,6 +318,12 @@ async def post_finish(request: Request) -> RedirectResponse:
         return response  # type: ignore[return-value]
     assert isinstance(runtime_result, ResultOk)
     runtime: PaperTradingRuntime = runtime_result.value
+    # Attach the simulated market-data provider so the strategy
+    # step inside ``tick_once`` has bars to consult. Also set
+    # the tax config so portfolio.apply has the rate.
+    runtime.market_data_provider = SimulatedMarketDataProvider(
+        source=bar_source, instrument=instrument
+    )
 
     # Register against the shared registry so the dashboard
     # panel + tick driver both see the new session.

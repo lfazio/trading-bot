@@ -61,6 +61,10 @@ _RUNTIMES_ALLOWED_EXTRA_PREFIXES = (
     "trading_system.portfolio",
     "trading_system.tax",
     "trading_system.strategies",
+    # CR-019 step 1 (b) follow-up — building MarketState for the
+    # live strategy step needs ``ScoredStock`` + ``ScoreBreakdown``
+    # (pure dataclasses, no decisioning logic).
+    "trading_system.screener",
 )
 
 

@@ -165,6 +165,8 @@ class PaperStateResponse:
     starting_capital: Decimal | None = None
     instrument_symbol: str = ""
     latest_close: Decimal | None = None
+    trades_count: int = 0
+    open_positions_count: int = 0
 
     def __post_init__(self) -> None:
         if not str(self.account_id).strip():
