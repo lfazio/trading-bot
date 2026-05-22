@@ -2,7 +2,10 @@
 
 Verifies the filter -> score -> select pipeline (REQ_F_TRB_001..006),
 the Phase 1 "turbos disabled" gate (REQ_F_CAP_006), the threshold
-gate (REQ_F_TRB_004), and the Err-from-data drop policy.
+gate (REQ_F_TRB_004 + REQ_SDS_MOD_007 — the selector SHALL emit
+"no trade" when the best candidate's score is below the configured
+threshold; the threshold is configurable via ``TurboSelectorConfig``),
+and the Err-from-data drop policy.
 """
 
 from __future__ import annotations

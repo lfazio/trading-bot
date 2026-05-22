@@ -5,7 +5,12 @@ error categories, error aggregation across multiple bad files,
 missing-required vs absent-optional handling, and the
 ``ValidationReport`` shape.
 
-REQ refs: REQ_SDS_CFG_001, REQ_SDS_CFG_002, REQ_SDD_ERR_002.
+REQ refs: REQ_SDS_CFG_001, REQ_SDS_CFG_002, REQ_SDD_ERR_002,
+REQ_SDS_MOD_001 (``config/`` runs schema validation at startup
+with cross-field invariants; any failure is a fail-fast exit —
+``validate_all`` is the entry point operators invoke at boot via
+``tools/validate_config.py`` or the CLI's ``validate-config``
+subcommand).
 """
 
 from __future__ import annotations

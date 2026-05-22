@@ -1,6 +1,13 @@
 """Tests for ``trading_system.strategy_lab.scoring``.
 
-REQ refs: REQ_F_MTO_003 — score weights pinned 0.4 / 0.3 / 0.2 / 0.1.
+REQ refs:
+- REQ_F_MTO_003 — score weights pinned 0.4 / 0.3 / 0.2 / 0.1.
+- REQ_SDD_CFG_005 — default meta-loop scoring weights SHALL be
+  0.4 / 0.3 / 0.2 / 0.1 (asserted below via the
+  ``score_metrics`` algebra: weights are not parameters — they
+  live in the source as ``_W_RETURN`` / ``_W_SHARPE`` /
+  ``_W_STABILITY`` / ``_W_DD_PENALTY`` module constants that
+  match the documented defaults).
 """
 
 from __future__ import annotations

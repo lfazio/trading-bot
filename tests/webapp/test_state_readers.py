@@ -62,9 +62,16 @@ class _StubPortfolio:
 
 @dataclass(slots=True)
 class _StubSafety:
-    """Satisfies ``SafetyStateView`` structurally."""
+    """Satisfies ``SafetyStateView`` structurally.
 
-    state: KillSwitchState = KillSwitchState.ACTIVE
+    Exposes ``state`` as a method (callable) — matches the concrete
+    ``StateManager.state()`` shape.
+    """
+
+    _ks_state: KillSwitchState = KillSwitchState.ACTIVE
+
+    def state(self) -> KillSwitchState:
+        return self._ks_state
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,7 +141,7 @@ def test_portfolio_view_drives_equity_and_position_count() -> None:
 
 
 def test_safety_view_drives_ks_state() -> None:
-    bag = RuntimeStateBag(safety=_StubSafety(state=KillSwitchState.DEGRADED))
+    bag = RuntimeStateBag(safety=_StubSafety(_ks_state=KillSwitchState.DEGRADED))
     snap = bag.snapshot(account_id=AccountId("alpha"), as_of=_NOW)
     assert snap.ks_state == KillSwitchState.DEGRADED
 
@@ -148,7 +155,7 @@ def test_phase_view_drives_phase() -> None:
 def test_full_bag_yields_full_real_snapshot() -> None:
     bag = RuntimeStateBag(
         portfolio=_StubPortfolio(equity_amount=Decimal("1234567"), positions_count=7),
-        safety=_StubSafety(state=KillSwitchState.KILL),
+        safety=_StubSafety(_ks_state=KillSwitchState.KILL),
         phase_engine=_StubPhase(phase=Phase.SIX),
     )
     snap = bag.snapshot(account_id=AccountId("household"), as_of=_NOW)
@@ -167,7 +174,7 @@ def test_full_bag_yields_full_real_snapshot() -> None:
 def test_snapshot_is_deterministic_for_equal_inputs() -> None:
     bag = RuntimeStateBag(
         portfolio=_StubPortfolio(equity_amount=Decimal("100"), positions_count=2),
-        safety=_StubSafety(state=KillSwitchState.ACTIVE),
+        safety=_StubSafety(_ks_state=KillSwitchState.ACTIVE),
         phase_engine=_StubPhase(phase=Phase.TWO),
     )
     a = bag.snapshot(account_id=AccountId("alpha"), as_of=_NOW)

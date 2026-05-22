@@ -180,6 +180,15 @@ def _build(
 
 # ---------------------------------------------------------------------------
 # TC_BCT_001 — Determinism
+#
+# REQ refs verified by ``test_same_seed_yields_identical_trades``:
+# - REQ_NF_REP_001 — replay determinism.
+# - REQ_SDD_TST_006 — backtest reproducibility SHALL be asserted
+#   by running each shipped strategy twice with the same
+#   (seed, config_hash, data) and diffing trade logs + equity
+#   curves; any difference SHALL fail the build.
+# - REQ_TP_GAT_003 — CI SHALL diff and fail on any difference for
+#   two runs with identical inputs.
 # ---------------------------------------------------------------------------
 
 

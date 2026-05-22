@@ -74,9 +74,14 @@ class PortfolioStateView(Protocol):
 
 @runtime_checkable
 class SafetyStateView(Protocol):
-    """Read-only safety surface — emits the current KS state."""
+    """Read-only safety surface — emits the current KS state.
 
-    @property
+    Declared as a method (not a property) to match the concrete
+    ``trading_system.safety.state_manager.StateManager.state()``
+    signature. Operators wiring a custom safety view SHALL expose
+    ``state()`` as a callable that returns ``KillSwitchState``.
+    """
+
     def state(self) -> KillSwitchState: ...
 
 
@@ -132,7 +137,9 @@ class RuntimeStateBag:
         else:
             equity_amount = self.bootstrap_equity_after_tax
             positions_count = 0
-        ks_state = self.safety.state if self.safety is not None else self.bootstrap_ks_state
+        ks_state = (
+            self.safety.state() if self.safety is not None else self.bootstrap_ks_state
+        )
         phase = (
             self.phase_engine.current()
             if self.phase_engine is not None

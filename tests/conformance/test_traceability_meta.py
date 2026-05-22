@@ -61,6 +61,60 @@ def test_traceability_report_check_exits_zero() -> None:
 _REQ_REF_PATTERN = re.compile(r"REQ_[A-Z_]+_[0-9]+")
 
 
+# ---------------------------------------------------------------------------
+# REQ_TP_STR_001 — three-tier test organization (unit / integration / e2e)
+# ---------------------------------------------------------------------------
+
+
+def test_three_tier_test_organization() -> None:
+    """REQ_TP_STR_001 — the test suite SHALL be organised in three
+    tiers. Audit:
+
+      1. Unit tier — per-module ``tests/<module>/`` directories
+         covering the runtime tree. The audit asserts the count
+         is non-trivial (> 10 modules).
+      2. Integration tier — ``tests/integration/`` exists with
+         at least one test file.
+      3. E2E tier — at least one top-level test file boots a
+         user-facing entry point (``tests/test_main.py``,
+         ``tests/test_cli.py``, or a routes-views test that
+         drives the full HTTP surface).
+    """
+    tests_dir = _REPO_ROOT / "tests"
+    assert tests_dir.is_dir()
+    # Unit tier — per-module dirs.
+    module_dirs = [
+        p for p in tests_dir.iterdir()
+        if p.is_dir()
+        and (p / "__init__.py").exists()
+        and p.name not in ("integration", "conformance", "__pycache__")
+    ]
+    assert len(module_dirs) > 10, (
+        f"REQ_TP_STR_001 — expected > 10 unit-tier module dirs; "
+        f"got {len(module_dirs)}"
+    )
+    # Integration tier.
+    integration_dir = tests_dir / "integration"
+    assert integration_dir.is_dir(), (
+        "REQ_TP_STR_001 — tests/integration/ missing"
+    )
+    integration_files = list(integration_dir.glob("test_*.py"))
+    assert integration_files, (
+        "REQ_TP_STR_001 — tests/integration/ contains no test files"
+    )
+    # E2E tier — accept any of the documented user-facing entry tests.
+    e2e_candidates = (
+        tests_dir / "test_main.py",
+        tests_dir / "test_cli.py",
+        tests_dir / "webapp" / "test_routes_views.py",
+    )
+    e2e_present = [p for p in e2e_candidates if p.is_file()]
+    assert e2e_present, (
+        f"REQ_TP_STR_001 — no E2E tier test found; expected any of "
+        f"{[str(p.relative_to(_REPO_ROOT)) for p in e2e_candidates]}"
+    )
+
+
 def _csv_approved_req_ids() -> set[str]:
     """Read the approved REQ ids from ``docs/traceability.csv``.
     The CSV is the canonical source of "currently approved" since

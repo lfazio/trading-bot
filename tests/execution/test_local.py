@@ -3,6 +3,15 @@
 Exercises the BrokerAdapter Protocol surface plus the simulator
 internals: tick-driven fills, fees + slippage application, position
 open/close/flip, idempotency, and Account derivation.
+
+REQ refs:
+- REQ_F_BRK_001..005 — BrokerAdapter Protocol shape + concrete impl.
+- REQ_TP_STR_004 — Concrete BrokerAdapter implementations SHALL
+  pass this conformance test suite. ``LocalBrokerAdapter`` is the
+  shipped baseline; future live-broker adapters MAY ship only
+  after these tests pass against them. The Protocol-conformance
+  test below (``test_local_broker_adapter_satisfies_protocol``)
+  is the gate any new adapter SHALL exercise.
 """
 
 from __future__ import annotations
