@@ -245,6 +245,44 @@
         "summary": "Read live state for an account"
       }
     },
+    "/api/accounts/{account_id}/paper-state": {
+      "get": {
+        "description": "Read endpoint for the paper-trading dashboard panel. Returns a ``PaperStateResponse`` snapshot. When the session is not currently registered (never started, or already stopped), the response is the documented all-zeroed shape with ``is_alive=false`` \u2014 keeps the client-side rendering single-shape.",
+        "operationId": "get_paper_state_api_accounts__account_id__paper_state_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Paper-trading session state"
+      }
+    },
     "/api/backtests": {
       "get": {
         "operationId": "list_backtests_api_backtests_get",
@@ -463,6 +501,23 @@
           }
         },
         "summary": "SSE live-state stream"
+      }
+    },
+    "/events/paper-state": {
+      "get": {
+        "description": "Server-Sent Events channel that pushes the paper-trading session's state envelope to subscribed clients. Each event's ``id`` is the snapshot's ``as_of`` ISO-8601 timestamp so HTMX `hx-sse` resumes the stream after disconnect. Cadence is set by the wired reader's ``tick_seconds`` (default 2s for paper-state vs. 5s for the aggregate live-state \u2014 the paper panel needs to feel live).",
+        "operationId": "stream_paper_state_events_paper_state_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "SSE paper-trading state stream"
       }
     },
     "/health": {

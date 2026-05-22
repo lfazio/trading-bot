@@ -32,7 +32,7 @@ from sse_starlette.sse import EventSourceResponse
 from trading_system.models.identifiers import AccountId
 from trading_system.notifications.canonical import canonical_json_line
 from trading_system.webapp.auth_deps import RequestRequireAnyValidClaim
-from trading_system.webui.schemas import LiveStateResponse
+from trading_system.webui.schemas import LiveStateResponse, PaperStateResponse
 
 
 router = APIRouter(prefix="/events")
@@ -96,6 +96,64 @@ async def stream_live_state(request: RequestRequireAnyValidClaim) -> EventSource
 # reader can reuse it. Production readers replace this with the
 # engine's tick stream.
 # ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class PaperStateStreamReader(Protocol):
+    """Streaming surface for the paper-trading panel
+    (REQ_F_WEB2_003). The concrete
+    ``RuntimePaperStateReader`` implements both this and the
+    request-response ``paper_state`` shape."""
+
+    def subscribe(
+        self, *, account_id: AccountId
+    ) -> AsyncIterator[PaperStateResponse]: ...
+
+
+def _paper_stream_reader(request: Request) -> PaperStateStreamReader:
+    reader = getattr(request.app.state, "paper_state_reader", None)
+    if reader is None or not hasattr(reader, "subscribe"):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="webapp:paper_state_stream_missing",
+        )
+    return reader
+
+
+@router.get(
+    "/paper-state",
+    summary="SSE paper-trading state stream",
+    description=(
+        "Server-Sent Events channel that pushes the paper-trading "
+        "session's state envelope to subscribed clients. Each "
+        "event's ``id`` is the snapshot's ``as_of`` ISO-8601 "
+        "timestamp so HTMX `hx-sse` resumes the stream after "
+        "disconnect. Cadence is set by the wired reader's "
+        "``tick_seconds`` (default 2s for paper-state vs. 5s for "
+        "the aggregate live-state — the paper panel needs to feel "
+        "live)."
+    ),
+)
+async def stream_paper_state(
+    request: RequestRequireAnyValidClaim,
+) -> EventSourceResponse:
+    """REQ_F_WEB2_003 — emit one ``paper-state`` event per reader tick."""
+    reader = _paper_stream_reader(request)
+    account_id = AccountId(
+        request.query_params.get("account_id", "").strip() or "default"
+    )
+
+    async def event_generator() -> AsyncIterator[dict]:
+        async for snapshot in reader.subscribe(account_id=account_id):
+            if await request.is_disconnected():
+                return
+            yield {
+                "id": snapshot.as_of.isoformat(),
+                "event": "paper-state",
+                "data": canonical_json_line(snapshot),
+            }
+
+    return EventSourceResponse(event_generator())
 
 
 async def demo_subscribe(

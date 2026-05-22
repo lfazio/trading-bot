@@ -126,6 +126,52 @@ class LiveStateResponse:
 
 
 @dataclass(frozen=True, slots=True)
+class PaperStateResponse:
+    """REQ_F_WEB2_003 — current-state read shape for a paper-trading
+    session.
+
+    Surfaces just what the dashboard panel renders:
+    - ``account_id`` / ``as_of`` for the SSE envelope (`as_of`
+      doubles as the SSE event id so `hx-sse` resumes after
+      disconnect).
+    - ``is_alive`` — false ⇒ the session has stopped; the panel
+      shows a "session ended" badge.
+    - ``is_degraded`` + ``degraded_since`` — REQ_F_PAP_002
+      cached-only banner.
+    - ``last_tick_at`` — operator-visible "freshness" indicator.
+    - ``equity_points_count`` — cardinality of the in-memory
+      equity series (matches `len(runtime.equity_history())`).
+    - ``latest_equity_after_tax`` — the freshest after-tax
+      equity reading; ``None`` until the first tick records a
+      point (the panel shows a placeholder).
+
+    Field order is deliberately stable (alphabetical via canonical
+    JSON) so REQ_NF_WEB2_001 byte-identical-replay holds.
+    """
+
+    account_id: AccountId
+    as_of: datetime
+    is_alive: bool
+    is_degraded: bool
+    degraded_since: datetime | None
+    last_tick_at: datetime | None
+    equity_points_count: int
+    latest_equity_after_tax: Decimal | None
+
+    def __post_init__(self) -> None:
+        if not str(self.account_id).strip():
+            raise ValueError("PaperStateResponse.account_id must be non-empty")
+        if self.equity_points_count < 0:
+            raise ValueError(
+                "PaperStateResponse.equity_points_count must be >= 0, "
+                f"got {self.equity_points_count}"
+            )
+
+    def render_canonical(self) -> str:
+        return canonical_json_line(self)
+
+
+@dataclass(frozen=True, slots=True)
 class PromoteResponse:
     """REQ_F_WEB_004 — registry promotion mutation response."""
 
