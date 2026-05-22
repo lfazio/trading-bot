@@ -3,7 +3,14 @@
 {% block title %}Dashboard &mdash; trading-bot{% endblock %}
 {% block content %}
 <h1>Dashboard</h1>
-<p class="subhead">Live state for <code>{{ account_id }}</code>, refreshed via Server-Sent Events.</p>
+<p class="subhead">
+  Live state for <code>{{ account_id }}</code>, refreshed via Server-Sent Events.
+  {% if live_paper_sessions %}
+    <span class="muted">({{ live_paper_sessions|length }} live paper session{% if live_paper_sessions|length != 1 %}s{% endif %})</span>
+  {% else %}
+    <span class="muted">(no live paper sessions registered)</span>
+  {% endif %}
+</p>
 
 {% if live_paper_sessions %}
 <form method="get" action="/" class="row" style="margin-bottom:1em">
@@ -61,13 +68,23 @@
   <h2 id="paper-state-heading">Paper-trading session</h2>
   <p class="subhead">
     <span class="badge" data-field="paper_status" aria-live="polite">No session</span>
-    <span data-field="paper_degraded_banner" hidden role="status"
-          class="badge warn" style="margin-left:0.5em">
+    <span data-field="paper_degraded_banner" role="status"
+          class="badge warn"
+          style="margin-left:0.5em; display:none">
       Cached data — live feed degraded
     </span>
     <a href="/onboarding" class="button" style="margin-left:1em">Start new paper session</a>
   </p>
+  <p class="subhead" data-field="paper_session_meta" style="margin-top:0.5em">—</p>
   <div id="paper-state-grid" class="card-grid">
+    <div class="stat">
+      <span class="label">Instrument</span>
+      <span class="value" data-field="paper_instrument">—</span>
+    </div>
+    <div class="stat">
+      <span class="label">Last close</span>
+      <span class="value numeric" data-field="paper_close">—</span>
+    </div>
     <div class="stat">
       <span class="label">Equity (after tax)</span>
       <span class="value numeric" data-field="paper_equity">—</span>
@@ -178,9 +195,11 @@ function renderPaperState(raw) {
       statusEl.textContent = 'No session';
     }
   }
-  // Degraded banner — REQ_F_PAP_002.
+  // Degraded banner — REQ_F_PAP_002. Toggle display directly
+  // (the `hidden` attribute is overridden by the `.badge` class's
+  // own `display:inline-block` so we set the inline style here).
   const banner = document.querySelector('[data-field="paper_degraded_banner"]');
-  if (banner) banner.hidden = !data.is_degraded;
+  if (banner) banner.style.display = data.is_degraded ? 'inline-block' : 'none';
   // Equity.
   if (data.latest_equity_after_tax !== undefined && data.latest_equity_after_tax !== null) {
     set('paper_equity', '€ ' + data.latest_equity_after_tax);
@@ -192,6 +211,14 @@ function renderPaperState(raw) {
   const fmt = (ts) => ts ? ts.replace('T', ' ').replace(/\+00:00$/, ' UTC') : '—';
   set('paper_last_tick', fmt(data.last_tick_at));
   set('paper_degraded_since', fmt(data.degraded_since));
+  // Instrument + price + session meta.
+  set('paper_instrument', data.instrument_symbol || '—');
+  set('paper_close', data.latest_close !== undefined && data.latest_close !== null ? '€ ' + data.latest_close : '—');
+  const metaBits = [];
+  if (data.universe) metaBits.push('Universe: ' + data.universe);
+  if (data.strategy_id) metaBits.push('Strategy: ' + data.strategy_id);
+  if (data.starting_capital) metaBits.push('Starting capital: € ' + data.starting_capital);
+  set('paper_session_meta', metaBits.length ? metaBits.join(' · ') : '—');
 }
 document.addEventListener('htmx:afterSwap', (e) => {
   if (e.target && e.target.id === 'paper-state-raw') {

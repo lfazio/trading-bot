@@ -157,6 +157,14 @@ class PaperStateResponse:
     last_tick_at: datetime | None
     equity_points_count: int
     latest_equity_after_tax: Decimal | None
+    # Session config — surfaced so the dashboard panel renders the
+    # operator's choices alongside the live numbers (empty strings
+    # when no session is registered for this account_id).
+    universe: str = ""
+    strategy_id: str = ""
+    starting_capital: Decimal | None = None
+    instrument_symbol: str = ""
+    latest_close: Decimal | None = None
 
     def __post_init__(self) -> None:
         if not str(self.account_id).strip():

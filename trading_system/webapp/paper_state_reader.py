@@ -103,6 +103,32 @@ class RuntimePaperStateReader:
             latest_amount: Decimal | None = history[-1].equity_after_tax.amount
         else:
             latest_amount = None
+        # Session metadata + live price — best-effort. The Protocol
+        # surface (PaperRuntimeView) doesn't pin these so tests with
+        # minimal stubs still work; we duck-type via getattr.
+        session = getattr(runtime, "session", None)
+        universe = getattr(session, "universe", "") if session else ""
+        strategy_id = (
+            str(getattr(session, "strategy_id", "")) if session else ""
+        )
+        starting_capital_money = (
+            getattr(session, "starting_capital", None) if session else None
+        )
+        starting_capital_amount: Decimal | None = (
+            getattr(starting_capital_money, "amount", None)
+            if starting_capital_money is not None
+            else None
+        )
+        instrument = getattr(runtime, "instrument", None)
+        instrument_symbol = (
+            getattr(instrument, "symbol", "") if instrument else ""
+        )
+        latest_close: Decimal | None = None
+        if hasattr(runtime, "latest_close"):
+            try:
+                latest_close = runtime.latest_close()
+            except Exception:  # noqa: BLE001 — defensive
+                latest_close = None
         return PaperStateResponse(
             account_id=account_id,
             as_of=as_of,
@@ -112,6 +138,11 @@ class RuntimePaperStateReader:
             last_tick_at=runtime.last_tick_at(),
             equity_points_count=len(history),
             latest_equity_after_tax=latest_amount,
+            universe=universe,
+            strategy_id=strategy_id,
+            starting_capital=starting_capital_amount,
+            instrument_symbol=instrument_symbol,
+            latest_close=latest_close,
         )
 
     async def subscribe(

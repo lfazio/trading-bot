@@ -325,6 +325,12 @@ async def post_finish(request: Request) -> RedirectResponse:
                 error=f"webapp:onboarding:register_failed:{start_result.error}",
                 status_code=500,
             )
+        # Drive one tick synchronously so the dashboard panel
+        # paints a non-empty price + equity row on first load —
+        # the operator otherwise stares at "—" for up to 2s
+        # (the tick driver's cadence). Failure here is benign;
+        # the driver retries on the next sweep.
+        runtime.tick_once()
 
     response = RedirectResponse(
         url=f"/?account_id={account_id}", status_code=303

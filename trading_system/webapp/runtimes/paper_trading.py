@@ -220,6 +220,20 @@ class PaperTradingRuntime:
         """Read-only view of the equity series accumulated so far."""
         return tuple(self._equity_points)
 
+    def latest_close(self) -> Decimal | None:
+        """Most recent bar close emitted by the BarSource — surfaced
+        to the dashboard panel so the operator sees the live price
+        even when no equity point has been recorded yet."""
+        try:
+            cached = self.bar_source.latest_cached()
+        except Exception:  # noqa: BLE001 — defensive
+            return None
+        match cached:
+            case Ok(Some(bar)):
+                return bar.close
+            case _:
+                return None
+
     def stop(self) -> None:
         """REQ_SDS_WEB2_004 — operator-driven session stop."""
         self._alive = False
