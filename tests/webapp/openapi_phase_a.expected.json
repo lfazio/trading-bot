@@ -733,7 +733,7 @@
     },
     "/onboarding/finish": {
       "post": {
-        "description": "POST /onboarding/finish \u2014 finalise the wizard.\n\nREQ_F_PAP_001 + REQ_F_PAP_004 \u2014 record a\n``PaperTradingSession`` identity card under a fresh\n``paper-<utc-iso-timestamp>`` account_id, attach it to the\n``RuntimeRegistry`` slot on ``app.state`` (or skip silently\nwhen the runtime registry is unwired \u2014 defensive against a\npartial deployment), and redirect to ``/`` with the\n``wizard-state`` cookie cleared.\n\nThe runtime ticking itself stays deferred until the\nBarSource (yfinance adapter wiring) lands in a follow-up\nslice \u2014 this handler creates the *session identity* (the\noperator's choices) so the dashboard panel can surface\n\"session configured; awaiting first bar\".",
+        "description": "POST /onboarding/finish \u2014 finalise the wizard.\n\nREQ_F_PAP_001 + REQ_F_PAP_004 + REQ_F_PAP_005 \u2014 construct a\nticking ``PaperTradingRuntime`` and attach it to the shared\n``RuntimeRegistry`` on ``app.state``. The session's\n``account_id`` is fresh (``paper-<utc-iso-timestamp>``) so\nthe registry's \"one live session per account_id\" invariant\nholds.\n\nStrategy wiring is intentionally skipped in v1 \u2014 the\ncomposed runtime ticks the broker + portfolio + equity\nseries so the dashboard panel paints a live curve. Strategy\n+ risk-engine gating land in a follow-up slice.",
         "operationId": "post_finish_onboarding_finish_post",
         "responses": {
           "200": {

@@ -5,6 +5,21 @@
 <h1>Dashboard</h1>
 <p class="subhead">Live state for <code>{{ account_id }}</code>, refreshed via Server-Sent Events.</p>
 
+{% if live_paper_sessions %}
+<form method="get" action="/" class="row" style="margin-bottom:1em">
+  <label for="session-switch">Active paper session:</label>
+  <select name="account_id" id="session-switch" onchange="this.form.submit()">
+    {% for sid in live_paper_sessions %}
+    <option value="{{ sid }}" {% if account_id == sid %}selected{% endif %}>{{ sid }}</option>
+    {% endfor %}
+    {% if account_id not in live_paper_sessions %}
+    <option value="{{ account_id }}" selected>{{ account_id }} (no live session)</option>
+    {% endif %}
+  </select>
+  <noscript><button type="submit">Switch</button></noscript>
+</form>
+{% endif %}
+
 <section class="card"
          hx-ext="sse"
          sse-connect="/events/live-state?account_id={{ account_id }}">
@@ -50,6 +65,7 @@
           class="badge warn" style="margin-left:0.5em">
       Cached data — live feed degraded
     </span>
+    <a href="/onboarding" class="button" style="margin-left:1em">Start new paper session</a>
   </p>
   <div id="paper-state-grid" class="card-grid">
     <div class="stat">

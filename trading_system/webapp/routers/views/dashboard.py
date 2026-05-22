@@ -49,8 +49,34 @@ def get_dashboard(request: Request):
         or not verify_any_valid_claim(verifier, token)
     ):
         return RedirectResponse(url="/login", status_code=303)
+    # Choose which session the panel SSE-connects to, in order:
+    # 1. ``?account_id=<id>`` query param (just-finished wizard
+    #    redirect, or a manual switch from the multi-account
+    #    selector).
+    # 2. ``active-paper-session`` cookie (last finished wizard,
+    #    1h lifetime) — so the operator refreshing ``/`` or
+    #    coming back later still sees their session.
+    # 3. ``"default"`` household claim — pre-onboarding state.
+    account_id = (
+        request.query_params.get("account_id", "").strip()
+        or request.cookies.get("active-paper-session", "").strip()
+        or "default"
+    )
+    # Surface every currently-live paper session in a switcher
+    # so the operator can hop between them without retyping the
+    # query string. Defensive against an unwired registry.
+    registry = getattr(request.app.state, "runtime_registry", None)
+    live_paper_sessions: tuple[str, ...] = ()
+    if registry is not None and hasattr(registry, "live_account_ids"):
+        try:
+            live_paper_sessions = tuple(str(a) for a in registry.live_account_ids())
+        except Exception:  # noqa: BLE001 — defensive
+            live_paper_sessions = ()
     return _templates(request).TemplateResponse(
         request=request,
         name="dashboard.html",
-        context={"account_id": "default"},
+        context={
+            "account_id": account_id,
+            "live_paper_sessions": live_paper_sessions,
+        },
     )

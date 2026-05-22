@@ -31,11 +31,16 @@ from __future__ import annotations
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from trading_system.models.identifiers import StrategyId
+from trading_system.models.identifiers import InstrumentId, StrategyId
+from trading_system.models.instrument import InstrumentClass, Stock
+from trading_system.models.money import Currency
 from trading_system.webapp.runtimes.paper_trading import (
     PAPER_ACCOUNT_PREFIX,
     PaperTradingSession,
     new_paper_account_id,
+)
+from trading_system.webapp.runtimes.simulated_bar_source import (
+    SimulatedBarSource,
 )
 from trading_system.webapp.wizard_state import (
     ALLOWED_STRATEGIES,
@@ -46,6 +51,33 @@ from trading_system.webapp.wizard_state import (
     encode_state,
     is_valid_capital,
 )
+
+
+# v1 — one default instrument per universe so the wizard can hand the
+# runtime a concrete ``Instrument`` without an extra "pick a symbol"
+# step. Operators can pin their own symbol in a follow-up CR.
+_DEFAULT_INSTRUMENTS: dict[str, Stock] = {
+    "eu-dividend-starter": Stock(
+        id=InstrumentId("ASML.AS"),
+        symbol="ASML",
+        exchange="AS",
+        currency=Currency.EUR,
+        cls=InstrumentClass.STOCK,
+        isin="NL0010273215",
+        sector="tech",
+        country="NL",
+    ),
+    "cac40": Stock(
+        id=InstrumentId("AIR.PA"),
+        symbol="AIR",
+        exchange="PA",
+        currency=Currency.EUR,
+        cls=InstrumentClass.STOCK,
+        isin="NL0000235190",
+        sector="industrials",
+        country="FR",
+    ),
+}
 
 
 router = APIRouter(prefix="/onboarding")
@@ -175,71 +207,148 @@ async def post_step3(
 async def post_finish(request: Request) -> RedirectResponse:
     """POST /onboarding/finish — finalise the wizard.
 
-    REQ_F_PAP_001 + REQ_F_PAP_004 — record a
-    ``PaperTradingSession`` identity card under a fresh
-    ``paper-<utc-iso-timestamp>`` account_id, attach it to the
-    ``RuntimeRegistry`` slot on ``app.state`` (or skip silently
-    when the runtime registry is unwired — defensive against a
-    partial deployment), and redirect to ``/`` with the
-    ``wizard-state`` cookie cleared.
+    REQ_F_PAP_001 + REQ_F_PAP_004 + REQ_F_PAP_005 — construct a
+    ticking ``PaperTradingRuntime`` and attach it to the shared
+    ``RuntimeRegistry`` on ``app.state``. The session's
+    ``account_id`` is fresh (``paper-<utc-iso-timestamp>``) so
+    the registry's "one live session per account_id" invariant
+    holds.
 
-    The runtime ticking itself stays deferred until the
-    BarSource (yfinance adapter wiring) lands in a follow-up
-    slice — this handler creates the *session identity* (the
-    operator's choices) so the dashboard panel can surface
-    "session configured; awaiting first bar".
+    Strategy wiring is intentionally skipped in v1 — the
+    composed runtime ticks the broker + portfolio + equity
+    series so the dashboard panel paints a live curve. Strategy
+    + risk-engine gating land in a follow-up slice.
     """
+    from datetime import UTC, datetime
     from decimal import Decimal
 
-    from trading_system.models.money import Currency, Money
+    from trading_system.models.money import Money
+    from trading_system.models.phase import (
+        AllocationBucket,
+        MarketRegime,
+        PhaseConstraints,
+    )
+    from trading_system.webapp.runtimes.paper_trading import (
+        PaperTradingRuntime,
+        build_runtime,
+    )
+    from trading_system.result import Err as ResultErr
+    from trading_system.result import Ok as ResultOk
 
     state = _load_state(request)
-    # Compose the session identity. Capital validity was checked
-    # in step 2; the cookie's encoded `starting_capital` was
-    # rejected at decode_state if non-positive — still defensive.
+    # Defensive capital re-validation — the cookie was signed +
+    # already validated, but if anything went sideways we fall
+    # back to the documented default rather than blow up.
     try:
         capital_amount = Decimal(state.starting_capital)
     except (ValueError, ArithmeticError):
         capital_amount = Decimal("10000")
     if capital_amount <= 0:
         capital_amount = Decimal("10000")
+
     account_id = new_paper_account_id()
-    PaperTradingSession(
+    session = PaperTradingSession(
         account_id=account_id,
         universe=state.universe,
         strategy_id=StrategyId(state.strategy),
         starting_capital=Money(amount=capital_amount, currency=Currency.EUR),
-        started_at=__import__("datetime").datetime.now(
-            __import__("datetime").timezone.utc
-        ),
+        started_at=datetime.now(tz=UTC),
     )
-    # The session is created + validated; in this slice we do
-    # NOT register a ticking runtime yet (BarSource wiring is the
-    # next slice). The redirect carries the operator to the
-    # dashboard, which shows the "No session" panel until the
-    # runtime starts ticking.
+
+    # v1: hand-rolled minimal PhaseConstraints — the wizard
+    # doesn't yet ask the operator about phase; Phase 1 defaults
+    # work for any starting capital up to 3 000 € and stay safe
+    # above that until the phase_engine wiring lands.
+    constraints = PhaseConstraints(
+        max_positions=3,
+        max_trades_per_month=4,
+        allocation_targets={
+            AllocationBucket.STOCK: Decimal("0.90"),
+            AllocationBucket.TACTICAL: Decimal("0.10"),
+        },
+        turbo_exposure_max=Decimal("0"),
+        risk_per_trade_band=(Decimal("0.01"), Decimal("0.02")),
+        max_drawdown=Decimal("0.15"),
+    )
+    instrument = _DEFAULT_INSTRUMENTS[state.universe]
+    bar_source = SimulatedBarSource(
+        instrument_id=instrument.id,
+        # Derive the RNG seed from the account_id so each session
+        # walks its own deterministic path.
+        seed=abs(hash(str(account_id))) % (2**31),
+    )
+
+    # No-op strategy stub so the runtime composes; the runtime's
+    # strategy step is skipped when market_data_provider is None
+    # (see paper_trading.PaperTradingRuntime._apply_bar) so the
+    # specific strategy instance is never invoked.
+    class _NoopStrategy:
+        id = StrategyId(state.strategy)
+
+        def evaluate(self, market_state) -> list:  # noqa: ANN001
+            del market_state
+            return []
+
+    runtime_result = build_runtime(
+        session=session,
+        instrument=instrument,
+        strategy=_NoopStrategy(),  # type: ignore[arg-type]
+        bar_source=bar_source,
+        phase_constraints=constraints,
+        regime=MarketRegime.SIDEWAYS,
+    )
+    if isinstance(runtime_result, ResultErr):
+        # Bubble back to step 1 with the categorised error
+        # banner — the operator can fix the inputs and retry.
+        response = _render(
+            request,
+            WizardState(),
+            error=f"webapp:onboarding:runtime_failed:{runtime_result.error}",
+            status_code=500,
+        )
+        return response  # type: ignore[return-value]
+    assert isinstance(runtime_result, ResultOk)
+    runtime: PaperTradingRuntime = runtime_result.value
+
+    # Register against the shared registry so the dashboard
+    # panel + tick driver both see the new session.
+    registry = getattr(request.app.state, "runtime_registry", None)
+    if registry is not None:
+        start_result = registry.start(runtime)
+        if isinstance(start_result, ResultErr):
+            # Should not happen (fresh account_id) — render the
+            # banner if it does so the operator isn't stuck on
+            # an opaque 5xx.
+            return _render(  # type: ignore[return-value]
+                request,
+                state,
+                error=f"webapp:onboarding:register_failed:{start_result.error}",
+                status_code=500,
+            )
+
     response = RedirectResponse(
         url=f"/?account_id={account_id}", status_code=303
     )
     response.delete_cookie(WIZARD_COOKIE_NAME)
-    # A short-lived breadcrumb cookie so the dashboard's panel
-    # can surface a "session created" toast on first paint. The
-    # cookie is purely cosmetic (no server-side state).
+    # Persist the freshly-created session as the "active" one so
+    # the dashboard view falls back to it when the operator hits
+    # ``/`` directly (or refreshes after closing the tab). The
+    # cookie lifetime matches a typical operator session.
+    response.set_cookie(
+        key="active-paper-session",
+        value=str(account_id),
+        max_age=3600,
+        samesite="lax",
+        httponly=True,
+    )
+    # Short-lived breadcrumb the dashboard's JS uses to surface a
+    # "session created" toast on first paint.
     response.set_cookie(
         key="paper-session-created",
         value=str(account_id),
         max_age=60,
         samesite="lax",
     )
-    # Reach into the registry slot so the rest of the webapp
-    # (paper-state reader) sees the new account_id immediately.
-    # No-op when the registry isn't wired — defensive against
-    # partial deploys (the dashboard then still shows the "No
-    # session" sentinel).
-    # NOTE: we don't construct a ticking runtime — only the
-    # session identity card is preserved.
-    _ = getattr(request.app.state, "runtime_registry", None)
-    # Sanity: prefix invariant remained intact.
     assert str(account_id).startswith(PAPER_ACCOUNT_PREFIX)
     return response
 

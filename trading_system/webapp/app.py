@@ -89,10 +89,29 @@ def create_app(state: WebappState) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
-        """REQ_SDD_FAS_005 — close the JobQueue executor on shutdown."""
+        """REQ_SDD_FAS_005 — owns long-lived background resources.
+
+        Starts the paper-trading tick driver when a runtime
+        registry is wired so the dashboard panel paints live
+        equity ticks the moment the onboarding wizard finishes;
+        stops the driver + closes the JobQueue executor on
+        shutdown.
+        """
+        tick_driver = None
+        registry = getattr(application.state, "runtime_registry", None)
+        if registry is not None:
+            from trading_system.webapp.runtimes.tick_driver import (
+                PaperTickDriver,
+            )
+
+            tick_driver = PaperTickDriver(registry=registry)
+            tick_driver.start()
+            application.state.tick_driver = tick_driver
         try:
             yield
         finally:
+            if tick_driver is not None:
+                await tick_driver.stop()
             queue = getattr(application.state, "job_queue", None)
             if queue is not None and hasattr(queue, "close"):
                 queue.close()

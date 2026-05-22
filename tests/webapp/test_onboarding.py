@@ -230,6 +230,92 @@ def test_post_cancel_clears_cookie_and_redirects_home() -> None:
     )
 
 
+def test_finish_then_paper_state_endpoint_reports_live() -> None:
+    """End-to-end: walk the wizard, then fetch the paper-state
+    endpoint with a Bearer token — the response SHALL report
+    ``is_alive=true`` for the freshly-registered session."""
+    import json
+
+    from trading_system.accounts.token_verifier import HOUSEHOLD_CLAIM
+    from trading_system.webapp.paper_state_reader import (
+        RuntimePaperStateReader,
+    )
+
+    verifier = AccountScopedTokenVerifier(secret=_SECRET, ttl_seconds=3600)
+    registry = RuntimeRegistry()
+    reader = RuntimePaperStateReader(registry=registry)
+    state = WebappState(
+        token_verifier=verifier,
+        runtime_registry=registry,
+        paper_state_reader=reader,
+    )
+    app = create_app(state)
+    client = TestClient(app)
+    client.post(
+        "/onboarding/step2",
+        data={"starting_capital": "10000", "universe": "eu-dividend-starter"},
+    )
+    client.post("/onboarding/step3", data={"strategy": "CoreStrategy"})
+    response = client.post("/onboarding/finish", follow_redirects=False)
+    assert response.status_code == 303
+    aid = response.headers["location"].split("account_id=", 1)[1]
+    # Issue a household token (the dashboard's view consumes
+    # this — reuse the same scope for the paper-state endpoint).
+    token = verifier.issue(
+        account_id=HOUSEHOLD_CLAIM,
+        now=__import__("datetime").datetime.now(
+            __import__("datetime").timezone.utc
+        ),
+    )
+    state_response = client.get(
+        f"/api/accounts/{aid}/paper-state",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert state_response.status_code == 200
+    body = json.loads(state_response.content)
+    assert body["account_id"] == aid
+    assert body["is_alive"] is True
+    assert body["is_degraded"] is False
+
+
+def test_finish_registers_a_live_runtime_in_the_shared_registry() -> None:
+    """REQ_F_PAP_001 + REQ_F_PAP_005 — the finish handler SHALL
+    actually attach a ticking ``PaperTradingRuntime`` to the
+    shared ``RuntimeRegistry`` so the dashboard panel paints
+    live equity ticks immediately."""
+    verifier = AccountScopedTokenVerifier(secret=_SECRET, ttl_seconds=3600)
+    registry = RuntimeRegistry()
+    state = WebappState(
+        token_verifier=verifier,
+        runtime_registry=registry,
+    )
+    app = create_app(state)
+    client = TestClient(app)
+    client.post(
+        "/onboarding/step2",
+        data={"starting_capital": "12345.67", "universe": "eu-dividend-starter"},
+    )
+    client.post("/onboarding/step3", data={"strategy": "CoreStrategy"})
+    response = client.post("/onboarding/finish", follow_redirects=False)
+    assert response.status_code == 303
+    # The registry SHALL hold the newly-registered runtime.
+    live_ids = registry.live_account_ids()
+    assert len(live_ids) == 1
+    aid = live_ids[0]
+    assert str(aid).startswith(PAPER_ACCOUNT_PREFIX)
+    # Drive one tick manually so the equity-history sanity check
+    # is not depending on the asyncio lifespan task. (The
+    # production lifespan starts the PaperTickDriver
+    # automatically.)
+    from trading_system.result import Some
+
+    opt = registry.status(aid)
+    assert isinstance(opt, Some)
+    runtime = opt.value
+    runtime.tick_once().unwrap()
+    assert len(runtime.equity_history()) == 1
+
+
 def test_allowed_universes_and_strategies_are_closed_sets() -> None:
     """Adding a new universe / strategy SHALL be a deliberate
     code change here + a corresponding wiki amendment, not a
