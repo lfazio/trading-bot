@@ -207,8 +207,12 @@ def test_post_finish_redirects_and_clears_cookie() -> None:
         WIZARD_COOKIE_NAME in h and ("Max-Age=0" in h or "expires" in h.lower())
         for h in cookies_header
     )
-    # The newly-issued account_id starts with the paper- prefix.
-    aid = location.split("account_id=", 1)[1]
+    # The newly-issued account_id starts with the paper- prefix
+    # (decode after unquoting — colons + plus get percent-encoded
+    # so the browser doesn't mis-decode the ISO timestamp).
+    from urllib.parse import unquote
+
+    aid = unquote(location.split("account_id=", 1)[1])
     assert aid.startswith(PAPER_ACCOUNT_PREFIX)
     # A short-lived breadcrumb cookie was set.
     assert any("paper-session-created=" in h for h in cookies_header)
@@ -258,7 +262,9 @@ def test_finish_then_paper_state_endpoint_reports_live() -> None:
     client.post("/onboarding/step3", data={"strategy": "CoreStrategy"})
     response = client.post("/onboarding/finish", follow_redirects=False)
     assert response.status_code == 303
-    aid = response.headers["location"].split("account_id=", 1)[1]
+    from urllib.parse import unquote
+
+    aid = unquote(response.headers["location"].split("account_id=", 1)[1])
     # Issue a household token (the dashboard's view consumes
     # this — reuse the same scope for the paper-state endpoint).
     token = verifier.issue(

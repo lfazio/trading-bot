@@ -332,8 +332,11 @@ async def post_finish(request: Request) -> RedirectResponse:
         # the driver retries on the next sweep.
         runtime.tick_once()
 
+    from urllib.parse import quote as _urlquote
+
     response = RedirectResponse(
-        url=f"/?account_id={account_id}", status_code=303
+        url=f"/?account_id={_urlquote(str(account_id), safe='')}",
+        status_code=303,
     )
     response.delete_cookie(WIZARD_COOKIE_NAME)
     # Persist the freshly-created session as the "active" one so

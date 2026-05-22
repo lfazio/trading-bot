@@ -29,7 +29,7 @@
 
 <section class="card"
          hx-ext="sse"
-         sse-connect="/events/live-state?account_id={{ account_id }}">
+         sse-connect="/events/live-state?account_id={{ account_id | urlencode }}">
   <h2>Live state</h2>
   <div id="live-state-grid" class="card-grid">
     <div class="stat">
@@ -63,7 +63,7 @@
 
 <section class="card"
          hx-ext="sse"
-         sse-connect="/events/paper-state?account_id={{ account_id }}"
+         sse-connect="/events/paper-state?account_id={{ account_id | urlencode }}"
          aria-labelledby="paper-state-heading">
   <h2 id="paper-state-heading">Paper-trading session</h2>
   <p class="subhead">
