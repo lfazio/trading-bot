@@ -24,7 +24,7 @@ from starlette.responses import Response
 
 from trading_system.notifications.canonical import canonical_json_line
 from trading_system.result import Err, Nothing, Some
-from trading_system.webapp.auth_deps import RequestRequireHousehold
+from trading_system.webapp.auth_deps import RequestRequireAnyValidClaim
 from trading_system.webapp.canonical import (
     canonical_error_response,
     canonical_json_response,
@@ -102,7 +102,7 @@ def _state_to_dict(state: JobState) -> dict[str, object]:
 )
 async def submit_backtest(
     body: BacktestSubmitRequest,
-    request: RequestRequireHousehold,
+    request: RequestRequireAnyValidClaim,
 ) -> Response:
     queue = _queue(request)
     spec = JobSpec(
@@ -139,7 +139,7 @@ async def submit_backtest(
     response_class=Response,
     summary="List submitted backtests",
 )
-def list_backtests(request: RequestRequireHousehold) -> Response:
+def list_backtests(request: RequestRequireAnyValidClaim) -> Response:
     queue = _queue(request)
     return canonical_json_response(
         {"jobs": [_state_to_dict(s) for s in queue.all()]}
@@ -153,7 +153,7 @@ def list_backtests(request: RequestRequireHousehold) -> Response:
 )
 def get_backtest(
     job_id: str,
-    request: RequestRequireHousehold,
+    request: RequestRequireAnyValidClaim,
 ) -> Response:
     queue = _queue(request)
     match queue.status(job_id):
@@ -180,7 +180,7 @@ def get_backtest(
 )
 async def stream_backtest(
     job_id: str,
-    request: RequestRequireHousehold,
+    request: RequestRequireAnyValidClaim,
 ) -> EventSourceResponse:
     queue = _queue(request)
 

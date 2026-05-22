@@ -74,6 +74,35 @@ def _extract_token(request: Request) -> str | None:
     return None
 
 
+def verify_any_valid_claim(
+    verifier: AccountScopedTokenVerifier, token: str
+) -> bool:
+    """Return True if ``token`` verifies under WHATEVER claim it
+    carries (HMAC signature + TTL match).
+
+    Use this for browser VIEW endpoints (dashboard, jobs list, job
+    detail) where the operator's mental model is "a valid token of
+    any scope authorises me to look". Mutation endpoints (registry
+    promotion) still require ``require_account_token(account_id)``
+    so per-account scoping holds.
+
+    The token format is ``<timestamp>:<account_id>:<signature>``; we
+    parse the embedded claim and call ``verifier.verify`` with it.
+    A tampered claim string makes the HMAC check fail, so this is
+    safe — the operator cannot forge a token whose claim doesn't
+    match its signature.
+    """
+    # ISO timestamps contain ``:`` so rsplit from the right to
+    # isolate the two known-fixed segments (account_id + signature).
+    parts = token.rsplit(":", 2)
+    if len(parts) != 3:
+        return False
+    _timestamp, claimed_account_id, _signature = parts
+    if not claimed_account_id:
+        return False
+    return verifier.verify(token, account_id=claimed_account_id)
+
+
 def require_household(request: Request) -> Request:
     """Verify the operator token carries the household claim.
 
@@ -94,6 +123,31 @@ def require_household(request: Request) -> Request:
 
 
 RequestRequireHousehold = Annotated[Request, Depends(require_household)]
+
+
+def require_any_valid_claim(request: Request) -> Request:
+    """Verify the operator token under WHATEVER claim it carries
+    (household OR any per-account id). Use this for browser
+    read-style endpoints (dashboard polling, jobs list, SSE
+    streams) so a user signed in with ``default`` claim can still
+    VIEW the dashboard — the per-account scope only restricts
+    mutations.
+
+    Returns the request on success; raises ``HTTPException(401)``
+    with ``registry:token_invalid`` on failure so the FastAPI
+    error body matches the stdlib path."""
+    verifier = _verifier_from_app(request)
+    token = _extract_token(request)
+    if token is None or not verify_any_valid_claim(verifier, token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="registry:token_invalid",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return request
+
+
+RequestRequireAnyValidClaim = Annotated[Request, Depends(require_any_valid_claim)]
 
 
 def require_account_token(account_id: AccountId, request: Request) -> AccountId:

@@ -195,7 +195,7 @@
   "paths": {
     "/": {
       "get": {
-        "description": "Render the Phase-B dashboard.\n\nBrowser path is graceful: a missing or invalid session cookie\nredirects to ``/login`` rather than returning a raw 401 JSON.\nTooling (curl + httpx) still gets the JSON-shaped 401 from the\nother endpoints; only the HTML entry point is browser-friendly.",
+        "description": "Render the Phase-B dashboard.\n\nBrowser path is graceful: a missing or invalid session cookie\nredirects to ``/login`` rather than returning a raw 401 JSON.\nTooling (curl + httpx) still gets the JSON-shaped 401 from the\nother endpoints; only the HTML entry point is browser-friendly.\n\nAuth: any valid token claim (household OR per-account) is\naccepted for the VIEW. Mutation endpoints (registry promotion)\nkeep per-account scoping via ``require_account_token``.",
         "operationId": "dashboard__get",
         "responses": {
           "200": {

@@ -31,7 +31,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from trading_system.models.identifiers import AccountId
 from trading_system.notifications.canonical import canonical_json_line
-from trading_system.webapp.auth_deps import RequestRequireHousehold
+from trading_system.webapp.auth_deps import RequestRequireAnyValidClaim
 from trading_system.webui.schemas import LiveStateResponse
 
 
@@ -71,7 +71,7 @@ def _stream_reader(request: Request) -> LiveStateStreamReader:
         "`hx-sse` resumes the stream after disconnect."
     ),
 )
-async def stream_live_state(request: RequestRequireHousehold) -> EventSourceResponse:
+async def stream_live_state(request: RequestRequireAnyValidClaim) -> EventSourceResponse:
     """REQ_F_FAS_003 — emit one ``live-state`` event per reader tick."""
     reader = _stream_reader(request)
     account_id = AccountId(

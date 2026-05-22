@@ -153,10 +153,13 @@ def test_live_state_accepts_household_token() -> None:
     assert '"phase":"1"' in response.text
 
 
-def test_live_state_rejects_per_account_token() -> None:
-    """A token claiming a specific account SHALL NOT pass the
-    household gate — household reads require the
-    ``HOUSEHOLD_CLAIM`` sentinel."""
+def test_live_state_accepts_per_account_token() -> None:
+    """A signed-in operator (any valid claim — household OR a
+    specific account) SHALL be able to VIEW the live-state.
+    Mutation endpoints (registry promotion) keep per-account
+    scoping; view endpoints accept any valid token so a user who
+    signed in via ``/api/session`` with the ``default`` claim
+    isn't locked out of the dashboard."""
     verifier = _verifier()
     per_account = _account_token(verifier, "default")
     client = TestClient(_make_app(verifier=verifier))
@@ -164,7 +167,13 @@ def test_live_state_rejects_per_account_token() -> None:
         "/api/accounts/default/live-state",
         headers={"Authorization": f"Bearer {per_account}"},
     )
-    assert response.status_code == 401
+    # 200 (reader wired) OR 500 (reader missing in this minimal
+    # fixture — either way the auth check passes, which is the
+    # point); 401 would mean the token was rejected.
+    assert response.status_code != 401, (
+        f"per-account token rejected by view endpoint; "
+        f"got {response.status_code}"
+    )
 
 
 # ---------------------------------------------------------------------------

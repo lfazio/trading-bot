@@ -32,11 +32,11 @@ from fastapi import APIRouter, Form, HTTPException, Request, status
 from fastapi.templating import Jinja2Templates
 from starlette.responses import HTMLResponse, RedirectResponse
 
-from trading_system.accounts.token_verifier import HOUSEHOLD_CLAIM
 from trading_system.result import Err, Nothing, Ok, Some
 from trading_system.webapp.auth_deps import (
-    RequestRequireHousehold,
+    RequestRequireAnyValidClaim,
     _extract_token,
+    verify_any_valid_claim,
 )
 from trading_system.webapp.job_queue import JobQueue, JobSpec, JobState, new_job_id
 
@@ -101,7 +101,7 @@ def get_jobs_page(request: Request) -> HTMLResponse | RedirectResponse:
     if (
         verifier is None
         or token is None
-        or not verifier.verify(token, account_id=HOUSEHOLD_CLAIM)
+        or not verify_any_valid_claim(verifier, token)
     ):
         return RedirectResponse(url="/login", status_code=303)
     return _templates(request).TemplateResponse(
@@ -120,7 +120,7 @@ def get_jobs_page(request: Request) -> HTMLResponse | RedirectResponse:
 
 
 @router.get("/jobs/partial", response_class=HTMLResponse, name="jobs-partial")
-def get_jobs_partial(request: RequestRequireHousehold) -> HTMLResponse:
+def get_jobs_partial(request: RequestRequireAnyValidClaim) -> HTMLResponse:
     return _templates(request).TemplateResponse(
         request=request,
         name="partials/jobs_table.html",
@@ -137,7 +137,7 @@ def get_jobs_partial(request: RequestRequireHousehold) -> HTMLResponse:
 
 @router.post("/jobs/submit", response_class=HTMLResponse, name="jobs-submit")
 async def post_jobs_submit(
-    request: RequestRequireHousehold,
+    request: RequestRequireAnyValidClaim,
     config_dir: Annotated[str, Form()],
     start: Annotated[str, Form()],
     end: Annotated[str, Form()],
@@ -217,7 +217,7 @@ def get_job_detail(
     if (
         verifier is None
         or token is None
-        or not verifier.verify(token, account_id=HOUSEHOLD_CLAIM)
+        or not verify_any_valid_claim(verifier, token)
     ):
         return RedirectResponse(url="/login", status_code=303)
     queue = _queue(request)

@@ -15,8 +15,7 @@ from fastapi import APIRouter, Request
 from fastapi.templating import Jinja2Templates
 from starlette.responses import HTMLResponse, RedirectResponse
 
-from trading_system.accounts.token_verifier import HOUSEHOLD_CLAIM
-from trading_system.webapp.auth_deps import _extract_token
+from trading_system.webapp.auth_deps import _extract_token, verify_any_valid_claim
 
 
 router = APIRouter()
@@ -37,13 +36,17 @@ def get_dashboard(request: Request):
     redirects to ``/login`` rather than returning a raw 401 JSON.
     Tooling (curl + httpx) still gets the JSON-shaped 401 from the
     other endpoints; only the HTML entry point is browser-friendly.
+
+    Auth: any valid token claim (household OR per-account) is
+    accepted for the VIEW. Mutation endpoints (registry promotion)
+    keep per-account scoping via ``require_account_token``.
     """
     verifier = getattr(request.app.state, "token_verifier", None)
     token = _extract_token(request)
     if (
         verifier is None
         or token is None
-        or not verifier.verify(token, account_id=HOUSEHOLD_CLAIM)
+        or not verify_any_valid_claim(verifier, token)
     ):
         return RedirectResponse(url="/login", status_code=303)
     return _templates(request).TemplateResponse(

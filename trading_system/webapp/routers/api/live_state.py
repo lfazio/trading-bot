@@ -20,7 +20,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 from starlette.responses import Response
 
 from trading_system.models.identifiers import AccountId
-from trading_system.webapp.auth_deps import RequestRequireHousehold
+from trading_system.webapp.auth_deps import RequestRequireAnyValidClaim
 from trading_system.webapp.canonical import canonical_json_response
 from trading_system.webui.schemas import LiveStateResponse
 
@@ -61,7 +61,7 @@ def _reader(request: Request) -> LiveStateReader:
 )
 def get_live_state(
     account_id: AccountId,
-    request: RequestRequireHousehold,
+    request: RequestRequireAnyValidClaim,
 ) -> Response:
     """REQ_F_FAS_001 — byte-identical canonical JSON."""
     reader = _reader(request)
