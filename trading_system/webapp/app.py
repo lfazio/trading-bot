@@ -48,6 +48,7 @@ from trading_system.webapp.routers.api.session import router as session_router
 from trading_system.webapp.routers.views.dashboard import router as dashboard_router
 from trading_system.webapp.routers.views.jobs import router as jobs_view_router
 from trading_system.webapp.routers.views.login import router as login_router
+from trading_system.webapp.routers.views.onboarding import router as onboarding_router
 from trading_system.webapp.sse import router as sse_router
 
 
@@ -68,6 +69,7 @@ class WebappState:
     token_verifier: AccountScopedTokenVerifier
     live_state_reader: Any | None = None
     paper_state_reader: Any | None = None
+    runtime_registry: Any | None = None
     registry_promoter: Any | None = None
     promotion_audit_notifier: Any | None = None
     job_queue: JobQueue | None = None
@@ -118,6 +120,7 @@ def create_app(state: WebappState) -> FastAPI:
     app.state.templates = state.templates
     app.state.live_state_reader = state.live_state_reader
     app.state.paper_state_reader = state.paper_state_reader
+    app.state.runtime_registry = state.runtime_registry
     app.state.registry_promoter = state.registry_promoter
     app.state.promotion_audit_notifier = state.promotion_audit_notifier
     app.state.job_queue = state.job_queue
@@ -131,6 +134,7 @@ def create_app(state: WebappState) -> FastAPI:
     app.include_router(session_router)
     app.include_router(sse_router)
     app.include_router(login_router)
+    app.include_router(onboarding_router)
     app.include_router(dashboard_router)
     app.include_router(jobs_view_router)
 
@@ -181,11 +185,15 @@ def default_app() -> FastAPI:
     )
     workers = int(os.environ.get("TRADING_BOT_JOB_WORKERS", "2"))
     queue = InProcessJobQueue(workers=workers)
+    from trading_system.webapp.runtimes.paper_trading import RuntimeRegistry
+
+    registry = RuntimeRegistry()
     return create_app(
         WebappState(
             token_verifier=verifier,
             live_state_reader=_default_live_state_reader(),
-            paper_state_reader=_default_paper_state_reader(),
+            paper_state_reader=_default_paper_state_reader(registry=registry),
+            runtime_registry=registry,
             job_queue=queue,
         )
     )
@@ -225,21 +233,21 @@ def _default_live_state_reader():  # type: ignore[no-untyped-def]
     )
 
 
-def _default_paper_state_reader():  # type: ignore[no-untyped-def]
+def _default_paper_state_reader(*, registry=None):  # type: ignore[no-untyped-def]
     """Build the default ``PaperStateReader`` for ``default_app()``.
 
-    Reads from an empty in-memory ``RuntimeRegistry`` at boot —
-    every account_id the dashboard polls returns the documented
-    "session not registered" all-zeroed shape. The webapp's
-    lifespan task / operator wiring replaces this with a
-    registry holding live paper-trading runtimes once the
-    onboarding wizard ships.
+    Reads from the supplied ``RuntimeRegistry``. When called
+    without one, constructs a fresh empty registry so a partial
+    deployment still has a working reader; production callers
+    pass the same registry instance that the onboarding wizard
+    writes to so both surfaces see the same set of live
+    runtimes.
     """
     from trading_system.webapp.paper_state_reader import (
         RuntimePaperStateReader,
     )
     from trading_system.webapp.runtimes.paper_trading import RuntimeRegistry
 
-    return RuntimePaperStateReader(registry=RuntimeRegistry())
+    return RuntimePaperStateReader(registry=registry or RuntimeRegistry())
 
 

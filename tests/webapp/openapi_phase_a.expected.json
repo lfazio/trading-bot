@@ -79,6 +79,37 @@
         "title": "Body_jobs_submit_jobs_submit_post",
         "type": "object"
       },
+      "Body_post_step2_onboarding_step2_post": {
+        "properties": {
+          "starting_capital": {
+            "title": "Starting Capital",
+            "type": "string"
+          },
+          "universe": {
+            "title": "Universe",
+            "type": "string"
+          }
+        },
+        "required": [
+          "starting_capital",
+          "universe"
+        ],
+        "title": "Body_post_step2_onboarding_step2_post",
+        "type": "object"
+      },
+      "Body_post_step3_onboarding_step3_post": {
+        "properties": {
+          "strategy": {
+            "title": "Strategy",
+            "type": "string"
+          }
+        },
+        "required": [
+          "strategy"
+        ],
+        "title": "Body_post_step3_onboarding_step3_post",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -662,6 +693,137 @@
           }
         },
         "summary": "Login"
+      }
+    },
+    "/onboarding": {
+      "get": {
+        "description": "GET /onboarding \u2014 render step 1 (or resume the operator at\nthe latest completed step if a valid cookie is present).",
+        "operationId": "get_onboarding_onboarding_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Onboarding"
+      }
+    },
+    "/onboarding/cancel": {
+      "post": {
+        "description": "POST /onboarding/cancel \u2014 clear the wizard cookie + redirect to /.",
+        "operationId": "post_cancel_onboarding_cancel_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Post Cancel"
+      }
+    },
+    "/onboarding/finish": {
+      "post": {
+        "description": "POST /onboarding/finish \u2014 finalise the wizard.\n\nREQ_F_PAP_001 + REQ_F_PAP_004 \u2014 record a\n``PaperTradingSession`` identity card under a fresh\n``paper-<utc-iso-timestamp>`` account_id, attach it to the\n``RuntimeRegistry`` slot on ``app.state`` (or skip silently\nwhen the runtime registry is unwired \u2014 defensive against a\npartial deployment), and redirect to ``/`` with the\n``wizard-state`` cookie cleared.\n\nThe runtime ticking itself stays deferred until the\nBarSource (yfinance adapter wiring) lands in a follow-up\nslice \u2014 this handler creates the *session identity* (the\noperator's choices) so the dashboard panel can surface\n\"session configured; awaiting first bar\".",
+        "operationId": "post_finish_onboarding_finish_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Post Finish"
+      }
+    },
+    "/onboarding/step2": {
+      "post": {
+        "description": "POST /onboarding/step2 \u2014 validate step 1, advance to step 2.",
+        "operationId": "post_step2_onboarding_step2_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_post_step2_onboarding_step2_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Step2"
+      }
+    },
+    "/onboarding/step3": {
+      "post": {
+        "description": "POST /onboarding/step3 \u2014 validate step 2, advance to step 3.",
+        "operationId": "post_step3_onboarding_step3_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_post_step3_onboarding_step3_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Step3"
       }
     }
   }

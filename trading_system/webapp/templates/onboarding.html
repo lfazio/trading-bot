@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% set active_nav = 'onboarding' %}
+{% block title %}Onboarding &mdash; trading-bot{% endblock %}
+{% block content %}
+<section class="card"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="onboarding-heading"
+         tabindex="-1"
+         id="onboarding-dialog">
+  <h1 id="onboarding-heading">Set up your paper-trading session</h1>
+  <ol class="wizard-steps" aria-label="Wizard progress">
+    <li class="{% if step == 'step1' %}current{% elif step in ['step2','step3','finished'] %}done{% endif %}">
+      <span class="step-number">1</span> Capital &amp; universe
+    </li>
+    <li class="{% if step == 'step2' %}current{% elif step in ['step3','finished'] %}done{% endif %}">
+      <span class="step-number">2</span> Strategy
+    </li>
+    <li class="{% if step == 'step3' %}current{% elif step == 'finished' %}done{% endif %}">
+      <span class="step-number">3</span> Confirm
+    </li>
+  </ol>
+
+  {% if error %}
+  <div class="banner error" role="alert" aria-live="polite">
+    {% if error == 'webapp:onboarding:bad_capital' %}
+      Starting capital must be a positive decimal number.
+    {% elif error == 'webapp:onboarding:bad_universe' %}
+      Unknown universe selection.
+    {% elif error == 'webapp:onboarding:bad_strategy' %}
+      Unknown strategy selection.
+    {% else %}
+      {{ error }}
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if step == 'step1' %}
+  <form method="post" action="/onboarding/step2">
+    <fieldset>
+      <legend>Step 1 — Capital &amp; universe</legend>
+      <p class="field">
+        <label for="starting_capital">Starting capital (EUR)</label>
+        <input type="text" id="starting_capital" name="starting_capital"
+               value="{{ state.starting_capital }}"
+               required
+               inputmode="decimal"
+               aria-describedby="capital-help">
+        <small id="capital-help">Use a positive decimal — for example <code>10000</code>.</small>
+      </p>
+      <p class="field">
+        <label for="universe">Universe</label>
+        <select id="universe" name="universe" required>
+          {% for u in allowed_universes %}
+          <option value="{{ u }}" {% if state.universe == u %}selected{% endif %}>{{ u }}</option>
+          {% endfor %}
+        </select>
+      </p>
+    </fieldset>
+    <div class="row">
+      <button type="submit" class="button">Next →</button>
+      <form method="post" action="/onboarding/cancel" style="display:inline">
+        <button type="submit" class="button secondary">Cancel</button>
+      </form>
+    </div>
+  </form>
+
+  {% elif step == 'step2' %}
+  <form method="post" action="/onboarding/step3">
+    <fieldset>
+      <legend>Step 2 — Strategy</legend>
+      <p class="field">
+        <label for="strategy">Strategy</label>
+        <select id="strategy" name="strategy" required>
+          {% for s in allowed_strategies %}
+          <option value="{{ s }}" {% if state.strategy == s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+        <small>
+          <code>CoreStrategy</code> rebalances toward the dividend bucket;
+          <code>TacticalStrategy</code> looks for momentum entries.
+        </small>
+      </p>
+    </fieldset>
+    <div class="row">
+      <a href="/onboarding" class="button secondary">← Back</a>
+      <button type="submit" class="button">Next →</button>
+    </div>
+  </form>
+
+  {% elif step == 'step3' %}
+  <form method="post" action="/onboarding/finish">
+    <fieldset>
+      <legend>Step 3 — Confirm</legend>
+      <dl class="confirm-grid">
+        <dt>Starting capital</dt><dd>€ {{ state.starting_capital }}</dd>
+        <dt>Universe</dt><dd><code>{{ state.universe }}</code></dd>
+        <dt>Strategy</dt><dd><code>{{ state.strategy }}</code></dd>
+      </dl>
+      <p>
+        Submitting starts a paper-trading session under a fresh
+        <code>paper-&lt;utc-iso-timestamp&gt;</code> account. You can stop the
+        session from the dashboard at any time. No real money is at risk.
+      </p>
+    </fieldset>
+    <div class="row">
+      <a href="/onboarding" class="button secondary">← Back</a>
+      <button type="submit" class="button">Start session</button>
+    </div>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}
