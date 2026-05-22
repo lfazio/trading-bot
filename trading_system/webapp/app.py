@@ -52,6 +52,7 @@ from trading_system.webapp.routers.views.onboarding import router as onboarding_
 from trading_system.webapp.routers.views.paper_session import (
     router as paper_session_router,
 )
+from trading_system.webapp.routers.views.reports import router as reports_router
 from trading_system.webapp.sse import router as sse_router
 
 
@@ -158,6 +159,7 @@ def create_app(state: WebappState) -> FastAPI:
     app.include_router(login_router)
     app.include_router(onboarding_router)
     app.include_router(paper_session_router)
+    app.include_router(reports_router)
     app.include_router(dashboard_router)
     app.include_router(jobs_view_router)
 

@@ -27,7 +27,11 @@ from typing import Protocol, runtime_checkable
 
 from trading_system.models.identifiers import AccountId
 from trading_system.result import Some
-from trading_system.webui.schemas import PaperStateResponse
+from trading_system.webui.schemas import (
+    OpenPositionView,
+    PaperStateResponse,
+    RecentTradeView,
+)
 
 
 @runtime_checkable
@@ -138,17 +142,62 @@ class RuntimePaperStateReader:
             except Exception:  # noqa: BLE001
                 trades_count = 0
         open_positions_count = 0
+        open_positions_view: tuple[OpenPositionView, ...] = ()
         portfolio = getattr(runtime, "portfolio", None)
         if portfolio is not None and hasattr(portfolio, "positions"):
             try:
                 positions = portfolio.positions()
-                open_positions_count = sum(
-                    1
-                    for p in positions.values()
-                    if getattr(p, "quantity", 0) != 0
+                live_positions = [
+                    p for p in positions.values() if getattr(p, "quantity", 0) != 0
+                ]
+                open_positions_count = len(live_positions)
+                open_positions_view = tuple(
+                    OpenPositionView(
+                        instrument_symbol=getattr(
+                            getattr(p, "instrument", None), "symbol", ""
+                        ),
+                        quantity=p.quantity,
+                        avg_price=p.avg_price,
+                    )
+                    for p in live_positions
                 )
             except Exception:  # noqa: BLE001
                 open_positions_count = 0
+                open_positions_view = ()
+
+        # Build the recent-trades view — last 10 trades.
+        recent_view: tuple[RecentTradeView, ...] = ()
+        if hasattr(runtime, "trade_history") and hasattr(runtime, "order_for_trade"):
+            try:
+                trades = list(runtime.trade_history())
+                tail = trades[-10:]
+                items: list[RecentTradeView] = []
+                for t in tail:
+                    order = runtime.order_for_trade(str(t.id))
+                    side = (
+                        getattr(getattr(order, "side", None), "value", "")
+                        .upper() if order is not None else ""
+                    )
+                    if side not in ("BUY", "SELL"):
+                        continue  # skip malformed
+                    items.append(
+                        RecentTradeView(
+                            trade_id=str(t.id),
+                            executed_at=t.executed_at,
+                            side=side,
+                            instrument_symbol=getattr(
+                                getattr(order, "instrument", None),
+                                "symbol",
+                                "",
+                            ),
+                            quantity=t.quantity_filled,
+                            price=t.price,
+                            fees=t.fees.amount,
+                        )
+                    )
+                recent_view = tuple(items)
+            except Exception:  # noqa: BLE001
+                recent_view = ()
         return PaperStateResponse(
             account_id=account_id,
             as_of=as_of,
@@ -165,6 +214,8 @@ class RuntimePaperStateReader:
             latest_close=latest_close,
             trades_count=trades_count,
             open_positions_count=open_positions_count,
+            recent_trades=recent_view,
+            open_positions=open_positions_view,
         )
 
     async def subscribe(

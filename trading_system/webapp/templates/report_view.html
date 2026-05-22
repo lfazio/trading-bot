@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% set active_nav = 'jobs' %}
+{% block title %}Report &mdash; {{ job_id }}{% endblock %}
+{% block content %}
+<h1>Backtest report</h1>
+<p class="subhead">Job <code>{{ job_id }}</code></p>
+
+{% if has_html %}
+<section class="card">
+  <h2>Equity curve</h2>
+  <iframe src="/reports/{{ job_id }}/files/equity-curve.html"
+          style="width:100%; height:520px; border:0"
+          title="Equity curve — interactive Plotly chart"
+          loading="lazy"></iframe>
+</section>
+{% else %}
+<section class="card">
+  <p class="muted">The interactive equity-curve.html artefact is not available
+  for this run.</p>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Artefacts</h2>
+  <ul>
+    {% for f in files %}
+    <li>
+      <a href="/reports/{{ job_id }}/files/{{ f }}" download="{{ f }}"><code>{{ f }}</code></a>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+
+<p><a href="/jobs" class="button secondary">← Back to backtests</a></p>
+{% endblock %}

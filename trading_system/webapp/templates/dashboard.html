@@ -109,6 +109,31 @@
       <span class="value muted" data-field="paper_degraded_since" style="font-size:0.92rem">—</span>
     </div>
   </div>
+
+  <h3 style="margin-top:1.2em">Open positions</h3>
+  <table class="data-table" data-field="paper_positions_table" style="width:100%; margin-bottom:1em">
+    <thead>
+      <tr><th>Instrument</th><th class="numeric">Quantity</th><th class="numeric">Avg price</th></tr>
+    </thead>
+    <tbody></tbody>
+    <tfoot>
+      <tr><td colspan="3" class="muted">No open positions yet.</td></tr>
+    </tfoot>
+  </table>
+
+  <h3>Recent trades</h3>
+  <table class="data-table" data-field="paper_trades_table" style="width:100%">
+    <thead>
+      <tr>
+        <th>Time</th><th>Side</th><th>Instrument</th>
+        <th class="numeric">Qty</th><th class="numeric">Price</th><th class="numeric">Fees</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+    <tfoot>
+      <tr><td colspan="6" class="muted">No trades executed yet.</td></tr>
+    </tfoot>
+  </table>
 </section>
 
 <section class="card">
@@ -151,8 +176,12 @@ function renderLiveState(raw) {
     set('open_positions_count', String(data.open_positions_count));
   }
   if (data.equity_after_tax) {
-    // Already a decimal-as-string; show with EUR suffix.
-    set('equity_after_tax', '€ ' + data.equity_after_tax);
+    // Decimal-as-string from canonical JSON — round to 2 dp for display.
+    const n = Number(data.equity_after_tax);
+    const text = isFinite(n)
+      ? '€ ' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : '€ ' + data.equity_after_tax;
+    set('equity_after_tax', text);
   }
   if (data.as_of) {
     // Strip the timezone for compactness; full timestamp on hover.
@@ -214,11 +243,16 @@ function renderPaperState(raw) {
   const banner = document.querySelector('[data-field="paper_degraded_banner"]');
   if (banner) banner.style.display = data.is_degraded ? 'inline-block' : 'none';
   // Equity.
-  if (data.latest_equity_after_tax !== undefined && data.latest_equity_after_tax !== null) {
-    set('paper_equity', '€ ' + data.latest_equity_after_tax);
-  } else {
-    set('paper_equity', '—');
-  }
+  const fmtMoney = (raw) => {
+    if (raw === undefined || raw === null || raw === '') return null;
+    const n = Number(raw);
+    if (!isFinite(n)) return null;
+    return '€ ' + n.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  };
+  set('paper_equity', fmtMoney(data.latest_equity_after_tax) || '—');
   set('paper_points', String(data.equity_points_count || 0));
   set('paper_trades', String(data.trades_count || 0));
   set('paper_positions', String(data.open_positions_count || 0));
@@ -228,11 +262,72 @@ function renderPaperState(raw) {
   set('paper_degraded_since', fmt(data.degraded_since));
   // Instrument + price + session meta.
   set('paper_instrument', data.instrument_symbol || '—');
-  set('paper_close', data.latest_close !== undefined && data.latest_close !== null ? '€ ' + data.latest_close : '—');
+  set('paper_close', fmtMoney(data.latest_close) || '—');
+  // Render open-positions + recent-trades tables.
+  const fmtQty = (q) => {
+    const n = Number(q);
+    if (!isFinite(n)) return q;
+    return n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 4 });
+  };
+  const renderPositions = () => {
+    const table = document.querySelector('[data-field="paper_positions_table"]');
+    if (!table) return;
+    const tbody = table.querySelector('tbody');
+    const tfoot = table.querySelector('tfoot');
+    if (!tbody || !tfoot) return;
+    tbody.innerHTML = '';
+    const positions = Array.isArray(data.open_positions) ? data.open_positions : [];
+    if (positions.length === 0) {
+      tfoot.style.display = '';
+      return;
+    }
+    tfoot.style.display = 'none';
+    for (const p of positions) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td><code>${p.instrument_symbol || '?'}</code></td>` +
+                     `<td class="numeric">${fmtQty(p.quantity)}</td>` +
+                     `<td class="numeric">${fmtMoney(p.avg_price) || p.avg_price}</td>`;
+      tbody.appendChild(tr);
+    }
+  };
+  const renderTrades = () => {
+    const table = document.querySelector('[data-field="paper_trades_table"]');
+    if (!table) return;
+    const tbody = table.querySelector('tbody');
+    const tfoot = table.querySelector('tfoot');
+    if (!tbody || !tfoot) return;
+    tbody.innerHTML = '';
+    const trades = Array.isArray(data.recent_trades) ? data.recent_trades : [];
+    if (trades.length === 0) {
+      tfoot.style.display = '';
+      return;
+    }
+    tfoot.style.display = 'none';
+    // Show newest first.
+    for (let i = trades.length - 1; i >= 0; i--) {
+      const t = trades[i];
+      const ts = (t.executed_at || '').replace('T', ' ').replace(/\+00:00$/, ' UTC');
+      const sideClass = t.side === 'BUY' ? 'success' : 'warn';
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        `<td class="muted" style="font-size:0.9rem">${ts}</td>` +
+        `<td><span class="badge ${sideClass}">${t.side}</span></td>` +
+        `<td><code>${t.instrument_symbol || '?'}</code></td>` +
+        `<td class="numeric">${fmtQty(t.quantity)}</td>` +
+        `<td class="numeric">${fmtMoney(t.price) || t.price}</td>` +
+        `<td class="numeric">${fmtMoney(t.fees) || t.fees}</td>`;
+      tbody.appendChild(tr);
+    }
+  };
+  renderPositions();
+  renderTrades();
   const metaBits = [];
   if (data.universe) metaBits.push('Universe: ' + data.universe);
   if (data.strategy_id) metaBits.push('Strategy: ' + data.strategy_id);
-  if (data.starting_capital) metaBits.push('Starting capital: € ' + data.starting_capital);
+  if (data.starting_capital) {
+    const formatted = fmtMoney(data.starting_capital);
+    metaBits.push('Starting capital: ' + (formatted || ('€ ' + data.starting_capital)));
+  }
   set('paper_session_meta', metaBits.length ? metaBits.join(' · ') : '—');
 }
 // Native EventSource for the paper-state SSE channel.

@@ -53,6 +53,9 @@
           </td>
           <td class="right">
             <a class="button secondary" href="/jobs/{{ job.job_id }}">Details</a>
+            {% if job.status == "completed" %}
+            <a class="button" href="/reports/{{ job.job_id }}">View report</a>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}

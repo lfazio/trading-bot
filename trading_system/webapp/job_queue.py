@@ -94,7 +94,9 @@ class JobQueue(Protocol):
 
 def _default_worker(spec: JobSpec) -> dict[str, str]:
     """Top-level (picklable) worker entry. Invokes
-    ``trading_system.main.run`` and returns a JSON-safe summary."""
+    ``trading_system.main.run`` + emits the CR-016 report bundle so
+    the webapp's reports panel can render the equity curve inline."""
+    from trading_system.analytics.report import write_report
     from trading_system.main import run
 
     res = run(
@@ -106,6 +108,31 @@ def _default_worker(spec: JobSpec) -> dict[str, str]:
     if isinstance(res, Err):
         raise RuntimeError(res.error)
     outcome = res.value
+
+    # Emit the 5-file report directory keyed on job_id so the
+    # webapp's /reports/<job_id> view can serve it. Best-effort:
+    # a report-write failure SHALL NOT mark the job as failed
+    # because the backtest itself succeeded — operators can re-run
+    # the CLI path if the bundle is needed.
+    report_dir = Path("var") / "reports" / spec.job_id
+    report_status = "skipped"
+    if not report_dir.exists() or not any(report_dir.iterdir()):
+        report_dir.mkdir(parents=True, exist_ok=True)
+        write_result = write_report(
+            outcome.result,
+            config_hash=outcome.config_hash,
+            out_dir=report_dir,
+            seed=outcome.seed,
+            start_at=spec.start,
+            end_at=spec.end,
+            data_provider=outcome.data_provider,
+        )
+        report_status = (
+            "ok" if not isinstance(write_result, Err) else f"err:{write_result.error.category}"
+        )
+    else:
+        report_status = "exists"
+
     return {
         "trades_count": str(len(outcome.result.trades)),
         "final_equity_after_tax": str(
@@ -115,6 +142,8 @@ def _default_worker(spec: JobSpec) -> dict[str, str]:
         "seed": str(outcome.seed),
         "data_provider": outcome.data_provider,
         "equity_curve_points": str(len(outcome.result.equity_curve)),
+        "report_dir": str(report_dir),
+        "report_status": report_status,
     }
 
 

@@ -258,6 +258,7 @@ class PaperTradingRuntime:
     _last_tick_at: datetime | None = field(default=None, init=False)
     _equity_points: list[EquityPoint] = field(default_factory=list, init=False)
     _trades: list[Trade] = field(default_factory=list, init=False)
+    _orders_by_trade: dict[str, Order] = field(default_factory=dict, init=False)
     _rejected: list[tuple[TradeProposal, tuple[str, ...]]] = field(
         default_factory=list, init=False
     )
@@ -294,6 +295,12 @@ class PaperTradingRuntime:
     def trade_history(self) -> tuple[Trade, ...]:
         """Read-only view of every fill recorded by this session."""
         return tuple(self._trades)
+
+    def order_for_trade(self, trade_id: str) -> Order | None:
+        """Look up the Order that produced ``trade_id``. Used by
+        the dashboard reader to surface side + instrument symbol
+        on the recent-trades table."""
+        return self._orders_by_trade.get(trade_id)
 
     def rejected_proposals(
         self,
@@ -363,6 +370,7 @@ class PaperTradingRuntime:
                 bucket = _bucket_for_class(proposal.instrument.cls)
                 self.portfolio.apply(trade, order, bucket, tax_cfg)
                 self._trades.append(trade)
+                self._orders_by_trade[str(trade.id)] = order
             case Err(_):
                 # Broker rejected (insufficient cash, currency
                 # mismatch, etc.). Silently skip — the rest of

@@ -126,6 +126,39 @@ class LiveStateResponse:
 
 
 @dataclass(frozen=True, slots=True)
+class RecentTradeView:
+    """Compact trade summary for the paper-trading panel
+    (REQ_F_WEB2_003 — "recent decisions" surface)."""
+
+    trade_id: str
+    executed_at: datetime
+    side: str  # "BUY" / "SELL"
+    instrument_symbol: str
+    quantity: Decimal
+    price: Decimal
+    fees: Decimal
+
+    def __post_init__(self) -> None:
+        if self.side not in ("BUY", "SELL"):
+            raise ValueError(
+                f"RecentTradeView.side must be BUY or SELL, got {self.side!r}"
+            )
+        if self.quantity <= 0:
+            raise ValueError(
+                f"RecentTradeView.quantity must be > 0, got {self.quantity}"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class OpenPositionView:
+    """Compact open-position summary for the paper-trading panel."""
+
+    instrument_symbol: str
+    quantity: Decimal  # signed
+    avg_price: Decimal
+
+
+@dataclass(frozen=True, slots=True)
 class PaperStateResponse:
     """REQ_F_WEB2_003 — current-state read shape for a paper-trading
     session.
@@ -167,6 +200,8 @@ class PaperStateResponse:
     latest_close: Decimal | None = None
     trades_count: int = 0
     open_positions_count: int = 0
+    recent_trades: tuple[RecentTradeView, ...] = ()
+    open_positions: tuple[OpenPositionView, ...] = ()
 
     def __post_init__(self) -> None:
         if not str(self.account_id).strip():
