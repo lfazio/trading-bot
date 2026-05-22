@@ -191,7 +191,7 @@ Cross-cutting (build alongside):
 - [ ] Phase-6 drills: vol-target tracking error, risk-parity weights stability, ensemble decorrelation
 - [ ] Edge-case tests (crash, knockout, broker rejection, feed corruption)
 - [ ] Broker-adapter conformance tests run against `LocalBrokerAdapter` (and any future live-broker adapter once added)
-- [ ] Kill switch trip/recovery drill
+- [x] **Kill switch trip/recovery drill** ✅ DONE 2026-05-22 @ `<this commit>` — `tests/integration/test_kill_switch_drill.py` (10 scenarios). Boots a full safety stack (StateManager + MemorySnapshotSink + MemoryAlertChannel + NotificationFanOut + MemoryNotificationChannel), then walks ACTIVE → DEGRADED → KILL → recovery-rejected → recovery-accepted → KILL → recovery in one linear scenario plus 9 narrower scenarios. Asserts: (1) state timeline matches the documented sequence, (2) `must_halt()` flips True at KILL and False after recovery, (3) every transition produces one non-empty `AuditSnapshot` (REQ_NF_AUD_001 family), (4) every transition fires one `KillSwitchEvent` through the `NotificationFanOut` bridge (REQ_F_NOT_003 / REQ_SDD_NOT_002), (5) rejected recovery surfaces the categorised Err (`safety:recovery_conditions_unmet` / `safety:invalid_operator_token`) and DOES NOT produce a snapshot, (6) idempotent same-state DEGRADE / KILL triggers still record an audit row (operator can replay). Covers every TriggerCategory (FINANCIAL / STRATEGY / EXECUTION / INTEGRITY) on the path. Six-snapshot expected count for the full lifecycle is documented inline.
 - [ ] Structured product stress + liquidity drill
 
 ---
