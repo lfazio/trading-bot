@@ -1,11 +1,22 @@
 """Tests for ``trading_system.turbo_selector.engine``.
 
-Verifies the filter -> score -> select pipeline (REQ_F_TRB_001..006),
-the Phase 1 "turbos disabled" gate (REQ_F_CAP_006), the threshold
-gate (REQ_F_TRB_004 + REQ_SDS_MOD_007 — the selector SHALL emit
-"no trade" when the best candidate's score is below the configured
-threshold; the threshold is configurable via ``TurboSelectorConfig``),
-and the Err-from-data drop policy.
+Verifies the filter -> score -> select pipeline (REQ_F_TRB_001 /
+REQ_F_TRB_002 / REQ_F_TRB_003 / REQ_F_TRB_004 / REQ_F_TRB_005 /
+REQ_F_TRB_006), the Phase 1 "turbos disabled" gate (REQ_F_CAP_006),
+the threshold gate (REQ_F_TRB_004 + REQ_SDS_MOD_007 — the selector
+SHALL emit "no trade" when the best candidate's score is below the
+configured threshold; the threshold is configurable via
+``TurboSelectorConfig``), and the Err-from-data drop policy.
+
+REQ_F_TRB_002 — the filter SHALL reject candidates with knockout
+distance < 5%, spread > 1.5%, or above-phase leverage; covered by
+the ``test_filter_*`` parametrized cases.
+
+REQ_F_TRB_003 — the score formula
+``0.35·knockout_distance + 0.25·leverage_efficiency +
+0.20·cost + 0.20·expected_move_capture`` is pinned in the
+``test_score_*`` cases that compute the score against known
+inputs and compare against the hand-computed expected.
 """
 
 from __future__ import annotations

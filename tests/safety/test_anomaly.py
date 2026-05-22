@@ -1,4 +1,16 @@
-"""Tests for ``trading_system.safety.anomaly``."""
+"""Tests for ``trading_system.safety.anomaly``.
+
+REQ refs:
+- REQ_S_KS_003 — financial-trigger family (drawdown, single-day
+  loss, rapid decline).
+- REQ_SDD_ALG_006 — single-day-loss threshold default 5 %. The
+  ``test_single_day_loss_*`` cases pin the boundary at the
+  documented default and assert breach/no-breach symmetry.
+- REQ_SDD_ALG_007 — rapid-decline default 10 % over 5 trading
+  days. The ``test_rapid_decline_*`` cases run a 5-window
+  rolling check and assert the trigger fires only when the
+  cumulative drop exceeds the documented threshold.
+"""
 
 from __future__ import annotations
 

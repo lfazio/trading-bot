@@ -1,8 +1,11 @@
 """Tests for ``trading_system.tax.engine``.
 
 Covers REQ_F_TAX_001 / 002 (formula), REQ_F_TAX_003 (gate boundary
-behavior), REQ_SDD_ALG_001 (ROUND_HALF_UP cents), and the cross-currency
-panic discipline.
+behavior), REQ_F_TAX_004 (all optimizations target net-after-tax —
+``net_gain`` / ``net_dividend`` return post-tax amounts only; the
+engine never exposes a gross-return path that could be optimized
+in place of the after-tax one), REQ_SDD_ALG_001 (ROUND_HALF_UP cents),
+and the cross-currency panic discipline.
 """
 
 from __future__ import annotations

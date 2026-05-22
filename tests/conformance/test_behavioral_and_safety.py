@@ -1,6 +1,11 @@
 """Behavioral-default + architectural-invariant audits.
 
 REQ refs:
+- REQ_C_BHV_001 — The system SHALL prefer stocks over turbos
+  unless a strong, validated edge exists. The
+  ``test_phase_constraints_favor_stocks_over_turbos`` case
+  asserts every phase's stock allocation ≥ turbo allocation,
+  encoding the preference in the configuration shape.
 - REQ_C_BHV_004 — The system SHALL prioritize survival over return.
 - REQ_C_BHV_005 — Forbidden behaviors: aggressive leverage scaling
   after milestone, continuous risk increase, overfitting-driven
@@ -280,3 +285,37 @@ def test_backtest_engine_imports_tax_engine() -> None:
         "REQ_F_TAX_005 — no backtesting/ module imports trading_system.tax; "
         "tax application unreachable on the backtest path"
     )
+
+
+# ---------------------------------------------------------------------------
+# REQ_C_BHV_001 — prefer stocks over turbos
+# ---------------------------------------------------------------------------
+
+
+def test_phase_constraints_favor_stocks_over_turbos() -> None:
+    """REQ_C_BHV_001 — the system SHALL prefer stocks over turbos.
+    Audit: load ``config/phases.yaml`` and assert every phase's
+    stock-allocation target is greater than its turbo allocation.
+    The preference is encoded in the configuration shape (not in
+    runtime heuristics) so a YAML edit can't silently reverse the
+    bias without this audit failing.
+    """
+    from decimal import Decimal
+
+    from trading_system.models.phase import AllocationBucket, Phase
+    from trading_system.phase_engine.loader import load_phase_engine
+    from trading_system.result import Ok
+
+    phases_yaml = _REPO_ROOT / "config" / "phases.yaml"
+    loaded = load_phase_engine(phases_yaml)
+    assert isinstance(loaded, Ok), f"phase loader Err: {loaded}"
+    engine = loaded.value
+    for phase in Phase:
+        c = engine.constraints_for(phase)
+        stock = c.allocation_targets.get(AllocationBucket.STOCK, Decimal(0))
+        turbo = c.allocation_targets.get(AllocationBucket.TURBO, Decimal(0))
+        assert stock > turbo, (
+            f"REQ_C_BHV_001 — {phase.name} allocation: stock={stock} "
+            f"NOT > turbo={turbo}; configuration violates the documented "
+            "stock-preference behavioral default"
+        )

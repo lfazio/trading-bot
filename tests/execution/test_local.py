@@ -5,7 +5,18 @@ internals: tick-driven fills, fees + slippage application, position
 open/close/flip, idempotency, and Account derivation.
 
 REQ refs:
-- REQ_F_BRK_001..005 — BrokerAdapter Protocol shape + concrete impl.
+- REQ_F_BRK_001 — BrokerAdapter Protocol shape (this file).
+- REQ_F_BRK_002 — LocalBrokerAdapter concrete impl.
+- REQ_F_BRK_003 — live-broker adapters deferred; this conformance
+  suite is the gate any future adapter SHALL pass.
+- REQ_F_BRK_004 — adapter selected by ``broker.adapter`` config;
+  exercised indirectly through ``BrokerConfig`` loading + the
+  Protocol-conformance test below.
+- REQ_F_BRK_005 — non-execution modules SHALL depend only on the
+  ``BrokerAdapter`` Protocol, never on concrete impls. The
+  package-level structural test in
+  ``tests/conformance/test_imports.py`` audits this; this file's
+  Protocol conformance check is the runtime confirmation.
 - REQ_TP_STR_004 — Concrete BrokerAdapter implementations SHALL
   pass this conformance test suite. ``LocalBrokerAdapter`` is the
   shipped baseline; future live-broker adapters MAY ship only

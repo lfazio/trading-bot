@@ -1,4 +1,29 @@
-"""Tests for ``trading_system.safety.state_manager``."""
+"""Tests for ``trading_system.safety.state_manager``.
+
+REQ refs verified by the state-machine + recovery cases:
+- REQ_S_KS_001 — the kill switch is a three-state machine
+  (ACTIVE / DEGRADED / KILL) with documented transitions.
+- REQ_S_KS_002 — non-bypassable: ``must_halt`` is the only
+  surface that exposes the boolean halt decision; no module
+  can flip the state without going through ``raise_trigger``.
+- REQ_S_KS_005 — execution-anomaly triggers feed the state
+  machine through ``raise_trigger(TriggerCategory.EXECUTION,
+  ...)`` (covered exhaustively in ``test_trigger_categories.py``).
+- REQ_S_KS_007 — operator-confirmed recovery (the
+  ``test_recovery_*`` cases drive ``request_recovery`` with the
+  documented condition set + HMAC token).
+- REQ_S_KS_009 — RecoveryConditions gates recovery: drawdown
+  recovered + integrity restored + backtests stable.
+- REQ_S_KS_010 — kill-switch configuration is immutable at
+  runtime; ``StateManagerConfig`` is a frozen dataclass and the
+  ``_frozen_runtime`` invariant prevents post-construction
+  mutation.
+- REQ_S_KS_011 — every safety-relevant operation runs through
+  the state manager; the BrokerAdapter contract (REQ_SDS_ARC_003)
+  is what call sites use to gate submission. Verified in
+  ``tests/conformance/test_behavioral_and_safety.py``'s
+  ``test_execution_adapter_calls_safety_check_before_submit``.
+"""
 
 from __future__ import annotations
 

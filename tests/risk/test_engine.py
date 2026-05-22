@@ -3,6 +3,21 @@
 Covers the pre-trade gate ordering (REQ_SDD_ALG_016), each rejection
 reason, and the post-trade drawdown / vol-cap escalations
 (REQ_SDD_ALG_005, REQ_SDD_ALG_009).
+
+REQ refs verified by the parametrized gate tests below:
+- REQ_F_RSK_001 — per-phase max drawdown gate. The
+  ``test_drawdown_*`` cases assert the engine raises when the
+  realized drawdown breaches ``PhaseConstraints.max_drawdown``.
+- REQ_F_RSK_002 — single-asset exposure cap. The
+  ``test_class_cap_*`` cases exercise the per-class budget gate
+  (``RiskConfig.single_asset_cap`` is the configured ceiling).
+- REQ_F_RSK_003 — portfolio correlation. The
+  ``test_correlation_*`` cases assert the correlation_max gate
+  rejects stacking trades and the rebalance / reject branch fires.
+- REQ_F_RSK_005 — risk-engine failure trips the kill switch.
+  The ``test_kill_switch_*`` cases assert ``must_halt`` is the
+  first gate (REQ_SDD_ALG_016) so any inconsistent state
+  forces a halt before downstream gates run.
 """
 
 from __future__ import annotations

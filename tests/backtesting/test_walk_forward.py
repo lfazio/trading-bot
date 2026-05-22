@@ -4,8 +4,11 @@ Covers TC_BCT_008 (walk-forward windows default to (24/6/6) for
 phases 1-4 and (60/12/24) for phases 5-6) and TC_BCT_009 (OOS Sharpe
 < 0.5 x train Sharpe in any window flags collapse).
 
-REQ refs: REQ_F_BCT_008, REQ_F_BCT_009, REQ_SDD_ALG_004,
-REQ_NF_DET_001.
+REQ refs: REQ_F_BCT_008, REQ_F_BCT_009, REQ_F_STR_003 (every
+shipped strategy SHALL pass walk-forward validation —
+``walk_forward`` is the entry point that drives the train /
+valid / oos triple and flags collapse), REQ_SDD_ALG_004 (window
+defaults: 24/6/6 phases 1-4, 60/12/24 phases 5-6), REQ_NF_DET_001.
 """
 
 from __future__ import annotations

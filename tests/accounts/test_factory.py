@@ -6,6 +6,17 @@ the legacy ``system.yaml`` / ``phases.yaml`` / ``risk.yaml`` files
 when ``accounts.yaml`` is absent. The account's id is
 :data:`DEFAULT_ACCOUNT_ID` so the persistence layer's
 ``account_id`` columns line up without a migration.
+
+REQ refs verified by the default-registry round-trip below:
+- REQ_F_ACC_004 — each account carries its own phase, resolved
+  from its own ``equity + injected_capital`` pool. The synthesised
+  Account holds its own PhaseEngine instance; the factory's
+  ``test_account_carries_own_phase_engine`` case asserts the
+  reference is per-account, not shared with the system root.
+- REQ_F_ACC_006 — RiskConfig overlay defined per account; unset
+  fields inherit from the system-wide config. The default
+  account's RiskConfig is the system-wide one (no overlay
+  applied), matching the documented inheritance default.
 """
 
 from __future__ import annotations
