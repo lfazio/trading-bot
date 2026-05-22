@@ -38,17 +38,18 @@ def test_dashboard_redirects_to_login_when_unauth() -> None:
     assert response.headers["location"] == "/login"
 
 
-def test_dashboard_renders_html_with_hx_attributes() -> None:
+def test_dashboard_renders_html_with_sse_wiring() -> None:
     client, token = _client()
     response = client.get("/", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
     body = response.text
-    # Phase-B surface — HTMX SSE extension subscribes to the push channel.
-    assert 'hx-ext="sse"' in body
-    assert "sse-connect=" in body
+    # SSE surface — the panel mounts an EventSource targeting the
+    # push channel (the bundled HTMX stub doesn't carry the real
+    # runtime, so the dashboard wires the connection natively).
+    assert "data-live-sse-url=" in body
     assert "/events/live-state" in body
-    assert "sse-swap=" in body
+    assert "EventSource" in body
     # Static asset references resolve through Starlette's url_for.
     assert "htmx.min.js" in body
     assert "htmx-sse.min.js" in body

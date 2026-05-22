@@ -28,8 +28,7 @@
 {% endif %}
 
 <section class="card"
-         hx-ext="sse"
-         sse-connect="/events/live-state?account_id={{ account_id | urlencode }}">
+         data-live-sse-url="/events/live-state?account_id={{ account_id | urlencode }}">
   <h2>Live state</h2>
   <div id="live-state-grid" class="card-grid">
     <div class="stat">
@@ -53,17 +52,10 @@
       <span class="value muted" data-field="as_of" style="font-size:0.92rem">—</span>
     </div>
   </div>
-  <!-- Hidden sink for the raw SSE payload; a tiny script extracts
-       the fields into the stat grid above. -->
-  <script id="live-state-raw"
-          type="application/json"
-          sse-swap="live-state"
-          hx-swap="innerHTML">{}</script>
 </section>
 
 <section class="card"
-         hx-ext="sse"
-         sse-connect="/events/paper-state?account_id={{ account_id | urlencode }}"
+         data-paper-sse-url="/events/paper-state?account_id={{ account_id | urlencode }}"
          aria-labelledby="paper-state-heading">
   <h2 id="paper-state-heading">Paper-trading session</h2>
   <p class="subhead">
@@ -102,10 +94,6 @@
       <span class="value muted" data-field="paper_degraded_since" style="font-size:0.92rem">—</span>
     </div>
   </div>
-  <script id="paper-state-raw"
-          type="application/json"
-          sse-swap="paper-state"
-          hx-swap="innerHTML">{}</script>
 </section>
 
 <section class="card">
@@ -158,16 +146,26 @@ function renderLiveState(raw) {
     el.title = data.as_of;
   }
 }
-document.addEventListener('htmx:afterSwap', (e) => {
-  if (e.target && e.target.id === 'live-state-raw') {
-    renderLiveState(e.target.textContent);
-  }
-});
-// Also render the initial empty payload so the dashes show until
-// the first SSE event arrives.
-document.addEventListener('DOMContentLoaded', () => {
-  renderLiveState(document.getElementById('live-state-raw').textContent);
-});
+// Native EventSource for the live-state SSE channel — same
+// reason as the paper-state channel below: the bundled HTMX
+// stub doesn't carry the real runtime.
+(function() {
+  document.addEventListener('DOMContentLoaded', () => {
+    const card = document.querySelector('[data-live-sse-url]');
+    if (!card) return;
+    const url = card.getAttribute('data-live-sse-url');
+    if (!url) return;
+    try {
+      const es = new EventSource(url, { withCredentials: true });
+      es.addEventListener('live-state', (event) => {
+        renderLiveState(event.data);
+      });
+    } catch (e) {
+      console.warn('live-state SSE wiring failed:', e);
+    }
+    renderLiveState('{}');
+  });
+})();
 
 // REQ_F_WEB2_003 — paper-trading dashboard panel rendering.
 function renderPaperState(raw) {
@@ -220,14 +218,36 @@ function renderPaperState(raw) {
   if (data.starting_capital) metaBits.push('Starting capital: € ' + data.starting_capital);
   set('paper_session_meta', metaBits.length ? metaBits.join(' · ') : '—');
 }
-document.addEventListener('htmx:afterSwap', (e) => {
-  if (e.target && e.target.id === 'paper-state-raw') {
-    renderPaperState(e.target.textContent);
-  }
-});
-document.addEventListener('DOMContentLoaded', () => {
-  const el = document.getElementById('paper-state-raw');
-  if (el) renderPaperState(el.textContent);
-});
+// Native EventSource for the paper-state SSE channel.
+// HTMX's bundled stub does NOT carry the real runtime, so the
+// previous ``hx-ext="sse"`` wiring never actually opened a
+// connection. EventSource is on every modern browser; we use
+// it directly so the panel works without any external JS dep.
+(function() {
+  document.addEventListener('DOMContentLoaded', () => {
+    const card = document.querySelector('[data-paper-sse-url]');
+    if (!card) return;
+    const url = card.getAttribute('data-paper-sse-url');
+    if (!url) return;
+    try {
+      const es = new EventSource(url, { withCredentials: true });
+      es.addEventListener('paper-state', (event) => {
+        renderPaperState(event.data);
+      });
+      // Surface a transport error in the banner so it's not silent.
+      es.addEventListener('error', () => {
+        const status = document.querySelector('[data-field="paper_status"]');
+        if (status && status.textContent === 'No session') {
+          status.textContent = 'SSE error';
+          status.classList.add('error');
+        }
+      });
+      // Render the initial placeholder so the dashes show.
+      renderPaperState('{}');
+    } catch (e) {
+      console.warn('paper-state SSE wiring failed:', e);
+    }
+  });
+})();
 </script>
 {% endblock %}
