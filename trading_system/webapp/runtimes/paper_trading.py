@@ -346,7 +346,18 @@ class PaperTradingRuntime:
         if equity <= 0 or tick.last <= 0:
             return
         raw_qty = (equity * proposal.size_pct_of_capital) / tick.last
-        if raw_qty <= 0:
+        # Floor to integer share count — stocks (and turbos / SPs in
+        # practice) trade in whole units. Fractional shares are a
+        # broker-specific feature; the paper-trading sim conservatively
+        # rejects them so the equity-curve math stays honest about
+        # what a real broker would accept. ``Decimal(int(...))``
+        # preserves the Decimal type so Order.quantity validators
+        # don't switch their precision assumptions.
+        quantity = Decimal(int(raw_qty))
+        if quantity <= 0:
+            # The proposal's allocation can't buy at least one share
+            # at this price — skip rather than send a zero-quantity
+            # order (which the Order dataclass would reject anyway).
             return
         self._next_order_seq += 1
         order = Order(
@@ -355,7 +366,7 @@ class PaperTradingRuntime:
             ),
             instrument=proposal.instrument,
             side=proposal.side,
-            quantity=raw_qty,
+            quantity=quantity,
             type=OrderType.MARKET,
             stop_loss=proposal.stop_loss,
             created_at=tick.at,

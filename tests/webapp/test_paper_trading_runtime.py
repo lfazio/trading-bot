@@ -561,6 +561,94 @@ def test_tick_runs_strategy_and_submits_when_market_data_wired() -> None:
     assert len([p for p in runtime.portfolio.positions().values() if p.quantity != 0]) >= 1
 
 
+def test_tick_floors_quantity_to_integer_shares() -> None:
+    """Stocks (and any other instrument) SHALL trade in whole
+    units — the paper-trading runtime SHALL floor fractional
+    shares to an integer count so the Order matches what a real
+    broker would accept."""
+    from trading_system.webapp.runtimes.paper_trading import build_runtime
+    from trading_system.webapp.runtimes.simulated_bar_source import (
+        SimulatedBarSource,
+        SimulatedMarketDataProvider,
+    )
+    from trading_system.webapp.runtimes.strategy_factory import build_strategy
+
+    src = SimulatedBarSource(
+        instrument_id=_stock().id, seed=1, start_at=_T0
+    )
+    runtime_res = build_runtime(
+        session=_session(),
+        instrument=_stock(),
+        strategy=build_strategy(
+            "CoreStrategy",
+            strategy_id=StrategyId("CoreStrategy"),
+        ),  # type: ignore[arg-type]
+        bar_source=src,
+        phase_constraints=_constraints(),
+        regime=MarketRegime.SIDEWAYS,
+    )
+    runtime = runtime_res.unwrap()
+    runtime.market_data_provider = SimulatedMarketDataProvider(
+        source=src, instrument=_stock()
+    )
+    for _ in range(3):
+        runtime.tick_once()
+    trades = runtime.trade_history()
+    assert len(trades) >= 1
+    # Every recorded trade SHALL have an integer quantity_filled.
+    for t in trades:
+        # quantity_filled is a Decimal; assert it equals its int().
+        assert t.quantity_filled == Decimal(int(t.quantity_filled)), (
+            f"trade {t.id} has fractional quantity {t.quantity_filled}"
+        )
+
+
+def test_tick_skips_submit_when_quantity_floors_to_zero() -> None:
+    """When the proposal's allocation can't buy at least one share
+    (very small starting capital relative to price), the runtime
+    SHALL skip the submit rather than send a zero-quantity order
+    the broker would reject."""
+    from trading_system.webapp.runtimes.paper_trading import build_runtime
+    from trading_system.webapp.runtimes.simulated_bar_source import (
+        SimulatedBarSource,
+        SimulatedMarketDataProvider,
+    )
+    from trading_system.webapp.runtimes.strategy_factory import build_strategy
+
+    src = SimulatedBarSource(
+        instrument_id=_stock().id,
+        seed=1,
+        start_at=_T0,
+        base_price=Decimal("100000"),  # absurdly expensive vs 50 EUR session
+    )
+    tiny_session = PaperTradingSession(
+        account_id=AccountId(f"{PAPER_ACCOUNT_PREFIX}tiny"),
+        universe="eu-dividend-starter",
+        strategy_id=StrategyId("CoreStrategy"),
+        starting_capital=Money(amount=Decimal("50"), currency=Currency.EUR),
+        started_at=_T0,
+    )
+    runtime_res = build_runtime(
+        session=tiny_session,
+        instrument=_stock(),
+        strategy=build_strategy(
+            "CoreStrategy",
+            strategy_id=StrategyId("CoreStrategy"),
+        ),  # type: ignore[arg-type]
+        bar_source=src,
+        phase_constraints=_constraints(),
+        regime=MarketRegime.SIDEWAYS,
+    )
+    runtime = runtime_res.unwrap()
+    runtime.market_data_provider = SimulatedMarketDataProvider(
+        source=src, instrument=_stock()
+    )
+    for _ in range(3):
+        runtime.tick_once()
+    # No trades — the floor-to-zero guard kept the broker quiet.
+    assert len(runtime.trade_history()) == 0
+
+
 def test_tick_rejects_proposal_when_risk_gate_returns_reject() -> None:
     """When a risk_gate is wired and rejects a proposal, the
     runtime SHALL skip the broker.submit call. The rejected

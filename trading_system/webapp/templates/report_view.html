@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends parent_template|default("base.html") %}
 {% set active_nav = 'jobs' %}
 {% block title %}Report &mdash; {{ job_id }}{% endblock %}
 {% block content %}

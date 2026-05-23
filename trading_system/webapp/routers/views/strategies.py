@@ -25,6 +25,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from trading_system.models.identifiers import AccountId, StrategyId
 from trading_system.result import Err
 from trading_system.webapp.auth_deps import _extract_token, verify_any_valid_claim
+from trading_system.webapp.fragments import fragment_context
 
 
 router = APIRouter(prefix="/strategies")
@@ -80,6 +81,7 @@ def get_strategies(request: Request):
                 request.app.state, "registry_promoter", None
             )
             is not None,
+            **fragment_context(request),
         },
     )
     if flash:

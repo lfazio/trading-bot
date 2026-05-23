@@ -16,6 +16,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.responses import HTMLResponse, RedirectResponse
 
 from trading_system.webapp.auth_deps import _extract_token, verify_any_valid_claim
+from trading_system.webapp.fragments import fragment_context
 
 
 router = APIRouter()
@@ -104,5 +105,6 @@ def get_dashboard(request: Request):
             "live_paper_sessions": live_paper_sessions,
             "active_mode": mode_raw,
             "household": household,
+            **fragment_context(request),
         },
     )

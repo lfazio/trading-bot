@@ -22,6 +22,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from trading_system.webapp.auth_deps import _extract_token, verify_any_valid_claim
+from trading_system.webapp.fragments import fragment_context
 
 
 router = APIRouter(prefix="/reports")
@@ -103,6 +104,7 @@ def get_report_view(job_id: str, request: Request):
             "job_id": job_id,
             "files": available,
             "has_html": "equity-curve.html" in available,
+            **fragment_context(request),
         },
     )
 

@@ -27,6 +27,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from trading_system.result import Err
 from trading_system.webapp.auth_deps import _extract_token, verify_any_valid_claim
+from trading_system.webapp.fragments import fragment_context
 
 
 router = APIRouter(prefix="/operator")
@@ -94,6 +95,7 @@ def _render(
             "ks_state": ks_state,
             "last_trigger": last_trigger,
             "error": error,
+            **fragment_context(request),
         },
         status_code=status_code,
     )

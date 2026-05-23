@@ -43,6 +43,7 @@ from trading_system.webapp.runtimes.simulated_bar_source import (
     SimulatedBarSource,
     SimulatedMarketDataProvider,
 )
+from trading_system.webapp.fragments import fragment_context
 from trading_system.webapp.wizard_state import (
     ALLOWED_STRATEGIES,
     ALLOWED_UNIVERSES,
@@ -124,6 +125,7 @@ def _render(
             "error": error,
             "allowed_universes": ALLOWED_UNIVERSES,
             "allowed_strategies": ALLOWED_STRATEGIES,
+            **fragment_context(request),
         },
         status_code=status_code,
     )

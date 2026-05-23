@@ -13,6 +13,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from starlette.responses import HTMLResponse
 
+from trading_system.webapp.fragments import fragment_context
+
 
 router = APIRouter()
 
@@ -31,5 +33,5 @@ def get_login(request: Request) -> HTMLResponse:
     return _templates(request).TemplateResponse(
         request=request,
         name="login.html",
-        context={},
+        context={**fragment_context(request)},
     )

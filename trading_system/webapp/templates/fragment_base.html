@@ -1,0 +1,18 @@
+{#-
+  REQ_SDS_WEB2_002 + REQ_SDD_WEB2_001 — fragment base.
+
+  Every view template carries
+    {% extends parent_template|default("base.html") %}
+  and the view's request context passes ``parent_template`` =
+  ``"fragment_base.html"`` when the operator's URL carries
+  ``?fragment=1`` (or ``?fragment=true``). HTMX swap-targets
+  receive ONLY the ``{% block content %}`` markup — no <html>,
+  no <header>, no <script>. That keeps the swap surface tight
+  and avoids drop-shipping the full page chrome into a
+  sub-region of an existing rendered page.
+
+  The block-only output is intentionally HTML5-fragment-valid
+  but not a full document — the browser interpolates it
+  unchanged into the existing DOM tree.
+-#}
+{% block content %}{% endblock %}

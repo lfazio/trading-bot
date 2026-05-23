@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends parent_template|default("base.html") %}
 {% set show_chrome = False %}
 {% block title %}Sign in &mdash; trading-bot{% endblock %}
 {% block content %}

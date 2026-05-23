@@ -38,6 +38,7 @@ from trading_system.webapp.auth_deps import (
     _extract_token,
     verify_any_valid_claim,
 )
+from trading_system.webapp.fragments import fragment_context
 from trading_system.webapp.job_queue import JobQueue, JobSpec, JobState, new_job_id
 
 
@@ -137,6 +138,7 @@ def get_jobs_page(request: Request) -> HTMLResponse | RedirectResponse:
             # a new entry is a deliberate code change here + a
             # wiki amendment.
             "allowed_universes": ("eu-dividend-starter", "cac40"),
+            **fragment_context(request),
         },
     )
 
@@ -236,6 +238,7 @@ async def post_jobs_submit(
                     },
                     "allowed_universes": ("eu-dividend-starter", "cac40"),
                     "submit_error": reason,
+                    **fragment_context(request),
                 },
                 status_code=400,
             )
@@ -303,6 +306,7 @@ def get_job_detail(
                 context={
                     "account_id": "default",
                     "job": _state_to_view(state),
+                    **fragment_context(request),
                 },
             )
         case Nothing():
@@ -312,6 +316,7 @@ def get_job_detail(
                 context={
                     "account_id": "default",
                     "job_id": job_id,
+                    **fragment_context(request),
                 },
                 status_code=404,
             )

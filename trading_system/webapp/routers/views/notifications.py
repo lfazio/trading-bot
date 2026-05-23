@@ -6,6 +6,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from trading_system.webapp.auth_deps import _extract_token, verify_any_valid_claim
+from trading_system.webapp.fragments import fragment_context
 from trading_system.webapp.inbox import InboxChannel
 
 
@@ -36,5 +37,5 @@ def get_notifications(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="notifications.html",
-        context={"entries": entries},
+        context={"entries": entries, **fragment_context(request)},
     )
