@@ -131,6 +131,76 @@ def test_reports_route_rejects_traversal_attempts(monkeypatch, tmp_path: Path) -
     assert response.status_code == 400 or response.status_code == 404
 
 
+def _seed_report_with_attribution(tmp_path: Path, job_id: str) -> Path:
+    """Same as ``_seed_report`` but also writes the Phase-6
+    attribution.json side-file."""
+    import json as _json
+
+    report_dir = _seed_report(tmp_path, job_id)
+    (report_dir / "attribution.json").write_text(
+        _json.dumps(
+            {
+                "currency": "EUR",
+                "portfolio_trade_count": 2,
+                "portfolio_turnover": "1500.00",
+                "portfolio_fees": "3.00",
+                "portfolio_realized_pnl": "75.00",
+                "by_strategy": [
+                    {
+                        "strategy_id": "CoreStrategy",
+                        "trade_count": 2,
+                        "total_turnover": "1500.00",
+                        "total_fees": "3.00",
+                        "turnover_share_pct": "100.00",
+                        "realized_pnl_proxy": "75.0000",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return report_dir
+
+
+def test_reports_view_renders_attribution_panel_when_side_file_present(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """REQ_F_WEB2_005 follow-up — the reports view SHALL surface
+    the Phase-6 attribution panel when ``attribution.json`` is
+    present in the bundle directory."""
+    monkeypatch.chdir(tmp_path)
+    _seed_report_with_attribution(tmp_path, "job-attr")
+    client, verifier = _make_client()
+    token = _household_token(verifier)
+    response = client.get(
+        "/reports/job-attr",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    body = response.text
+    assert "Per-strategy attribution" in body
+    assert "CoreStrategy" in body
+    assert "1500.00" in body
+    assert "100.00 %" in body
+    # The attribution.json side-file SHALL appear in the download list too.
+    assert "attribution.json" in body
+
+
+def test_reports_view_omits_attribution_panel_when_side_file_absent(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    _seed_report(tmp_path, "job-noattr")
+    client, verifier = _make_client()
+    token = _household_token(verifier)
+    response = client.get(
+        "/reports/job-noattr",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    assert "Per-strategy attribution" not in response.text
+
+
 def test_reports_file_requires_auth(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
     _seed_report(tmp_path, "job-001")

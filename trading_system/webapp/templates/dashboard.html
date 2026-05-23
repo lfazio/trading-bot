@@ -321,7 +321,24 @@ function renderLiveState(raw) {
   };
   if (data.ks_state) set('ks_state', data.ks_state, KS_TONES[data.ks_state] || 'info');
   if (data.phase !== undefined && data.phase !== null) {
-    set('phase', 'Phase ' + data.phase);
+    // REQ_F_CAP_003 documented phase labels: 1 Capital Builder /
+    // 2 Stability / 3 Systematic / 4 Capital Acceleration /
+    // 5 Wealth Preservation / 6 Scale.
+    const PHASE_LABELS = {
+      1: 'Capital Builder',
+      2: 'Stability',
+      3: 'Systematic',
+      4: 'Capital Acceleration',
+      5: 'Wealth Preservation',
+      6: 'Scale',
+    };
+    const phaseNum = Number(data.phase);
+    const label = PHASE_LABELS[phaseNum] || '';
+    if (label) {
+      set('phase', phaseNum + ' · ' + label);
+    } else {
+      set('phase', 'Phase ' + data.phase);
+    }
   }
   if (data.open_positions_count !== undefined) {
     set('open_positions_count', String(data.open_positions_count));

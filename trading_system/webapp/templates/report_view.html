@@ -20,6 +20,66 @@
 </section>
 {% endif %}
 
+{% if attribution %}
+<section class="card" aria-labelledby="attribution-heading">
+  <h2 id="attribution-heading">Per-strategy attribution</h2>
+  <p class="subhead">
+    Notional-weighted share of the portfolio's turnover + a
+    proportional slice of realized P&amp;L. Cost-basis-matched
+    attribution is a follow-up; the v1 number is enough to
+    flag which strategies actually moved the needle.
+  </p>
+
+  <div class="card-grid">
+    <div class="stat">
+      <span class="label">Portfolio trades</span>
+      <span class="value numeric">{{ attribution.portfolio_trade_count }}</span>
+    </div>
+    <div class="stat">
+      <span class="label">Portfolio turnover</span>
+      <span class="value numeric">{{ attribution.currency }} {{ attribution.portfolio_turnover }}</span>
+    </div>
+    <div class="stat">
+      <span class="label">Portfolio fees</span>
+      <span class="value numeric">{{ attribution.currency }} {{ attribution.portfolio_fees }}</span>
+    </div>
+    <div class="stat">
+      <span class="label">Realized P&amp;L (after tax)</span>
+      <span class="value numeric">{{ attribution.currency }} {{ attribution.portfolio_realized_pnl }}</span>
+    </div>
+  </div>
+
+  {% if attribution.by_strategy %}
+  <table class="data" style="width:100%; margin-top:1em">
+    <thead>
+      <tr>
+        <th>Strategy</th>
+        <th class="right">Trades</th>
+        <th class="right">Turnover</th>
+        <th class="right">Fees</th>
+        <th class="right">Share %</th>
+        <th class="right">P&amp;L (proxy)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in attribution.by_strategy %}
+      <tr>
+        <td><code>{{ row.strategy_id }}</code></td>
+        <td class="right">{{ row.trade_count }}</td>
+        <td class="right">{{ row.total_turnover }}</td>
+        <td class="right">{{ row.total_fees }}</td>
+        <td class="right">{{ row.turnover_share_pct }} %</td>
+        <td class="right">{{ row.realized_pnl_proxy }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No trades executed — attribution table empty.</p>
+  {% endif %}
+</section>
+{% endif %}
+
 <section class="card">
   <h2>Artefacts</h2>
   <ul>

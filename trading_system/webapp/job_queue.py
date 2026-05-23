@@ -95,7 +95,16 @@ class JobQueue(Protocol):
 def _default_worker(spec: JobSpec) -> dict[str, str]:
     """Top-level (picklable) worker entry. Invokes
     ``trading_system.main.run`` + emits the CR-016 report bundle so
-    the webapp's reports panel can render the equity curve inline."""
+    the webapp's reports panel can render the equity curve inline.
+
+    Phase-6 follow-up: writes ``attribution.json`` next to the
+    5-file bundle so the reports view can render per-strategy
+    P&L attribution without re-running the backtest."""
+    import json
+
+    from trading_system.analytics.attribution import (
+        attribution_from_result,
+    )
     from trading_system.analytics.report import write_report
     from trading_system.main import run
 
@@ -130,6 +139,39 @@ def _default_worker(spec: JobSpec) -> dict[str, str]:
         report_status = (
             "ok" if not isinstance(write_result, Err) else f"err:{write_result.error.category}"
         )
+        # Phase-6 attribution side-file. Best-effort — failures
+        # never mark the job as failed because the 5-file bundle
+        # is the canonical artefact (REQ_F_RPT_001).
+        try:
+            attr = attribution_from_result(outcome.result)
+            attr_payload = {
+                "currency": attr.currency.value,
+                "portfolio_trade_count": attr.portfolio_trade_count,
+                "portfolio_turnover": str(attr.portfolio_turnover.amount),
+                "portfolio_fees": str(attr.portfolio_fees.amount),
+                "portfolio_realized_pnl": str(
+                    attr.portfolio_realized_pnl.amount
+                ),
+                "by_strategy": [
+                    {
+                        "strategy_id": row.strategy_id,
+                        "trade_count": row.trade_count,
+                        "total_turnover": str(row.total_turnover.amount),
+                        "total_fees": str(row.total_fees.amount),
+                        "turnover_share_pct": str(row.turnover_share_pct),
+                        "realized_pnl_proxy": str(
+                            row.realized_pnl_proxy.amount
+                        ),
+                    }
+                    for row in attr.by_strategy
+                ],
+            }
+            (report_dir / "attribution.json").write_text(
+                json.dumps(attr_payload, sort_keys=True, separators=(",", ":")),
+                encoding="utf-8",
+            )
+        except Exception:  # noqa: BLE001 — best-effort side-file
+            pass
     else:
         report_status = "exists"
 

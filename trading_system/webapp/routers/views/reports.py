@@ -36,6 +36,10 @@ _ALLOWED_FILES: frozenset[str] = frozenset(
         "trades.csv",
         "summary.json",
         "manifest.json",
+        # Phase-6 attribution side-file (not part of the
+        # REQ_F_RPT_001 5-file bundle; produced by the webapp's
+        # job worker on top of write_report).
+        "attribution.json",
     }
 )
 _MIME_BY_EXT = {
@@ -94,6 +98,18 @@ def get_report_view(job_id: str, request: Request):
     available = sorted(
         f for f in _ALLOWED_FILES if (dir_path / f).is_file()
     )
+    # Best-effort attribution load — render the panel only when
+    # the side-file exists.
+    import json
+
+    attribution = None
+    if "attribution.json" in available:
+        try:
+            attribution = json.loads(
+                (dir_path / "attribution.json").read_text(encoding="utf-8")
+            )
+        except (OSError, ValueError):
+            attribution = None
     templates = getattr(request.app.state, "templates", None)
     if templates is None:
         raise RuntimeError("webapp:templates_missing")
@@ -104,6 +120,7 @@ def get_report_view(job_id: str, request: Request):
             "job_id": job_id,
             "files": available,
             "has_html": "equity-curve.html" in available,
+            "attribution": attribution,
             **fragment_context(request),
         },
     )
