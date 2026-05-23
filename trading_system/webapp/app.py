@@ -60,6 +60,9 @@ from trading_system.webapp.routers.views.recovery import (
     router as recovery_router,
 )
 from trading_system.webapp.routers.views.reports import router as reports_router
+from trading_system.webapp.routers.views.strategies import (
+    router as strategies_router,
+)
 from trading_system.webapp.sse import router as sse_router
 
 
@@ -83,6 +86,7 @@ class WebappState:
     runtime_registry: Any | None = None
     notification_inbox: Any | None = None
     recovery_gate: Any | None = None
+    strategy_registry_reader: Any | None = None
     registry_promoter: Any | None = None
     promotion_audit_notifier: Any | None = None
     job_queue: JobQueue | None = None
@@ -155,6 +159,7 @@ def create_app(state: WebappState) -> FastAPI:
     app.state.runtime_registry = state.runtime_registry
     app.state.notification_inbox = state.notification_inbox
     app.state.recovery_gate = state.recovery_gate
+    app.state.strategy_registry_reader = state.strategy_registry_reader
     app.state.registry_promoter = state.registry_promoter
     app.state.promotion_audit_notifier = state.promotion_audit_notifier
     app.state.job_queue = state.job_queue
@@ -174,6 +179,7 @@ def create_app(state: WebappState) -> FastAPI:
     app.include_router(paper_session_router)
     app.include_router(recovery_router)
     app.include_router(reports_router)
+    app.include_router(strategies_router)
     app.include_router(dashboard_router)
     app.include_router(jobs_view_router)
 

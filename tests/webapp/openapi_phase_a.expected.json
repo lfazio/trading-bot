@@ -161,6 +161,34 @@
         "title": "Body_post_step3_onboarding_step3_post",
         "type": "object"
       },
+      "Body_strategies_promote_strategies__strategy_id__promote_post": {
+        "properties": {
+          "account_id": {
+            "default": "default",
+            "title": "Account Id",
+            "type": "string"
+          },
+          "operator_id": {
+            "title": "Operator Id",
+            "type": "string"
+          },
+          "operator_token": {
+            "title": "Operator Token",
+            "type": "string"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operator_token",
+          "operator_id",
+          "rationale"
+        ],
+        "title": "Body_strategies_promote_strategies__strategy_id__promote_post",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1091,6 +1119,75 @@
           }
         },
         "summary": "Reports-File"
+      }
+    },
+    "/strategies": {
+      "get": {
+        "description": "Render the strategy registry list.",
+        "operationId": "strategies_strategies_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Strategies"
+      }
+    },
+    "/strategies/{strategy_id}/promote": {
+      "post": {
+        "description": "HTML form wrapper around the JSON promote endpoint. The\noperator-token cookie holds the bearer auth; the form's\n``operator_token`` is the action-specific HMAC token the\npromoter verifies.",
+        "operationId": "strategies_promote_strategies__strategy_id__promote_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_strategies_promote_strategies__strategy_id__promote_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Strategies-Promote"
       }
     }
   }

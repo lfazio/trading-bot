@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% set active_nav = 'strategies' %}
+{% block title %}Strategies &mdash; trading-bot{% endblock %}
+{% block content %}
+<h1>Strategy registry</h1>
+<p class="subhead">
+  Browse the strategies the registry knows about + promote an
+  experimental one to validated.
+</p>
+
+{% if flash %}
+{% if flash.startswith('registry:promoted:') %}
+<div class="alert success" role="alert">
+  Promotion accepted for <code>{{ flash.split(':', 2)[2] }}</code>.
+</div>
+{% else %}
+<div class="alert error" role="alert">
+  <p>Promotion rejected.</p>
+  <p class="muted" style="margin-top:0.25em; font-size:0.85rem">
+    Error code: <code>{{ flash }}</code>
+  </p>
+</div>
+{% endif %}
+{% endif %}
+
+{% if not promoter_wired %}
+<div class="alert warn" role="status">
+  <p>No <code>registry_promoter</code> wired in this deployment.</p>
+  <p class="muted" style="margin-top:0.25em; font-size:0.85rem">
+    Promotion is disabled until the CR-008 <code>RegistryRepository</code>
+    is attached to <code>app.state.registry_promoter</code>. Browse
+    works without it.
+  </p>
+</div>
+{% endif %}
+
+<section class="card">
+  <h2>Strategies</h2>
+  {% if strategies %}
+  <table class="data" style="width:100%">
+    <thead>
+      <tr>
+        <th>Strategy</th>
+        <th>Status</th>
+        <th>Last promoted</th>
+        <th>Improvement report</th>
+        <th class="right">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in strategies %}
+      {% set _tones = {'validated':'success', 'experimental':'warn', 'deprecated':'error'} %}
+      <tr>
+        <td><code>{{ s.id }}</code></td>
+        <td>
+          <span class="badge {{ _tones.get(s.status, 'info') }}"
+                aria-label="Strategy status {{ s.status }}">{{ s.status }}</span>
+        </td>
+        <td class="mono muted">{{ s.last_promoted_at or '—' }}</td>
+        <td>{{ s.improvement_report or '—' }}</td>
+        <td class="right">
+          {% if s.status == 'experimental' and promoter_wired %}
+          <details>
+            <summary class="button secondary">Promote</summary>
+            <form method="post"
+                  action="/strategies/{{ s.id }}/promote"
+                  style="margin-top:0.5em; text-align:left">
+              <div class="field">
+                <label for="operator_id-{{ s.id }}">Operator id</label>
+                <input type="text" id="operator_id-{{ s.id }}"
+                       name="operator_id" required>
+              </div>
+              <div class="field">
+                <label for="rationale-{{ s.id }}">Rationale</label>
+                <textarea id="rationale-{{ s.id }}" name="rationale"
+                          required rows="2"></textarea>
+              </div>
+              <div class="field">
+                <label for="operator_token-{{ s.id }}">Operator token</label>
+                <input type="password" id="operator_token-{{ s.id }}"
+                       name="operator_token" required
+                       autocomplete="off">
+              </div>
+              <button type="submit">Submit promotion</button>
+            </form>
+          </details>
+          {% else %}
+          <span class="muted">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">
+    No strategies registered. Once the CR-008 <code>RegistryRepository</code>
+    is wired, the meta-optimization loop will populate this list.
+  </p>
+  {% endif %}
+</section>
+{% endblock %}
