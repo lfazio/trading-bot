@@ -141,9 +141,32 @@ def _set_cookie(response, state: WizardState, secret: bytes) -> None:
 
 @router.get("", response_class=HTMLResponse)
 async def get_onboarding(request: Request) -> HTMLResponse:
-    """GET /onboarding — render step 1 (or resume the operator at
-    the latest completed step if a valid cookie is present)."""
+    """GET /onboarding — render the wizard.
+
+    The step rendered is, in order:
+    1. ``?step=<step1|step2|step3>`` query override (used by the
+       "← Back" link to walk backwards without losing the saved
+       inputs).
+    2. The step persisted in the signed cookie (so refreshes
+       resume).
+    3. ``step1`` for a first-boot visit.
+
+    Walking backwards persists the new step into the cookie so a
+    further refresh stays on the chosen step.
+    """
     state = _load_state(request)
+    step_override = request.query_params.get("step", "").strip().lower()
+    valid_steps = {"step1", "step2", "step3"}
+    if step_override in valid_steps:
+        new_state = WizardState(
+            step=step_override,  # type: ignore[arg-type]
+            starting_capital=state.starting_capital,
+            universe=state.universe,
+            strategy=state.strategy,
+        )
+        response = _render(request, new_state)
+        _set_cookie(response, new_state, _verifier_secret(request))
+        return response
     return _render(request, state)
 
 

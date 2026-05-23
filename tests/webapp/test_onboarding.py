@@ -325,6 +325,65 @@ def test_finish_registers_a_live_runtime_in_the_shared_registry() -> None:
     assert len(runtime.equity_history()) >= 1
 
 
+def test_get_onboarding_with_step_query_walks_backwards() -> None:
+    """The "← Back" link uses ?step=stepN to walk backwards.
+    The handler SHALL re-render the requested step with the prior
+    inputs preserved + persist the new step into the cookie."""
+    client = _make_client()
+    # Walk to step 2.
+    client.post(
+        "/onboarding/step2",
+        data={"starting_capital": "12345.67", "universe": "cac40"},
+    )
+    # The "← Back" anchor: GET /onboarding?step=step1.
+    response = client.get("/onboarding?step=step1")
+    assert response.status_code == 200
+    body = response.text
+    # Step 1 form is rendered + prior inputs preserved.
+    assert "Step 1" in body
+    assert 'value="12345.67"' in body
+    assert 'value="cac40" selected' in body
+    # Cookie SHALL now point to step1 so a refresh stays here.
+    cookie = response.cookies.get(WIZARD_COOKIE_NAME)
+    assert cookie is not None
+    decoded = decode_state(cookie, secret=_SECRET)
+    assert decoded is not None
+    assert decoded.step == "step1"
+    assert decoded.universe == "cac40"
+    assert decoded.starting_capital == "12345.67"
+
+
+def test_get_onboarding_step3_back_returns_to_step2_with_strategy() -> None:
+    """Confirm step's "← Back" SHALL return to step 2 with the
+    operator's chosen strategy preserved."""
+    client = _make_client()
+    client.post(
+        "/onboarding/step2",
+        data={"starting_capital": "10000", "universe": "eu-dividend-starter"},
+    )
+    client.post("/onboarding/step3", data={"strategy": "TacticalStrategy"})
+    response = client.get("/onboarding?step=step2")
+    assert response.status_code == 200
+    body = response.text
+    assert "Step 2" in body
+    assert 'name="strategy"' in body
+    assert 'value="TacticalStrategy" selected' in body
+
+
+def test_get_onboarding_ignores_unknown_step_query() -> None:
+    """Garbage ?step= SHALL fall back to whatever the cookie says
+    (i.e., resume) — silently coerced, no banner."""
+    client = _make_client()
+    client.post(
+        "/onboarding/step2",
+        data={"starting_capital": "10000", "universe": "eu-dividend-starter"},
+    )
+    response = client.get("/onboarding?step=hyperdrive")
+    # Cookie was at step2; the override is ignored so we stay there.
+    assert response.status_code == 200
+    assert "Step 2" in response.text
+
+
 def test_allowed_universes_and_strategies_are_closed_sets() -> None:
     """Adding a new universe / strategy SHALL be a deliberate
     code change here + a corresponding wiki amendment, not a
