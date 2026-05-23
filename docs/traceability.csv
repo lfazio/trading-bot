@@ -237,7 +237,7 @@ REQ_NF_RPT_001,SRS,"Bit-identical artefact replay: identical `(config_hash, seed
 REQ_NF_SCT_001,SRS,"The rotator SHALL be deterministic given the tuple `(regime, screener…",Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/wealth_ops/sector_rotator/__init__.py,tests/wealth_ops/sector_rotator/test_rotator.py,TEST
 REQ_NF_TRC_001,SRS,Full traceability,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/__init__.py;trading_system/models/identifiers.py,tests/conformance/test_req_coverage_index.py,TEST
 REQ_NF_WEB2_001,SRS,The CR-019 surface SHALL preserve the CR-017 **no-SPA / no-Node** inv…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/analytics/equity_chart.py;trading_system/webapp/paper_state_reader.py;trading_system/webapp/inbox.py;trading_system/webui/schemas.py;trading_system/webapp/routers/api/paper_state.py,tests/webapp/test_paper_state_routes.py,TEST
-REQ_NF_WEB2_002,SRS,Every color combination in `static/app.css` SHALL meet WCAG 2.1 AA co…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_NF_WEB2_002,SRS,Every color combination in `static/app.css` SHALL meet WCAG 2.1 AA co…,Documentations/SDS.md,Documentations/SDD.md,Documentations/Test-Plan.md,,tests/webapp/test_accessibility.py,TEST
 REQ_NF_WEB2_003,SRS,Every interactive control SHALL be reachable via keyboard navigation;…,,Documentations/SDD.md,Documentations/Test-Plan.md,,tests/webapp/test_mode_switch.py,TEST
 REQ_NF_WEB2_004,SRS,Polling and animation surfaces SHALL honour the `prefers-reduced-moti…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_NF_WEB2_005,SRS,"Every status badge in the dashboard (KS state, mode indicator, run st…",,Documentations/SDD.md,Documentations/Test-Plan.md,,tests/webapp/test_mode_switch.py,TEST
@@ -410,7 +410,7 @@ REQ_SDD_WEB2_002,SDD,The onboarding wizard SHALL be a 3-step linear flow with se
 REQ_SDD_WEB2_003,SDD,The paper-trading runtime SHALL ship three top-level classes — `Paper…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/webapp/runtimes/__init__.py;trading_system/webapp/runtimes/paper_trading.py,tests/webapp/test_paper_trading_runtime.py;tests/webapp/test_structural.py,TEST
 REQ_SDD_WEB2_004,SDD,yfinance fetch failure (`data:upstream_blocked` / `network:timeout`)…,,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/webapp/runtimes/paper_trading.py,tests/webapp/test_paper_trading_runtime.py,TEST
 REQ_SDD_WEB2_005,SDD,`RuntimeRegistry.resume_from_persistence()` SHALL be called from `def…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
-REQ_SDD_WEB2_006,SDD,A test under `tests/webapp/test_accessibility.py` SHALL compute the W…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
+REQ_SDD_WEB2_006,SDD,A test under `tests/webapp/test_accessibility.py` SHALL compute the W…,,Documentations/SDD.md,Documentations/Test-Plan.md,,tests/webapp/test_accessibility.py,TEST
 REQ_SDD_WEB2_007,SDD,"Modal dialogs (onboarding wizard, recovery wizard, compare-runs overl…",,Documentations/SDD.md,Documentations/Test-Plan.md,trading_system/webapp/routers/views/onboarding.py,,CODE
 REQ_SDD_WEB2_008,SDD,`static/app.css` SHALL declare a `@media (prefers-reduced-motion: red…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
 REQ_SDD_WEB2_009,SDD,Every status badge in the dashboard chrome SHALL carry an `aria-label…,,Documentations/SDD.md,Documentations/Test-Plan.md,,,TP
