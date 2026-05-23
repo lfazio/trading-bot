@@ -130,6 +130,20 @@ def _index_stock(index_id: str, currency: Currency) -> Stock:
     )
 
 
+# Yahoo Finance enforces hard server-side limits on intraday
+# timeframes — older bars simply aren't available + every fetch
+# returns an empty DataFrame the provider categorises as
+# data:not_found. The retry loop can't recover; reject the
+# request up front with a useful message.
+_INTRADAY_MAX_LOOKBACK_DAYS: dict[str, int] = {
+    "1m": 7,    # documented hard cap (Yahoo gives ~7-8 days)
+    "5m": 60,
+    "15m": 60,
+    "30m": 60,
+    "1h": 60,   # actually 730d but conservative bound is 60
+}
+
+
 def main() -> int:
     args = _parse_args()
     start = _parse_date(args.start)
@@ -137,6 +151,26 @@ def main() -> int:
     if start >= end:
         print(f"start ({start}) must be < end ({end})", file=sys.stderr)
         return 2
+
+    # Validate the date range against Yahoo's intraday-history cap
+    # so the operator gets a clear error instead of 41 silent
+    # "not_found" failures.
+    cap_days = _INTRADAY_MAX_LOOKBACK_DAYS.get(args.timeframe)
+    if cap_days is not None:
+        from datetime import UTC as _UTC
+
+        now = datetime.now(tz=_UTC)
+        lookback_days = (now - start).days
+        if lookback_days > cap_days:
+            print(
+                f"ERROR: --timeframe {args.timeframe} only has the last "
+                f"~{cap_days} days of bars available from Yahoo Finance "
+                f"(your --start is {lookback_days} days back). For "
+                f"multi-year ranges use --timeframe 1d. To record the "
+                f"intraday window, set --start {(now - __import__('datetime').timedelta(days=cap_days)).date()}.",
+                file=sys.stderr,
+            )
+            return 2
 
     uni_res = load_universe(args.universe)
     if isinstance(uni_res, Err):
