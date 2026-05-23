@@ -59,6 +59,11 @@
             "title": "Start",
             "type": "string"
           },
+          "universe": {
+            "default": "eu-dividend-starter",
+            "title": "Universe",
+            "type": "string"
+          },
           "with_slippage": {
             "anyOf": [
               {

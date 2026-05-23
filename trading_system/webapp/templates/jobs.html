@@ -7,7 +7,8 @@
 
 <section class="card">
   <h2>New run</h2>
-  <form hx-post="/jobs/submit"
+  <form id="backtest-form"
+        hx-post="/jobs/submit"
         hx-target="#jobs-section"
         hx-swap="outerHTML"
         hx-encoding="application/x-www-form-urlencoded"
@@ -15,19 +16,54 @@
     <div class="card-grid">
       <div class="field">
         <label for="config_dir">Config directory</label>
-        <input type="text" id="config_dir" name="config_dir" value="config" required>
+        <input type="text" id="config_dir" name="config_dir"
+               value="{{ prefill.config_dir }}" required>
+      </div>
+      <div class="field">
+        <label for="universe">Universe</label>
+        <select id="universe" name="universe" required>
+          {% for u in allowed_universes %}
+          <option value="{{ u }}" {% if prefill.universe == u %}selected{% endif %}>{{ u }}</option>
+          {% endfor %}
+        </select>
+        <small class="hint">Configured in the config dir; the
+          chosen label is surfaced on each completed row.</small>
       </div>
       <div class="field">
         <label for="start">Start <span class="hint">ISO-8601</span></label>
-        <input type="text" id="start" name="start" value="2024-01-02T00:00:00+00:00" required>
+        <input type="text" id="start" name="start"
+               value="{{ prefill.start }}" required>
       </div>
       <div class="field">
         <label for="end">End <span class="hint">ISO-8601</span></label>
-        <input type="text" id="end" name="end" value="2024-12-31T00:00:00+00:00" required>
+        <input type="text" id="end" name="end"
+               value="{{ prefill.end }}" required>
       </div>
       <div class="field" style="align-self:end">
-        <label><input type="checkbox" name="with_slippage" value="on"> Apply slippage model</label>
+        <label><input type="checkbox" name="with_slippage" value="on"
+               {% if prefill.with_slippage %}checked{% endif %}> Apply slippage model</label>
       </div>
+    </div>
+    <!-- REQ_F_WEB2_004 — date-range presets fill the date inputs
+         in one click. JS-only convenience; the form still posts
+         ISO timestamps to /jobs/submit. -->
+    <div class="row mt-1" style="gap:0.25em; flex-wrap:wrap">
+      <span class="muted" style="align-self:center">Range presets:</span>
+      <button type="button" class="button secondary"
+              data-range="ytd"
+              aria-label="Year to date">YTD</button>
+      <button type="button" class="button secondary"
+              data-range="last-30d"
+              aria-label="Last 30 days">Last 30d</button>
+      <button type="button" class="button secondary"
+              data-range="last-90d"
+              aria-label="Last 90 days">Last 90d</button>
+      <button type="button" class="button secondary"
+              data-range="last-year"
+              aria-label="Last 365 days">Last year</button>
+      <button type="button" class="button secondary"
+              data-range="2024"
+              aria-label="Calendar year 2024">2024</button>
     </div>
     <div class="row spread mt-1">
       <span class="muted">Submission is non-blocking — the worker runs in a separate process.</span>
@@ -37,4 +73,55 @@
 </section>
 
 {% include "partials/jobs_table.html" %}
+
+<script>
+// REQ_F_WEB2_004 — date-range preset wiring.
+(function() {
+  document.addEventListener('DOMContentLoaded', () => {
+    const startEl = document.getElementById('start');
+    const endEl = document.getElementById('end');
+    if (!startEl || !endEl) return;
+    const isoMidnight = (d) => {
+      d.setUTCHours(0, 0, 0, 0);
+      return d.toISOString().replace('.000Z', '+00:00');
+    };
+    const applyRange = (key) => {
+      const now = new Date();
+      let start, end;
+      switch (key) {
+        case 'ytd':
+          start = new Date(Date.UTC(now.getUTCFullYear(), 0, 2));
+          end = new Date(now);
+          break;
+        case 'last-30d':
+          end = new Date(now);
+          start = new Date(now);
+          start.setUTCDate(start.getUTCDate() - 30);
+          break;
+        case 'last-90d':
+          end = new Date(now);
+          start = new Date(now);
+          start.setUTCDate(start.getUTCDate() - 90);
+          break;
+        case 'last-year':
+          end = new Date(now);
+          start = new Date(now);
+          start.setUTCDate(start.getUTCDate() - 365);
+          break;
+        case '2024':
+          start = new Date(Date.UTC(2024, 0, 2));
+          end = new Date(Date.UTC(2024, 11, 31));
+          break;
+        default:
+          return;
+      }
+      startEl.value = isoMidnight(start);
+      endEl.value = isoMidnight(end);
+    };
+    for (const btn of document.querySelectorAll('button[data-range]')) {
+      btn.addEventListener('click', () => applyRange(btn.dataset.range));
+    }
+  });
+})();
+</script>
 {% endblock %}

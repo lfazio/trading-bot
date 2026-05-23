@@ -56,6 +56,12 @@
             {% if job.status == "completed" %}
             <a class="button" href="/reports/{{ job.job_id }}">View report</a>
             {% endif %}
+            {% if job.prefill %}
+            {% set p = job.prefill %}
+            <a class="button secondary"
+               href="/jobs?config_dir={{ p.config_dir|urlencode }}&start={{ p.start|urlencode }}&end={{ p.end|urlencode }}&universe={{ p.universe|urlencode }}{% if p.with_slippage %}&with_slippage=on{% endif %}"
+               title="Pre-fill the form with this run's inputs">Rerun</a>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}

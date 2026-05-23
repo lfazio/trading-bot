@@ -44,6 +44,15 @@ from trading_system.webapp.job_queue import JobQueue, JobSpec, JobState, new_job
 router = APIRouter()
 
 
+# REQ_F_WEB2_004 — per-job prefill cache so a completed row's
+# "Rerun" button can re-render the form with the exact prior
+# inputs. Module-level so it survives across requests in the
+# single-process webapp deploy. Bounded informally by the
+# in-process JobQueue's own bound (queue + cache evict together
+# at shutdown). Backed by the same lifetime as the job queue.
+_PREFILL_CACHE: dict[str, dict[str, str]] = {}
+
+
 def _templates(request: Request) -> Jinja2Templates:
     templates = getattr(request.app.state, "templates", None)
     if templates is None:
@@ -81,6 +90,7 @@ def _state_to_view(state: JobState) -> dict[str, object]:
         ),
         "error_category": state.error_category,
         "summary": state.summary or {},
+        "prefill": _PREFILL_CACHE.get(state.job_id, {}),
     }
 
 
@@ -104,12 +114,29 @@ def get_jobs_page(request: Request) -> HTMLResponse | RedirectResponse:
         or not verify_any_valid_claim(verifier, token)
     ):
         return RedirectResponse(url="/login", status_code=303)
+    # REQ_F_WEB2_004 — "rerun" pre-fills the form via query-string
+    # parameters. The dashboard's "Rerun" button on each completed
+    # row links here with start/end/universe/with_slippage; the
+    # operator can also bookmark a particular setup.
+    q = request.query_params
+    prefill = {
+        "config_dir": q.get("config_dir", "config"),
+        "start": q.get("start", "2024-01-02T00:00:00+00:00"),
+        "end": q.get("end", "2024-12-31T00:00:00+00:00"),
+        "universe": q.get("universe", "eu-dividend-starter"),
+        "with_slippage": q.get("with_slippage", "").lower() == "on",
+    }
     return _templates(request).TemplateResponse(
         request=request,
         name="jobs.html",
         context={
             "account_id": "default",
             "jobs": [_state_to_view(s) for s in _queue(request).all()],
+            "prefill": prefill,
+            # Closed set matching the wizard's allow-list — adding
+            # a new entry is a deliberate code change here + a
+            # wiki amendment.
+            "allowed_universes": ("eu-dividend-starter", "cac40"),
         },
     )
 
@@ -143,6 +170,7 @@ async def post_jobs_submit(
     end: Annotated[str, Form()],
     with_slippage: Annotated[str | None, Form()] = None,
     account_id: Annotated[str, Form()] = "default",
+    universe: Annotated[str, Form()] = "eu-dividend-starter",
 ) -> HTMLResponse:
     queue = _queue(request)
     try:
@@ -152,6 +180,14 @@ async def post_jobs_submit(
         return _render_partial_with_error(
             request, queue, "webapp:bad_form:iso_datetime"
         )
+    if start_dt >= end_dt:
+        return _render_partial_with_error(
+            request, queue, "webapp:bad_form:start_after_end"
+        )
+    if universe not in ("eu-dividend-starter", "cac40"):
+        return _render_partial_with_error(
+            request, queue, f"webapp:bad_form:unknown_universe:{universe}"
+        )
     spec = JobSpec(
         job_id=new_job_id(),
         config_dir=config_dir,
@@ -160,6 +196,16 @@ async def post_jobs_submit(
         with_slippage=with_slippage == "on",
         account_id=account_id,
     )
+    # Universe is a label (the underlying main.run reads it from
+    # config_dir); we surface it on each row via the prefill cache
+    # so the "Rerun" button can replay the exact form state.
+    _PREFILL_CACHE[spec.job_id] = {
+        "config_dir": config_dir,
+        "start": start,
+        "end": end,
+        "universe": universe,
+        "with_slippage": "on" if with_slippage == "on" else "",
+    }
     match await queue.submit(spec):
         case Ok(_):
             return _render_partial(request, queue)
