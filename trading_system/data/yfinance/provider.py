@@ -383,6 +383,12 @@ def _default_bar_downloader(
                 end=end,
                 progress=False,
                 auto_adjust=False,  # REQ_F_DAT_008: keep raw Close
+                # yfinance >= 0.2.40 defaults to multi-level
+                # column index ((Open, SYMBOL) tuples). The mapper
+                # expects flat columns ("Open"); explicitly opt
+                # out so older + newer yfinance versions emit the
+                # same shape.
+                multi_level_index=False,
             )
     except Exception as e:
         raise TransientDownloadError(f"data:network:{e}") from e
