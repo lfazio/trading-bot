@@ -108,6 +108,7 @@
     {% endif %}
   </p>
   <p class="subhead" data-field="paper_session_meta" style="margin-top:0.5em">—</p>
+  <p class="subhead" data-field="paper_strategy_blurb" style="margin-top:0.25em; font-size:0.9rem">—</p>
   <div id="paper-state-grid" class="card-grid">
     <div class="stat">
       <span class="label">Instrument</span>
@@ -362,6 +363,17 @@ function renderPaperState(raw) {
     metaBits.push('Starting capital: ' + (formatted || ('€ ' + data.starting_capital)));
   }
   set('paper_session_meta', metaBits.length ? metaBits.join(' · ') : '—');
+  // Strategy blurb — short paragraph describing what the chosen
+  // strategy does, surfaced on the panel so the operator
+  // doesn't have to leave the dashboard to remember.
+  const blurbs = {
+    'CoreStrategy': 'Long-term holding, low turnover; rebalances toward the STOCK allocation target. Never sells (liquidation is the risk engine\'s job).',
+    'TacticalStrategy': 'Trend / breakout / pullback signals on recent daily bars; tight stop-loss; sized to the phase\'s per-trade risk band.',
+  };
+  const blurbEl = document.querySelector('[data-field="paper_strategy_blurb"]');
+  if (blurbEl) {
+    blurbEl.textContent = blurbs[data.strategy_id] || '—';
+  }
 }
 // Native EventSource for the paper-state SSE channel.
 // HTMX's bundled stub does NOT carry the real runtime, so the

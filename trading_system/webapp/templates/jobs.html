@@ -7,7 +7,19 @@
 
 <section class="card">
   <h2>New run</h2>
+  {% if submit_error %}
+  <div class="alert error" role="alert">
+    Submission rejected: <code>{{ submit_error }}</code>
+  </div>
+  {% endif %}
+  <!-- Native POST submission. The HTMX runtime in this repo is
+       a bundled placeholder stub, so we don't rely on hx-* attrs;
+       the handler detects non-HTMX requests and 303-redirects
+       back to /jobs after submit so the page navigates naturally.
+       hx-* attributes are kept so a future HTMX bundle drops in. -->
   <form id="backtest-form"
+        method="post"
+        action="/jobs/submit"
         hx-post="/jobs/submit"
         hx-target="#jobs-section"
         hx-swap="outerHTML"
@@ -70,6 +82,54 @@
       <button type="submit">Submit run</button>
     </div>
   </form>
+</section>
+
+<section class="card" aria-labelledby="strategy-explainer-heading">
+  <h2 id="strategy-explainer-heading">Strategies</h2>
+  <p class="subhead">
+    Reference for the strategies you can pick in the onboarding wizard
+    or backtest run. Both follow the project's after-tax-optimisation +
+    tax-aware-trade-gate discipline.
+  </p>
+  <div class="card-grid">
+    <article>
+      <h3 style="margin-top:0"><code>CoreStrategy</code></h3>
+      <p>
+        Long-term holding, dividend compounding, <strong>low turnover</strong>.
+        Targets the phase's STOCK allocation bucket and proposes BUYs from
+        the top of the screener ranking when current exposure falls behind
+        the target by at least the rebalance band. Existing holdings are
+        skipped — the strategy never proposes SELLs (liquidation is the
+        risk engine's stop-loss job or the operator's).
+      </p>
+      <p class="muted">
+        <strong>Best for</strong> the early phases (Capital Builder,
+        Stability) where fee minimisation matters. Survival &gt; return.
+      </p>
+    </article>
+    <article>
+      <h3 style="margin-top:0"><code>TacticalStrategy</code></h3>
+      <p>
+        Trend / breakout / pullback signal generator. For each top-N
+        candidate from the screener ranking, evaluates three signals on
+        the recent daily bars:
+      </p>
+      <ul>
+        <li><strong>Trend</strong> — short MA strictly above long MA (e.g. 20d &gt; 50d).</li>
+        <li><strong>Breakout</strong> — today's close strictly above the prior N-day high.</li>
+        <li><strong>Pullback</strong> — in an uptrend, today's close at or below the long MA ("buy the dip").</li>
+      </ul>
+      <p>
+        Any signal triggers a BUY proposal with a tight stop-loss; the
+        per-trade size comes from the lower bound of the phase's
+        risk-per-trade band so tactical sizing stays phase-consistent.
+      </p>
+      <p class="muted">
+        <strong>Best for</strong> systematic + capital-acceleration phases.
+        Higher turnover; fees scale with activity.
+      </p>
+    </article>
+  </div>
 </section>
 
 {% include "partials/jobs_table.html" %}

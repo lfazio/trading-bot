@@ -206,11 +206,39 @@ async def post_jobs_submit(
         "universe": universe,
         "with_slippage": "on" if with_slippage == "on" else "",
     }
+    # Detect HTMX requests by the documented HX-Request header.
+    # Browsers without the HTMX runtime get a regular 303 -> /jobs
+    # so the page navigates naturally.
+    is_htmx = request.headers.get("HX-Request") == "true"
+
     match await queue.submit(spec):
         case Ok(_):
-            return _render_partial(request, queue)
+            if is_htmx:
+                return _render_partial(request, queue)
+            return RedirectResponse(url="/jobs", status_code=303)  # type: ignore[return-value]
         case Err(reason):
-            return _render_partial_with_error(request, queue, reason)
+            if is_htmx:
+                return _render_partial_with_error(request, queue, reason)
+            # Non-HTMX: stay on /jobs and render the page with
+            # the error banner so the operator sees what went wrong.
+            return _templates(request).TemplateResponse(
+                request=request,
+                name="jobs.html",
+                context={
+                    "account_id": "default",
+                    "jobs": [_state_to_view(s) for s in queue.all()],
+                    "prefill": {
+                        "config_dir": config_dir,
+                        "start": start,
+                        "end": end,
+                        "universe": universe,
+                        "with_slippage": with_slippage == "on",
+                    },
+                    "allowed_universes": ("eu-dividend-starter", "cac40"),
+                    "submit_error": reason,
+                },
+                status_code=400,
+            )
 
 
 def _render_partial(request: Request, queue: JobQueue) -> HTMLResponse:

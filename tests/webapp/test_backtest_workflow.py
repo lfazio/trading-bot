@@ -108,6 +108,75 @@ def test_jobs_submit_rejects_start_after_end() -> None:
     assert "start_after_end" in response.text
 
 
+def test_jobs_page_renders_strategy_explainer_section() -> None:
+    """REQ_F_WEB2_004 — operator should see what each strategy does
+    without leaving the page."""
+    client, verifier = _client()
+    body = client.get(
+        "/jobs", headers={"Authorization": f"Bearer {_token(verifier)}"}
+    ).text
+    # Both strategy names appear with descriptive prose.
+    assert "CoreStrategy" in body
+    assert "TacticalStrategy" in body
+    # Distinctive phrases pin the prose so a future refactor
+    # can't silently strip the explainer.
+    assert "Low turnover" in body or "low turnover" in body
+    assert "Trend" in body and "Breakout" in body and "Pullback" in body
+
+
+def test_jobs_form_carries_native_post_action_for_non_htmx_submit() -> None:
+    """The bundled HTMX runtime is a placeholder stub in this repo,
+    so the form must work without it. ``method="post" action="/jobs/submit"``
+    SHALL be present so a vanilla browser submits the form."""
+    client, verifier = _client()
+    body = client.get(
+        "/jobs", headers={"Authorization": f"Bearer {_token(verifier)}"}
+    ).text
+    assert 'method="post"' in body
+    assert 'action="/jobs/submit"' in body
+
+
+def test_jobs_submit_non_htmx_redirects_to_jobs() -> None:
+    """A browser-style POST (no HX-Request header) SHALL receive a
+    303 redirect to /jobs so the page navigates naturally."""
+    client, verifier = _client()
+    response = client.post(
+        "/jobs/submit",
+        headers={"Authorization": f"Bearer {_token(verifier)}"},
+        data={
+            "config_dir": "config",
+            "start": "2024-01-02T00:00:00+00:00",
+            "end": "2024-12-31T00:00:00+00:00",
+            "universe": "eu-dividend-starter",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/jobs"
+
+
+def test_jobs_submit_htmx_returns_partial() -> None:
+    """An HX-Request: true header SHALL trigger the partial-table
+    swap so the in-page HTMX flow stays unbroken."""
+    client, verifier = _client()
+    response = client.post(
+        "/jobs/submit",
+        headers={
+            "Authorization": f"Bearer {_token(verifier)}",
+            "HX-Request": "true",
+        },
+        data={
+            "config_dir": "config",
+            "start": "2024-01-02T00:00:00+00:00",
+            "end": "2024-12-31T00:00:00+00:00",
+            "universe": "eu-dividend-starter",
+        },
+    )
+    # Partial body is HTML with the documented jobs-section markup.
+    assert response.status_code == 200
+    assert "jobs-section" in response.text
+
+
 def test_jobs_submit_records_prefill_so_rerun_button_renders() -> None:
     """REQ_F_WEB2_004 — after a successful submit the table SHALL
     render a "Rerun" button on the row whose href pre-fills the
