@@ -230,6 +230,14 @@ class PaperStateResponse:
     # available yet.
     recent_close_series: tuple[Decimal, ...] = ()
     recent_close_timestamps: tuple[datetime, ...] = ()
+    # REQ_F_WEB2_010 follow-up — reference-index series so the
+    # dashboard's main chart shows the broader market context
+    # (e.g. ^FCHI for cac40, ^STOXX50E for eu-dividend-starter)
+    # instead of the first stock the runtime happens to be
+    # trading. Empty when the universe declares no ``indices:``.
+    index_symbol: str = ""
+    index_close_series: tuple[Decimal, ...] = ()
+    index_close_timestamps: tuple[datetime, ...] = ()
 
     def __post_init__(self) -> None:
         if not str(self.account_id).strip():

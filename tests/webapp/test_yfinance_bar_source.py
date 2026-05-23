@@ -82,7 +82,11 @@ class _FakeProvider:
 # ---------------------------------------------------------------------------
 
 
-def test_next_bar_returns_freshest_bar_on_first_call() -> None:
+def test_next_bar_streams_backfill_in_order() -> None:
+    """The first call primes the backfill queue with the full
+    window; subsequent calls pop bars in ascending date order so
+    the equity curve builds up history instead of jumping to the
+    most-recent bar in one tick."""
     provider = _FakeProvider(
         bar_response=[
             _bar(at=_T0, close="100"),
@@ -90,11 +94,39 @@ def test_next_bar_returns_freshest_bar_on_first_call() -> None:
         ]
     )
     src = YFinanceBarSource(provider=provider, instrument=_stock())
-    result = src.next_bar()
-    assert isinstance(result, Ok)
-    assert isinstance(result.value, Some)
-    bar = result.value.value
-    assert bar.close == Decimal("105")
+    # First call returns the OLDEST bar.
+    first = src.next_bar()
+    assert isinstance(first, Ok) and isinstance(first.value, Some)
+    assert first.value.value.close == Decimal("100")
+    # Second call returns the next bar in the queue.
+    second = src.next_bar()
+    assert isinstance(second, Ok) and isinstance(second.value, Some)
+    assert second.value.value.close == Decimal("105")
+
+
+def test_history_accumulates_across_backfill_drain() -> None:
+    """After the backfill drains, ``history()`` SHALL contain
+    every surfaced bar so the dashboard sparkline + price chart
+    see the full series."""
+    provider = _FakeProvider(
+        bar_response=[
+            _bar(at=_T0, close="100"),
+            _bar(at=_T0 + timedelta(days=1), close="101"),
+            _bar(at=_T0 + timedelta(days=2), close="102"),
+        ]
+    )
+    src = YFinanceBarSource(provider=provider, instrument=_stock())
+    # Drain the queue.
+    src.next_bar()
+    src.next_bar()
+    src.next_bar()
+    history = src.history()
+    assert len(history) == 3
+    assert [b.close for b in history] == [
+        Decimal("100"),
+        Decimal("101"),
+        Decimal("102"),
+    ]
 
 
 def test_next_bar_returns_nothing_when_no_newer_data() -> None:

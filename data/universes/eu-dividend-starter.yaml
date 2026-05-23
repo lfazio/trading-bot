@@ -15,6 +15,15 @@ description: |
   offline yfinance fixtures. Used by the trading-bot demo for the
   zero-network 5-minute operator path (CR-016 MVP-v1).
 
+# Reference index — the dashboard surfaces this on the
+# overview chart so the operator sees EU-wide market context
+# alongside the per-instrument detail.
+indices:
+  - id: ^STOXX50E
+    symbol: ^STOXX50E
+    description: EURO STOXX 50
+    currency: EUR
+
 stocks:
   - id: ASML.AS
     symbol: ASML

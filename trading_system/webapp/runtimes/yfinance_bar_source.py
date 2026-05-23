@@ -61,9 +61,26 @@ class YFinanceBarSource:
     instrument: Instrument
     timeframe: Timeframe = Timeframe.D1
     bar_window_days: int = 7
+    # On the first ``next_bar`` call, fetch this many days of
+    # historical bars and queue them up so the runtime ticks
+    # through them in order. After the queue drains, subsequent
+    # polls fetch the next freshest live bar. Without this the
+    # paper-trading panel would sit at "0 ticks" until tomorrow
+    # because daily bars only update once per day after market
+    # close.
+    backfill_days: int = 90
+    # Cached bar history accumulated across polls. Surfaced to the
+    # dashboard reader via ``history()`` so the sparkline + main
+    # price chart see the full series without re-polling.
+    _bar_history: list[Bar] = field(
+        default_factory=list, init=False, repr=False
+    )
 
     _last_emitted_at: datetime | None = field(default=None, init=False, repr=False)
     _last_bar: Bar | None = field(default=None, init=False, repr=False)
+    _backfill_queue: list[Bar] | None = field(
+        default=None, init=False, repr=False
+    )
     # Kept here so the helper at module bottom can stash the
     # MarketDataProvider it built — the runtime reuses it as
     # ``market_data_provider`` for the strategy step too. Declared
@@ -80,62 +97,109 @@ class YFinanceBarSource:
                 f"got {self.bar_window_days}"
             )
 
+    def _classify_provider_err(self, reason: str) -> str:
+        """Map the provider's Err categories into the documented
+        ``data:upstream_blocked`` code so the paper-runtime's
+        graceful-degradation path kicks in for transient outages.
+
+        Maps: network:* / cache_miss_offline / upstream:* /
+        not_found:* / rate_limited:* → upstream_blocked. Other
+        codes surface unchanged.
+        """
+        if (
+            "network" in reason
+            or "cache_miss_offline" in reason
+            or "upstream" in reason
+            or "not_found" in reason
+            or "rate_limited" in reason
+        ):
+            return "data:upstream_blocked"
+        return reason
+
+    def _prime_backfill(self) -> Result[Option[Bar], str]:
+        """First-call hook: fetch ``backfill_days`` of bars + queue
+        them up so subsequent ``next_bar`` calls stream the
+        historical series instead of returning Nothing while
+        waiting for tomorrow's bar."""
+        now = datetime.now(tz=UTC)
+        start = now - timedelta(days=self.backfill_days)
+        result = self.provider.bars(
+            self.instrument, self.timeframe, start, now
+        )
+        if isinstance(result, Err):
+            self._backfill_queue = []  # mark primed even on failure
+            return Err(self._classify_provider_err(result.error))
+        bars = result.value
+        # Sort defensively — the provider's contract says ascending
+        # but mis-categorised data still surfaces in the dashboard.
+        self._backfill_queue = sorted(bars, key=lambda b: b.at)
+        return Ok(Nothing())  # caller advances to drain
+
     def next_bar(self) -> Result[Option[Bar], str]:
-        """Poll the provider for the freshest bar.
+        """Stream the next bar.
+
+        First call primes the backfill queue (last ``backfill_days``
+        bars). Subsequent calls pop one queued bar per call until
+        the queue empties; after that, polls live for fresh bars.
 
         Returns ``Ok(Some(bar))`` when a bar strictly newer than
         the last surfaced bar is available; ``Ok(Nothing())``
-        when no new bar has arrived (markets closed / no data
-        since the last poll); ``Err("data:upstream_blocked")``
-        on a network failure so the paper-trading runtime's
-        degradation path kicks in (REQ_F_PAP_002).
+        when no new bar has arrived; ``Err("data:upstream_blocked")``
+        on a network failure so the paper-runtime's degradation
+        path kicks in (REQ_F_PAP_002).
         """
+        # Prime the backfill queue on first call.
+        if self._backfill_queue is None:
+            prime_result = self._prime_backfill()
+            if isinstance(prime_result, Err):
+                return prime_result
+
+        # Drain the backfill queue first.
+        while self._backfill_queue:
+            bar = self._backfill_queue.pop(0)
+            if (
+                self._last_emitted_at is not None
+                and bar.at <= self._last_emitted_at
+            ):
+                continue
+            if bar.close <= Decimal("0") or bar.open <= Decimal("0"):
+                continue  # skip poisoned bars rather than crashing
+            self._last_emitted_at = bar.at
+            self._last_bar = bar
+            self._bar_history.append(bar)
+            return Ok(Some(bar))
+
+        # Backfill empty — poll the upstream for any newer bars.
         now = datetime.now(tz=UTC)
         start = now - timedelta(days=self.bar_window_days)
         result = self.provider.bars(
             self.instrument, self.timeframe, start, now
         )
         if isinstance(result, Err):
-            # Categorise upstream-blocked into the documented
-            # paper-runtime fallback code. Includes:
-            # - network:* (curl errors, DNS, timeout)
-            # - data:cache_miss_offline (no cached bar + offline)
-            # - upstream:* (proxied through provider)
-            # - data:not_found:<symbol> (yfinance returned an
-            #   empty DataFrame because curl couldn't reach the
-            #   upstream — symbol resolution is offline; if the
-            #   ticker was genuinely delisted the cache would
-            #   already hold older bars + the operator would see
-            #   a stable last_close in the panel).
-            # - data:rate_limited (yfinance throttled the call)
-            reason = result.error
-            if (
-                "network" in reason
-                or "cache_miss_offline" in reason
-                or "upstream" in reason
-                or "not_found" in reason
-                or "rate_limited" in reason
-            ):
-                return Err("data:upstream_blocked")
-            return Err(reason)
+            return Err(self._classify_provider_err(result.error))
         bars = result.value
         if not bars:
             return Ok(Nothing())
-        # The provider's contract says bars are sorted ascending
-        # by ``Bar.at`` (REQ_SDD_API_007).
         latest = bars[-1]
         if (
             self._last_emitted_at is not None
             and latest.at <= self._last_emitted_at
         ):
             return Ok(Nothing())
-        # Defensive price sanity — yfinance can return zero bars
-        # on data-feed glitches.
         if latest.close <= Decimal("0") or latest.open <= Decimal("0"):
             return Err("data:upstream_blocked")
         self._last_emitted_at = latest.at
         self._last_bar = latest
+        self._bar_history.append(latest)
         return Ok(Some(latest))
+
+    def history(self) -> tuple[Bar, ...]:
+        """Bars surfaced so far (backfill + live polls combined).
+
+        The reader prefers this over the simulated source's
+        history() when an instance is wired in, so the dashboard
+        sparkline + price chart see the full accumulated series."""
+        return tuple(self._bar_history)
 
     def latest_cached(self) -> Result[Option[Bar], str]:
         """REQ_F_PAP_002 cached-fallback path.

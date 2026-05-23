@@ -13,8 +13,14 @@ on any loader failure so a broken YAML doesn't break onboarding.
 
 from __future__ import annotations
 
-from trading_system.data.universes import load_universe
-from trading_system.models.instrument import Stock
+from pathlib import Path
+
+import yaml as _yaml
+
+from trading_system.data.universes import DEFAULT_UNIVERSE_ROOT, load_universe
+from trading_system.models.identifiers import InstrumentId
+from trading_system.models.instrument import InstrumentClass, Stock
+from trading_system.models.money import Currency
 
 
 def first_instrument_or_fallback(
@@ -33,3 +39,49 @@ def first_instrument_or_fallback(
         if uni.stocks:
             return uni.stocks[0]
     return fallback
+
+
+def index_for_universe(
+    universe: str,
+    *,
+    universe_root: Path | None = None,
+) -> Stock | None:
+    """Return the first index declared in the universe YAML's
+    ``indices:`` list, wrapped as a ``Stock`` with the synthetic
+    ``INDEX`` exchange so it threads through
+    ``yahoo_symbol_for``. Returns ``None`` when the YAML has no
+    ``indices`` key or the loader fails.
+    """
+    root = universe_root if universe_root is not None else DEFAULT_UNIVERSE_ROOT
+    path = root / f"{universe}.yaml"
+    try:
+        raw = _yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, _yaml.YAMLError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    indices = raw.get("indices") or []
+    if not isinstance(indices, list) or not indices:
+        return None
+    first = indices[0]
+    if not isinstance(first, dict):
+        return None
+    idx_id = first.get("id")
+    if not isinstance(idx_id, str) or not idx_id:
+        return None
+    currency_raw = first.get("currency", "EUR")
+    try:
+        currency = Currency(currency_raw)
+    except ValueError:
+        currency = Currency.EUR
+    domain_id = idx_id.lstrip("^") or idx_id
+    return Stock(
+        id=InstrumentId(idx_id),
+        symbol=idx_id,
+        exchange="INDEX",
+        currency=currency,
+        cls=InstrumentClass.STOCK,
+        isin=f"INDEX_{domain_id}",
+        sector="index",
+        country=first.get("country") or "FR",
+    )

@@ -252,6 +252,13 @@ class PaperTradingRuntime:
     # factory so the v1 demo path works out of the box.
     tax_config: TaxConfig | None = None
     spread_pct: Decimal = Decimal("0.001")
+    # Optional reference index. The dashboard surfaces this on
+    # the main price chart instead of (or alongside) the runtime's
+    # primary instrument — operators want EU-wide market context
+    # when watching a session. ``None`` ⇒ no index surfaced
+    # (single-stock view). Resolved from the universe YAML's
+    # ``indices:`` key at session start.
+    reference_index: Instrument | None = None
     # Rebalance cadence guard. Without this the strategy runs on
     # every simulator tick (e.g., 2s with the default tick driver)
     # which causes CoreStrategy — which proposes 10 % of capital

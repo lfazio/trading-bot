@@ -596,7 +596,7 @@ function renderPaperState(raw) {
         `low <code>€ ${lo.toFixed(2)}</code> · ` +
         `high <code>€ ${hi.toFixed(2)}</code> · ` +
         `<span style="color:${tone}">${pctDelta >= 0 ? '↗' : '↘'} ${pctDelta.toFixed(2)} %</span>` +
-        `<br><span style="font-size:0.78rem">${fmt(firstTs)} → ${fmt(lastTs)}</span>` +
+        `<br><span style="font-size:0.78rem">latest <code>${fmt(lastTs)}</code> · earliest <code>${fmt(firstTs)}</code></span>` +
       `</p>`;
   };
   renderPriceChart();

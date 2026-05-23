@@ -335,6 +335,16 @@ async def post_finish(request: Request) -> RedirectResponse:
     instrument = first_instrument_or_fallback(
         state.universe, fallback=_DEFAULT_INSTRUMENTS[state.universe]
     )
+    # Resolve the universe's reference index (^FCHI for cac40,
+    # ^STOXX50E for eu-dividend-starter, etc.). The dashboard's
+    # main price chart consumes this so the operator sees broad
+    # market context instead of the first stock the runtime is
+    # trading. None ⇒ no index surfaced (single-stock view).
+    from trading_system.webapp.runtimes.universe_loader import (
+        index_for_universe,
+    )
+
+    reference_index = index_for_universe(state.universe)
     bar_source = _build_bar_source(
         state.bar_source, instrument=instrument, account_id=account_id
     )
@@ -392,6 +402,9 @@ async def post_finish(request: Request) -> RedirectResponse:
         runtime.market_data_provider = getattr(
             bar_source, "_provider", None
         )
+    # Stash the universe's reference index so the paper-state
+    # reader can fetch its bars for the dashboard's main chart.
+    runtime.reference_index = reference_index
 
     # Register against the shared registry so the dashboard
     # panel + tick driver both see the new session.
