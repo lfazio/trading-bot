@@ -298,6 +298,92 @@ def test_open_positions_carry_sparkline_and_pnl_when_bars_available() -> None:
     assert row.unrealized_pnl_pct == _D("-50.00")
 
 
+def test_reader_surfaces_reference_index_series_when_runtime_declares_one() -> None:
+    """REQ_F_WEB2_010 — when the runtime carries a
+    ``reference_index`` AND a market_data_provider that can
+    serve its bars, the response SHALL carry the index symbol +
+    close series for the dashboard's main chart."""
+    from decimal import Decimal as _D
+    from datetime import UTC as _UTC, datetime as _dt, timedelta as _td
+
+    from trading_system.data.types import Bar
+    from trading_system.models.identifiers import InstrumentId
+    from trading_system.models.instrument import InstrumentClass, Stock
+    from trading_system.models.money import Currency
+    from trading_system.result import Ok
+
+    @dataclass(slots=True)
+    class _IdxProvider:
+        bars_to_return: list
+
+        def bars(self, instrument, timeframe, start, end):  # type: ignore[no-untyped-def]
+            del instrument, timeframe, start, end
+            return Ok(self.bars_to_return)
+
+        def latest(self, instrument):  # type: ignore[no-untyped-def]
+            del instrument
+            return Ok(self.bars_to_return[-1])
+
+    base = _dt(2026, 5, 1, tzinfo=_UTC)
+    bars = [
+        Bar(
+            at=base + _td(days=i),
+            open=_D(str(100 + i)),
+            high=_D(str(101 + i)),
+            low=_D(str(99 + i)),
+            close=_D(str(100 + i)),
+            volume=_D("1000"),
+        )
+        for i in range(5)
+    ]
+    idx = Stock(
+        id=InstrumentId("^FCHI"),
+        symbol="^FCHI",
+        exchange="INDEX",
+        currency=Currency.EUR,
+        cls=InstrumentClass.STOCK,
+        isin="INDEX_FCHI",
+        sector="index",
+        country="FR",
+    )
+
+    @dataclass(slots=True)
+    class _IdxRuntime(_FakeRuntime):
+        _reference_index: Stock | None = None
+        _provider: _IdxProvider | None = None
+
+        @property
+        def reference_index(self):
+            return self._reference_index
+
+        @property
+        def market_data_provider(self):
+            return self._provider
+
+    runtime = _IdxRuntime(closes=[_D("1")], points=[])
+    runtime._reference_index = idx
+    runtime._provider = _IdxProvider(bars_to_return=bars)
+
+    reader = RuntimePaperStateReader(
+        registry=_FakeRegistry(runtimes={_AID: runtime})
+    )
+    snap = reader.paper_state(account_id=_AID, as_of=_NOW)
+    assert snap.index_symbol == "^FCHI"
+    assert len(snap.index_close_series) == 5
+    assert snap.index_close_series[0] == _D("100")
+    assert snap.index_close_series[-1] == _D("104")
+
+
+def test_reader_returns_empty_index_when_runtime_has_no_reference() -> None:
+    runtime = _FakeRuntime(closes=[_d("1")], points=[])
+    reader = RuntimePaperStateReader(
+        registry=_FakeRegistry(runtimes={_AID: runtime})
+    )
+    snap = reader.paper_state(account_id=_AID, as_of=_NOW)
+    assert snap.index_symbol == ""
+    assert snap.index_close_series == ()
+
+
 def test_reader_returns_n_a_indicators_when_no_session() -> None:
     """No registered runtime SHALL still produce a valid snapshot
     with the documented sentinels — the dashboard panel renders

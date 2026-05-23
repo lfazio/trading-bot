@@ -113,6 +113,16 @@ class RuntimePaperStateReader:
         # view (for per-position sparklines) and the quant-
         # indicators view (for SMA / vol / drawdown) consume it.
         bar_closes, bar_timestamps = _bar_history_for_runtime(runtime)
+
+        # Reference-index window — REQ_F_WEB2_010. Reuses the
+        # runtime's market-data provider (which already wraps
+        # the yfinance disk cache) to fetch ^FCHI / ^STOXX50E /
+        # etc. bars over the same lookback. Empty when the
+        # universe declares no index OR the provider can't reach
+        # the upstream.
+        index_symbol, index_closes, index_timestamps = (
+            _index_bars_for_runtime(runtime)
+        )
         # Session metadata + live price — best-effort. The Protocol
         # surface (PaperRuntimeView) doesn't pin these so tests with
         # minimal stubs still work; we duck-type via getattr.
@@ -250,6 +260,11 @@ class RuntimePaperStateReader:
             open_positions_count=open_positions_count,
             recent_trades=recent_view,
             open_positions=open_positions_view,
+            index_symbol=index_symbol,
+            index_close_series=tuple(index_closes[-60:]) if index_closes else (),
+            index_close_timestamps=(
+                tuple(index_timestamps[-60:]) if index_timestamps else ()
+            ),
             **_indicator_kwargs(runtime, history, bar_closes, bar_timestamps),
         )
 
@@ -272,6 +287,36 @@ class RuntimePaperStateReader:
 # ---------------------------------------------------------------------------
 # Bar-history loader — shared between positions + indicators
 # ---------------------------------------------------------------------------
+
+
+def _index_bars_for_runtime(  # type: ignore[no-untyped-def]
+    runtime,
+) -> tuple[str, list, list]:
+    """Fetch the runtime's reference-index bar window.
+
+    Returns ``(symbol, closes, timestamps)``. Empty when the
+    runtime carries no ``reference_index`` OR the provider can't
+    reach the upstream. The window matches the primary
+    instrument's lookback so both charts share the same axis.
+    """
+    index = getattr(runtime, "reference_index", None)
+    if index is None:
+        return "", [], []
+    symbol = getattr(index, "symbol", "") or getattr(index, "id", "")
+    provider = getattr(runtime, "market_data_provider", None)
+    if provider is None:
+        return str(symbol), [], []
+    try:
+        from trading_system.webapp.runtimes.provider_bar_window import (
+            fetch_recent_close_window,
+        )
+
+        closes, timestamps = fetch_recent_close_window(
+            provider, index, days=120
+        )
+    except Exception:  # noqa: BLE001 — defensive
+        return str(symbol), [], []
+    return str(symbol), closes, timestamps
 
 
 def _bar_history_for_runtime(runtime) -> tuple[list, list]:  # type: ignore[no-untyped-def]

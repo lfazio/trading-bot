@@ -261,7 +261,14 @@
     </div>
   </div>
 
-  <h3 style="margin-top:1.2em">Price evolution</h3>
+  <h3 style="margin-top:1.2em" data-field="paper_index_heading">
+    Reference index
+  </h3>
+  <div data-field="paper_index_chart" style="width:100%; min-height:140px">
+    <p class="muted">No reference index for this universe.</p>
+  </div>
+
+  <h3 style="margin-top:1.2em">Price evolution — <span data-field="paper_instrument_caption">instrument</span></h3>
   <div data-field="paper_price_chart" style="width:100%; min-height:140px">
     <p class="muted">Waiting for bar history…</p>
   </div>
@@ -545,61 +552,84 @@ function renderPaperState(raw) {
   renderPositions();
   renderTrades();
 
-  // Inline SVG sparkline of recent closes. No external chart lib;
-  // SVG paths render natively + scale cleanly.
-  const renderPriceChart = () => {
-    const slot = document.querySelector('[data-field="paper_price_chart"]');
-    if (!slot) return;
-    const series = Array.isArray(data.recent_close_series) ? data.recent_close_series : [];
-    const timestamps = Array.isArray(data.recent_close_timestamps) ? data.recent_close_timestamps : [];
-    if (series.length < 2) {
-      slot.innerHTML = '<p class="muted">Waiting for bar history…</p>';
-      return;
-    }
-    const values = series.map((v) => Number(v)).filter((n) => isFinite(n));
+  // Inline SVG line chart. No external chart lib; SVG paths
+  // render natively + scale cleanly. ``unit`` is the value
+  // suffix in the caption ("€" or "" for indices); ``aria``
+  // labels the chart for assistive tech.
+  const renderLineChart = (slot, series, timestamps, { unit = "€", aria = "Recent price evolution" } = {}) => {
+    if (!slot) return false;
+    const values = (Array.isArray(series) ? series : []).map((v) => Number(v)).filter((n) => isFinite(n));
     if (values.length < 2) {
       slot.innerHTML = '<p class="muted">Waiting for bar history…</p>';
-      return;
+      return false;
     }
     const lo = Math.min.apply(null, values);
     const hi = Math.max.apply(null, values);
-    const range = hi - lo || 1;  // avoid zero-range divide
-    const W = 600;  // viewBox width — SVG scales via CSS
+    const range = hi - lo || 1;
+    const W = 600;
     const H = 140;
     const padX = 10;
     const padY = 10;
     const stepX = (W - 2 * padX) / (values.length - 1);
-    // Path data — d="M x,y L x,y …"
     const points = values.map((v, i) => {
       const x = padX + i * stepX;
-      // y inverted: high values at top.
       const y = H - padY - ((v - lo) / range) * (H - 2 * padY);
       return [x, y];
     });
     const path = points.map(([x, y], i) => `${i === 0 ? 'M' : 'L'} ${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
-    // Last-point marker + label.
     const [lastX, lastY] = points[points.length - 1];
     const firstVal = values[0];
     const lastVal = values[values.length - 1];
     const pctDelta = ((lastVal - firstVal) / firstVal) * 100;
     const tone = pctDelta >= 0 ? 'var(--success)' : 'var(--error)';
-    const firstTs = timestamps[0] || '';
-    const lastTs = timestamps[timestamps.length - 1] || '';
+    const firstTs = (timestamps && timestamps[0]) || '';
+    const lastTs = (timestamps && timestamps[timestamps.length - 1]) || '';
     const fmt = (ts) => (ts ? ts.replace('T', ' ').slice(0, 19) : '');
+    const u = unit ? unit + ' ' : '';
     slot.innerHTML =
-      `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Recent price evolution" style="width:100%; height:auto; background:var(--surface-muted); border:1px solid var(--border); border-radius:var(--radius-sm)">` +
+      `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${aria}" style="width:100%; height:auto; background:var(--surface-muted); border:1px solid var(--border); border-radius:var(--radius-sm)">` +
         `<path d="${path}" fill="none" stroke="${tone}" stroke-width="1.6"></path>` +
         `<circle cx="${lastX.toFixed(2)}" cy="${lastY.toFixed(2)}" r="3" fill="${tone}"></circle>` +
       `</svg>` +
       `<p class="muted" style="font-size:0.85rem; margin-top:0.25em">` +
         `${values.length} bars · ` +
-        `low <code>€ ${lo.toFixed(2)}</code> · ` +
-        `high <code>€ ${hi.toFixed(2)}</code> · ` +
+        `low <code>${u}${lo.toFixed(2)}</code> · ` +
+        `high <code>${u}${hi.toFixed(2)}</code> · ` +
         `<span style="color:${tone}">${pctDelta >= 0 ? '↗' : '↘'} ${pctDelta.toFixed(2)} %</span>` +
         `<br><span style="font-size:0.78rem">latest <code>${fmt(lastTs)}</code> · earliest <code>${fmt(firstTs)}</code></span>` +
       `</p>`;
+    return true;
   };
-  renderPriceChart();
+
+  // Instrument chart — uses the runtime's primary instrument
+  // (the strategy targets it).
+  const instrCaption = document.querySelector('[data-field="paper_instrument_caption"]');
+  if (instrCaption) instrCaption.textContent = data.instrument_symbol || 'instrument';
+  renderLineChart(
+    document.querySelector('[data-field="paper_price_chart"]'),
+    data.recent_close_series,
+    data.recent_close_timestamps,
+    { aria: 'Instrument price evolution' }
+  );
+
+  // Reference-index chart — REQ_F_WEB2_010. Empty when the
+  // universe declares no ``indices:`` key.
+  const indexHeading = document.querySelector('[data-field="paper_index_heading"]');
+  const indexSlot = document.querySelector('[data-field="paper_index_chart"]');
+  if (data.index_symbol) {
+    if (indexHeading) indexHeading.textContent = 'Reference index — ' + data.index_symbol;
+    renderLineChart(
+      indexSlot,
+      data.index_close_series,
+      data.index_close_timestamps,
+      { unit: '', aria: data.index_symbol + ' index evolution' }
+    );
+  } else {
+    if (indexHeading) indexHeading.textContent = 'Reference index';
+    if (indexSlot) {
+      indexSlot.innerHTML = '<p class="muted">No reference index declared in this universe.</p>';
+    }
+  }
   const metaBits = [];
   if (data.universe) metaBits.push('Universe: ' + data.universe);
   if (data.strategy_id) metaBits.push('Strategy: ' + data.strategy_id);
