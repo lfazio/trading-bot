@@ -784,7 +784,7 @@
     },
     "/onboarding": {
       "get": {
-        "description": "GET /onboarding \u2014 render step 1 (or resume the operator at\nthe latest completed step if a valid cookie is present).",
+        "description": "GET /onboarding \u2014 render the wizard.\n\nThe step rendered is, in order:\n1. ``?step=<step1|step2|step3>`` query override (used by the\n   \"\u2190 Back\" link to walk backwards without losing the saved\n   inputs).\n2. The step persisted in the signed cookie (so refreshes\n   resume).\n3. ``step1`` for a first-boot visit.\n\nWalking backwards persists the new step into the cookie so a\nfurther refresh stays on the chosen step.",
         "operationId": "get_onboarding_onboarding_get",
         "responses": {
           "200": {

@@ -229,6 +229,36 @@ def default_app() -> FastAPI:
 
     registry = RuntimeRegistry()
     inbox = InboxChannel()
+    # REQ_SDD_WEB2_005 — resume previously-persisted paper sessions
+    # at boot so a webapp restart doesn't lose the operator's
+    # session list. v1 is discovery-only (the operator picks one
+    # of the returned ids from the recovery wizard); the resumed
+    # account_ids are surfaced as a one-line breadcrumb in the
+    # inbox so the operator notices them on next paint.
+    portfolio_repo = _portfolio_repo_for_resume()
+    if portfolio_repo is not None:
+        from datetime import UTC, datetime as _dt
+
+        from trading_system.result import Ok as _Ok
+        from trading_system.webapp.inbox import InboxEntry as _Entry
+
+        result = registry.resume_from_persistence(portfolio_repo)
+        if isinstance(result, _Ok) and result.value:
+            for aid in result.value:
+                inbox.append(
+                    _Entry(
+                        at=_dt.now(tz=UTC),
+                        category="paper-session",
+                        code="session_discovered",
+                        severity="info",
+                        message=(
+                            "Persisted paper session discovered at boot. "
+                            "Visit /operator/recovery (or attach a fresh "
+                            "runtime) to resume ticking."
+                        ),
+                        account_id=str(aid),
+                    )
+                )
     return create_app(
         WebappState(
             token_verifier=verifier,
@@ -291,5 +321,34 @@ def _default_paper_state_reader(*, registry=None):  # type: ignore[no-untyped-de
     from trading_system.webapp.runtimes.paper_trading import RuntimeRegistry
 
     return RuntimePaperStateReader(registry=registry or RuntimeRegistry())
+
+
+def _portfolio_repo_for_resume():  # type: ignore[no-untyped-def]
+    """Open the operator-configured ``PortfolioRepository`` so
+    ``RuntimeRegistry.resume_from_persistence`` can discover
+    ``paper-*`` rows at boot (REQ_SDD_WEB2_005).
+
+    Returns ``None`` when ``TRADING_BOT_PERSISTENCE_DB`` is unset
+    or the SQLite file doesn't exist — boot proceeds without
+    resume rather than aborting on a misconfiguration.
+    """
+    import os
+    from pathlib import Path
+
+    from trading_system.persistence.connection import Connection
+    from trading_system.persistence.repositories.portfolio import (
+        PortfolioRepository,
+    )
+
+    db_path_raw = os.environ.get("TRADING_BOT_PERSISTENCE_DB", "")
+    if not db_path_raw:
+        return None
+    db_path = Path(db_path_raw)
+    if not db_path.exists():
+        return None
+    result = Connection.open(db_path)
+    if not hasattr(result, "is_ok") or not result.is_ok():
+        return None
+    return PortfolioRepository(conn=result.unwrap())
 
 
