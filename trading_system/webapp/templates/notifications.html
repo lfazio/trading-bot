@@ -30,7 +30,8 @@
       {% set tone = {'info':'info', 'warn':'warn', 'error':'error'}.get(e.severity, 'info') %}
       <tr>
         <td class="muted" style="font-size:0.9rem">{{ e.at.isoformat() }}</td>
-        <td><span class="badge {{ tone }}">{{ e.severity }}</span></td>
+        <td><span class="badge {{ tone }}"
+                  aria-label="Severity {{ e.severity }}">{{ e.severity }}</span></td>
         <td><code>{{ e.category }}</code></td>
         <td><code>{{ e.code }}</code></td>
         <td>{{ e.message }}</td>

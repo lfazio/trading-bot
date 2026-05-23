@@ -20,7 +20,8 @@
       <a href="/docs">API</a>
     </nav>
     <div class="topbar-actions">
-      {% if account_id %}<span class="badge accent">{{ account_id }}</span>{% endif %}
+      {% if account_id %}<span class="badge accent"
+            aria-label="Current account {{ account_id }}">{{ account_id }}</span>{% endif %}
       <button type="button" class="secondary" onclick="fetch('/api/session',{method:'DELETE',credentials:'same-origin'}).then(()=>window.location='/login')">Log out</button>
     </div>
   </header>

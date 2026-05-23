@@ -344,7 +344,7 @@ function renderPaperState(raw) {
       const tr = document.createElement('tr');
       tr.innerHTML =
         `<td class="muted" style="font-size:0.9rem">${ts}</td>` +
-        `<td><span class="badge ${sideClass}">${t.side}</span></td>` +
+        `<td><span class="badge ${sideClass}" aria-label="Trade side ${t.side}">${t.side}</span></td>` +
         `<td><code>${t.instrument_symbol || '?'}</code></td>` +
         `<td class="numeric">${fmtQty(t.quantity)}</td>` +
         `<td class="numeric">${fmtMoney(t.price) || t.price}</td>` +

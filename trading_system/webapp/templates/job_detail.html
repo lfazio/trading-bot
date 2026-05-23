@@ -21,7 +21,8 @@
       "completed": "success",
       "failed":    "error",
     }.get(job.status, "info") %}
-    <span id="job-status-badge" class="badge {{ tone }}">{{ job.status }}</span>
+    <span id="job-status-badge" class="badge {{ tone }}"
+          aria-label="Job status {{ job.status }}">{{ job.status }}</span>
   </div>
   <div class="card-grid mt-1">
     <div class="stat">

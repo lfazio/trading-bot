@@ -37,7 +37,8 @@
               "completed": "success",
               "failed":    "error",
             }.get(job.status, "info") %}
-            <span class="badge {{ tone }}">{{ job.status }}</span>
+            <span class="badge {{ tone }}"
+                  aria-label="Job status {{ job.status }}">{{ job.status }}</span>
           </td>
           <td class="mono muted">{{ job.submitted_at }}</td>
           <td class="mono muted">{{ job.completed_at or "—" }}</td>
