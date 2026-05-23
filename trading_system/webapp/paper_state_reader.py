@@ -27,6 +27,7 @@ from typing import Protocol, runtime_checkable
 
 from trading_system.models.identifiers import AccountId
 from trading_system.result import Some
+from trading_system.webapp.runtimes.quant_indicators import compute_indicators
 from trading_system.webui.schemas import (
     OpenPositionView,
     PaperStateResponse,
@@ -216,6 +217,7 @@ class RuntimePaperStateReader:
             open_positions_count=open_positions_count,
             recent_trades=recent_view,
             open_positions=open_positions_view,
+            **_indicator_kwargs(runtime, history),
         )
 
     async def subscribe(
@@ -232,3 +234,46 @@ class RuntimePaperStateReader:
                 account_id=account_id, as_of=datetime.now(tz=UTC)
             )
             await asyncio.sleep(self.tick_seconds)
+
+
+# ---------------------------------------------------------------------------
+# Quant-indicator extraction helper
+# ---------------------------------------------------------------------------
+
+
+def _indicator_kwargs(runtime, history) -> dict:  # type: ignore[no-untyped-def]
+    """Pull the bar history off the runtime's BarSource (best-effort)
+    + compute the quant indicators. Returns a kwargs dict matching
+    the ``PaperStateResponse`` field names so the construction site
+    can splat it.
+
+    On any failure (no source / no bars / no equity), every field
+    falls back to its documented ``None`` / ``"n/a"`` sentinel.
+    """
+    bar_source = getattr(runtime, "bar_source", None)
+    closes: list = []
+    if bar_source is not None and hasattr(bar_source, "history"):
+        try:
+            closes = [b.close for b in bar_source.history()]
+        except Exception:  # noqa: BLE001
+            closes = []
+    equity_amounts = [p.equity_after_tax.amount for p in history] if history else []
+    regime = "n/a"
+    rgm = getattr(runtime, "regime", None)
+    if rgm is not None:
+        # MarketRegime is a StrEnum with lowercase values; upper-case
+        # at the boundary so the dashboard renders BULL / BEAR /
+        # HIGH_VOL / SIDEWAYS as documented.
+        raw = getattr(rgm, "value", str(rgm))
+        regime = raw.upper() if isinstance(raw, str) else str(raw)
+    snap = compute_indicators(closes, equity_amounts, regime=str(regime))
+    return {
+        "sma_20": snap.sma_20,
+        "sma_50": snap.sma_50,
+        "realized_vol_pct": snap.realized_vol_pct,
+        "total_return_pct": snap.total_return_pct,
+        "drawdown_pct": snap.drawdown_pct,
+        "sharpe_ratio": snap.sharpe_ratio,
+        "trend_signal": snap.trend_signal,
+        "regime": snap.regime,
+    }

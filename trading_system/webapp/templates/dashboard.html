@@ -144,6 +144,42 @@
     </div>
   </div>
 
+  <h3 style="margin-top:1.2em">Quant indicators</h3>
+  <div class="card-grid">
+    <div class="stat">
+      <span class="label">Market regime</span>
+      <span class="value" data-field="quant_regime">—</span>
+    </div>
+    <div class="stat">
+      <span class="label">Trend</span>
+      <span class="value" data-field="quant_trend">—</span>
+    </div>
+    <div class="stat">
+      <span class="label">SMA-20</span>
+      <span class="value numeric" data-field="quant_sma_20">—</span>
+    </div>
+    <div class="stat">
+      <span class="label">SMA-50</span>
+      <span class="value numeric" data-field="quant_sma_50">—</span>
+    </div>
+    <div class="stat">
+      <span class="label">Realized vol (ann.)</span>
+      <span class="value numeric" data-field="quant_vol">—</span>
+    </div>
+    <div class="stat">
+      <span class="label">Total return</span>
+      <span class="value numeric" data-field="quant_return">—</span>
+    </div>
+    <div class="stat">
+      <span class="label">Max drawdown</span>
+      <span class="value numeric" data-field="quant_drawdown">—</span>
+    </div>
+    <div class="stat">
+      <span class="label">Sharpe (per tick)</span>
+      <span class="value numeric" data-field="quant_sharpe">—</span>
+    </div>
+  </div>
+
   <h3 style="margin-top:1.2em">Open positions</h3>
   <table class="data-table" data-field="paper_positions_table" style="width:100%; margin-bottom:1em">
     <thead>
@@ -363,6 +399,50 @@ function renderPaperState(raw) {
     metaBits.push('Starting capital: ' + (formatted || ('€ ' + data.starting_capital)));
   }
   set('paper_session_meta', metaBits.length ? metaBits.join(' · ') : '—');
+  // Quant indicators panel — REQ_F_WEB2_010.
+  const fmtPct = (raw) => {
+    if (raw === undefined || raw === null || raw === '') return null;
+    const n = Number(raw);
+    if (!isFinite(n)) return null;
+    return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' %';
+  };
+  const fmtRatio = (raw) => {
+    if (raw === undefined || raw === null || raw === '') return null;
+    const n = Number(raw);
+    if (!isFinite(n)) return null;
+    return n.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  };
+  // Regime + trend get color hints via badges.
+  const regimeEl = document.querySelector('[data-field="quant_regime"]');
+  if (regimeEl) {
+    const r = data.regime || 'n/a';
+    const tone = ({BULL:'success', BEAR:'error', HIGH_VOL:'warn', SIDEWAYS:'info'})[r] || 'info';
+    regimeEl.innerHTML = '';
+    const b = document.createElement('span');
+    b.className = 'badge ' + tone;
+    b.setAttribute('aria-label', 'Market regime ' + r);
+    b.textContent = r;
+    regimeEl.appendChild(b);
+  }
+  const trendEl = document.querySelector('[data-field="quant_trend"]');
+  if (trendEl) {
+    const t = data.trend_signal || 'n/a';
+    const arrows = { up: '↗ up', down: '↘ down', flat: '→ flat', 'n/a': '—' };
+    const tone = ({ up:'success', down:'error', flat:'info' })[t] || 'info';
+    trendEl.innerHTML = '';
+    const b = document.createElement('span');
+    b.className = 'badge ' + tone;
+    b.setAttribute('aria-label', 'Trend signal ' + t);
+    b.textContent = arrows[t] || t;
+    trendEl.appendChild(b);
+  }
+  set('quant_sma_20', fmtMoney(data.sma_20) || '—');
+  set('quant_sma_50', fmtMoney(data.sma_50) || '—');
+  set('quant_vol', fmtPct(data.realized_vol_pct) || '—');
+  set('quant_return', fmtPct(data.total_return_pct) || '—');
+  set('quant_drawdown', fmtPct(data.drawdown_pct) || '—');
+  set('quant_sharpe', fmtRatio(data.sharpe_ratio) || '—');
+
   // Strategy blurb — short paragraph describing what the chosen
   // strategy does, surfaced on the panel so the operator
   // doesn't have to leave the dashboard to remember.

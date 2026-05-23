@@ -202,6 +202,18 @@ class PaperStateResponse:
     open_positions_count: int = 0
     recent_trades: tuple[RecentTradeView, ...] = ()
     open_positions: tuple[OpenPositionView, ...] = ()
+    # Quant indicators panel — see
+    # ``trading_system.webapp.runtimes.quant_indicators.QuantIndicators``
+    # for the computation. All Decimal fields are nullable until
+    # the simulator has enough bars / equity samples.
+    sma_20: Decimal | None = None
+    sma_50: Decimal | None = None
+    realized_vol_pct: Decimal | None = None
+    total_return_pct: Decimal | None = None
+    drawdown_pct: Decimal | None = None
+    sharpe_ratio: Decimal | None = None
+    trend_signal: str = "n/a"
+    regime: str = "n/a"
 
     def __post_init__(self) -> None:
         if not str(self.account_id).strip():
