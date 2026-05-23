@@ -130,6 +130,26 @@ def test_strategies_renders_each_row_with_status_badge() -> None:
     assert body.count("Submit promotion") == 1
 
 
+def test_static_strategy_registry_reader_lists_documented_demos() -> None:
+    """The demo deploy SHALL wire StaticStrategyRegistryReader so
+    the /strategies page lists the strategies the wizard's factory
+    dispatches on (CoreStrategy + TacticalStrategy) instead of
+    showing the empty-state placeholder."""
+    from trading_system.webapp.strategy_registry_reader import (
+        StaticStrategyRegistryReader,
+    )
+
+    reader = StaticStrategyRegistryReader()
+    strategies = reader.list_strategies()
+    ids = {s["id"] for s in strategies}
+    assert ids == {"CoreStrategy", "TacticalStrategy"}
+    # Both ship at "validated" status (they're the documented
+    # production strategies, not experimental hypotheses).
+    for s in strategies:
+        assert s["status"] == "validated"
+        assert s["improvement_report"]  # non-empty blurb
+
+
 def test_strategies_hides_promote_when_no_promoter_wired() -> None:
     reader = _FakeRegistry(
         strategies=[

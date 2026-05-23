@@ -252,6 +252,15 @@ class PaperTradingRuntime:
     # factory so the v1 demo path works out of the box.
     tax_config: TaxConfig | None = None
     spread_pct: Decimal = Decimal("0.001")
+    # Rebalance cadence guard. Without this the strategy runs on
+    # every simulator tick (e.g., 2s with the default tick driver)
+    # which causes CoreStrategy — which proposes 10 % of capital
+    # per call — to deploy the entire allocation in ~18 seconds.
+    # Defaults to 1 hour of simulated bar time so a Phase-1 demo
+    # spreads the deployment over many ticks. Operators tune via
+    # the wizard (future amendment) or by setting the field
+    # directly after build_runtime.
+    rebalance_cooldown_seconds: int = 3600
 
     _alive: bool = field(default=True, init=False)
     _degraded_since: datetime | None = field(default=None, init=False)
@@ -263,6 +272,7 @@ class PaperTradingRuntime:
         default_factory=list, init=False
     )
     _next_order_seq: int = field(default=0, init=False)
+    _last_rebalance_at: datetime | None = field(default=None, init=False)
 
     # ------------------------------------------------------------------
     # Public surface
@@ -508,8 +518,21 @@ class PaperTradingRuntime:
         # ``state.market``). The wizard's finish handler hands a
         # ``SimulatedMarketDataProvider`` so the live demo path
         # works end-to-end.
+        #
+        # Cooldown guard: CoreStrategy proposes 10 % of capital
+        # per call. Without this guard a fresh portfolio would
+        # deploy its entire allocation in ~18 seconds (one
+        # 10 %-buy per 2 s tick). The guard skips strategy
+        # evaluation until ``rebalance_cooldown_seconds`` of
+        # simulated bar time has elapsed since the last call
+        # that produced proposals. Tick still records portfolio
+        # marks + equity points; only the new-trade path pauses.
         proposals: list[TradeProposal] = []
-        if self.market_data_provider is not None:
+        cooldown_active = False
+        if self._last_rebalance_at is not None and self.rebalance_cooldown_seconds > 0:
+            elapsed = (tick.at - self._last_rebalance_at).total_seconds()
+            cooldown_active = elapsed < self.rebalance_cooldown_seconds
+        if self.market_data_provider is not None and not cooldown_active:
             ranking = self._build_screener_ranking()
             state = MarketState(
                 at=tick.at,
@@ -520,6 +543,11 @@ class PaperTradingRuntime:
                 market=self.market_data_provider,
             )
             proposals = list(self.strategy.evaluate(state))
+            if proposals:
+                # Reset the cooldown clock so subsequent ticks
+                # wait for the documented interval before the
+                # next round of proposals fires.
+                self._last_rebalance_at = tick.at
 
         # 4. Gate + submit each proposal.
         for proposal in proposals:

@@ -561,6 +561,94 @@ def test_tick_runs_strategy_and_submits_when_market_data_wired() -> None:
     assert len([p for p in runtime.portfolio.positions().values() if p.quantity != 0]) >= 1
 
 
+def test_rebalance_cooldown_prevents_runaway_capital_deployment() -> None:
+    """Without a cooldown the strategy fires on every tick;
+    CoreStrategy proposes 10% of capital per call so the entire
+    allocation deploys in ~9 ticks. The cooldown guard SHALL
+    skip strategy evaluation until rebalance_cooldown_seconds
+    of simulated bar time has elapsed since the last firing."""
+    from trading_system.webapp.runtimes.paper_trading import build_runtime
+    from trading_system.webapp.runtimes.simulated_bar_source import (
+        SimulatedBarSource,
+        SimulatedMarketDataProvider,
+    )
+    from trading_system.webapp.runtimes.strategy_factory import build_strategy
+
+    src = SimulatedBarSource(
+        instrument_id=_stock().id,
+        seed=1,
+        start_at=_T0,
+        step_seconds=60,  # 1 minute per bar
+    )
+    res = build_runtime(
+        session=_session(),
+        instrument=_stock(),
+        strategy=build_strategy(
+            "CoreStrategy",
+            strategy_id=StrategyId("CoreStrategy"),
+        ),  # type: ignore[arg-type]
+        bar_source=src,
+        phase_constraints=_constraints(),
+        regime=MarketRegime.SIDEWAYS,
+    )
+    runtime = res.unwrap()
+    runtime.market_data_provider = SimulatedMarketDataProvider(
+        source=src, instrument=_stock()
+    )
+    # Cooldown = 1 hour. Simulator step = 60s. So 60 ticks
+    # SHALL produce at most 1 trade.
+    runtime.rebalance_cooldown_seconds = 3600
+    for _ in range(20):
+        runtime.tick_once()
+    trades = runtime.trade_history()
+    # First tick fires; the next 19 are within the cooldown.
+    assert len(trades) <= 1
+
+
+def test_rebalance_cooldown_zero_records_last_rebalance_at() -> None:
+    """Setting cooldown=0 SHALL bypass the cooldown guard
+    entirely so the strategy can fire on every tick — useful
+    for legacy tests + operators who want aggressive
+    deployment. CoreStrategy itself caps proposals at
+    ``tick_budget_pct = 0.10`` of capital so a single fill
+    typically drops the exposure gap below ``rebalance_band``
+    and the next ticks become no-ops; the point of this test
+    is just that the cooldown isn't the limiting factor."""
+    from trading_system.webapp.runtimes.paper_trading import build_runtime
+    from trading_system.webapp.runtimes.simulated_bar_source import (
+        SimulatedBarSource,
+        SimulatedMarketDataProvider,
+    )
+    from trading_system.webapp.runtimes.strategy_factory import build_strategy
+
+    src = SimulatedBarSource(
+        instrument_id=_stock().id, seed=1, start_at=_T0
+    )
+    res = build_runtime(
+        session=_session(),
+        instrument=_stock(),
+        strategy=build_strategy(
+            "CoreStrategy",
+            strategy_id=StrategyId("CoreStrategy"),
+        ),  # type: ignore[arg-type]
+        bar_source=src,
+        phase_constraints=_constraints(),
+        regime=MarketRegime.SIDEWAYS,
+    )
+    runtime = res.unwrap()
+    runtime.market_data_provider = SimulatedMarketDataProvider(
+        source=src, instrument=_stock()
+    )
+    runtime.rebalance_cooldown_seconds = 0
+    for _ in range(5):
+        runtime.tick_once()
+    # cooldown=0 -> the runtime SHALL record a last-rebalance
+    # timestamp as soon as the first proposal fires (the cooldown
+    # is bypassed but the bookkeeping still runs).
+    assert runtime._last_rebalance_at is not None  # noqa: SLF001
+    assert len(runtime.trade_history()) >= 1
+
+
 def test_tick_floors_quantity_to_integer_shares() -> None:
     """Stocks (and any other instrument) SHALL trade in whole
     units — the paper-trading runtime SHALL floor fractional

@@ -232,9 +232,13 @@ def default_app() -> FastAPI:
     queue = InProcessJobQueue(workers=workers)
     from trading_system.webapp.inbox import InboxChannel
     from trading_system.webapp.runtimes.paper_trading import RuntimeRegistry
+    from trading_system.webapp.strategy_registry_reader import (
+        StaticStrategyRegistryReader,
+    )
 
     registry = RuntimeRegistry()
     inbox = InboxChannel()
+    strategy_registry = StaticStrategyRegistryReader()
     # REQ_SDD_WEB2_005 — resume previously-persisted paper sessions
     # at boot so a webapp restart doesn't lose the operator's
     # session list. v1 is discovery-only (the operator picks one
@@ -272,6 +276,7 @@ def default_app() -> FastAPI:
             paper_state_reader=_default_paper_state_reader(registry=registry),
             runtime_registry=registry,
             notification_inbox=inbox,
+            strategy_registry_reader=strategy_registry,
             job_queue=queue,
         )
     )
