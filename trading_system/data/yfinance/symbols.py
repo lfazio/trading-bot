@@ -40,6 +40,11 @@ _SUFFIX_BY_EXCHANGE: dict[str, str] = {
     "AMEX": "",
     "ARCA": "",
     "US": "",
+    # Yahoo Finance indices use a leading caret in the symbol itself
+    # (^FCHI = CAC 40, ^GSPC = S&P 500); no exchange suffix. The
+    # ``INDEX`` synthetic exchange marks instruments whose ``symbol``
+    # carries the caret-prefix.
+    "INDEX": "",
 }
 
 

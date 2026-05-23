@@ -78,6 +78,28 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip symbols whose cache key already has bars",
     )
+    p.add_argument(
+        "--sleep-seconds",
+        type=float,
+        default=2.0,
+        help=(
+            "Seconds to sleep between symbol fetches. Yahoo Finance "
+            "rate-limits aggressive scrapers (HTTP 429); a 2s delay "
+            "across 40 symbols (~80 s total) stays well below the "
+            "throttle. Set to 0 for back-to-back fetches when the "
+            "operator has confirmed no rate-limit pressure."
+        ),
+    )
+    p.add_argument(
+        "--retry-on-rate-limit",
+        type=int,
+        default=3,
+        help=(
+            "Retry attempts per symbol when the upstream returns "
+            "an empty DataFrame (typically the rate-limit signal). "
+            "Each retry doubles the backoff."
+        ),
+    )
     return p.parse_args()
 
 
@@ -153,6 +175,8 @@ def main() -> int:
     err_count = 0
     skipped = 0
 
+    import time as _time
+
     def _fetch(instrument: Stock) -> bool:
         nonlocal ok_count, err_count, skipped
         sym = str(instrument.id)
@@ -179,9 +203,38 @@ def main() -> int:
             file=sys.stderr,
         )
         provider = eur_provider  # currency-agnostic for CAC40 (all EUR)
-        bars_res = provider.bars(instrument, timeframe, start, end)
-        if isinstance(bars_res, Err):
-            print(f"  {sym}: ERROR {bars_res.error}", file=sys.stderr)
+
+        # Retry loop — Yahoo's HTTP 429 surfaces as an empty
+        # DataFrame which the provider categorises as
+        # ``data:not_found``. Re-fetching after a backoff usually
+        # works.
+        bars_res = None
+        backoff = max(1.0, args.sleep_seconds)
+        for attempt in range(args.retry_on_rate_limit + 1):
+            if attempt > 0:
+                print(
+                    f"  {sym}: retry {attempt}/{args.retry_on_rate_limit} "
+                    f"after {backoff:.0f}s backoff",
+                    file=sys.stderr,
+                )
+                _time.sleep(backoff)
+                backoff *= 2
+            bars_res = provider.bars(instrument, timeframe, start, end)
+            if isinstance(bars_res, Ok):
+                break
+            # Only retry on the documented rate-limit / not_found
+            # categories; surface other Errs immediately.
+            err = bars_res.error
+            if not (
+                "not_found" in err
+                or "rate_limited" in err
+                or "network" in err
+            ):
+                break
+
+        if isinstance(bars_res, Err) or bars_res is None:
+            reason = bars_res.error if bars_res is not None else "no_result"
+            print(f"  {sym}: ERROR {reason}", file=sys.stderr)
             err_count += 1
             return False
         bars = bars_res.value
@@ -197,18 +250,19 @@ def main() -> int:
                     )
         return True
 
-    # Stocks first.
-    for stock in universe.stocks:
-        _fetch(stock)
-
-    # Then indices (just need bars; no dividends).
+    # Stocks first; then indices. Inter-symbol pause throttles
+    # the request rate so Yahoo doesn't 429 on every call.
+    all_to_fetch = list(universe.stocks)
     for idx in indices:
         idx_id = idx.get("id", "")
-        if not idx_id:
-            continue
-        idx_currency = Currency(idx.get("currency", "EUR"))
-        idx_stock = _index_stock(idx_id, idx_currency)
-        _fetch(idx_stock)
+        if idx_id:
+            idx_currency = Currency(idx.get("currency", "EUR"))
+            all_to_fetch.append(_index_stock(idx_id, idx_currency))
+
+    for i, instrument in enumerate(all_to_fetch):
+        _fetch(instrument)
+        if args.sleep_seconds > 0 and i < len(all_to_fetch) - 1:
+            _time.sleep(args.sleep_seconds)
 
     print(
         f"recorder: done — {ok_count} ok, {err_count} errors, "
