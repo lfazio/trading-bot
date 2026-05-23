@@ -69,14 +69,18 @@ _DEFAULT_INSTRUMENTS: dict[str, Stock] = {
         sector="tech",
         country="NL",
     ),
+    # AC.PA (Accor) is the alphabetical first of the validated
+    # CAC 40 list in data/universes/cac40.yaml. The runtime
+    # loader resolves the actual first stock at session-start
+    # time, so this is only used when the YAML can't be read.
     "cac40": Stock(
-        id=InstrumentId("AIR.PA"),
-        symbol="AIR",
+        id=InstrumentId("AC.PA"),
+        symbol="AC",
         exchange="PA",
         currency=Currency.EUR,
         cls=InstrumentClass.STOCK,
-        isin="NL0000235190",
-        sector="industrials",
+        isin="FR0000120404",
+        sector="consumer-discretionary",
         country="FR",
     ),
 }
@@ -327,7 +331,17 @@ async def post_finish(request: Request) -> RedirectResponse:
         risk_per_trade_band=(Decimal("0.01"), Decimal("0.02")),
         max_drawdown=Decimal("0.15"),
     )
-    instrument = _DEFAULT_INSTRUMENTS[state.universe]
+    # Pull the actual first instrument from the universe YAML so
+    # the wizard reflects the validated CAC 40 list (and any future
+    # universes the operator adds) without code changes. The
+    # hardcoded fallback covers the broken-YAML case.
+    from trading_system.webapp.runtimes.universe_loader import (
+        first_instrument_or_fallback,
+    )
+
+    instrument = first_instrument_or_fallback(
+        state.universe, fallback=_DEFAULT_INSTRUMENTS[state.universe]
+    )
     bar_source = _build_bar_source(
         state.bar_source, instrument=instrument, account_id=account_id
     )

@@ -297,6 +297,64 @@ def _scan_latest_cached_bar(cache: YFinanceCache, symbol: str) -> Bar | None:
 # ----------------------------------------------------------------------
 
 
+def _silence_yfinance_loggers() -> None:
+    """Suppress yfinance's chatty WARNING/ERROR loggers so a single
+    DNS failure doesn't print "Failed to get ticker ..." + the
+    pandas DataFrame's "1 Failed download:" prelude on every
+    paper-tick poll.
+
+    yfinance writes failure diagnostics through `logging`
+    (yfinance, yfinance.utils, yfinance.cache, yfinance.shared)
+    AND through `print()` to stderr in some code paths. The
+    logger silencing handles the first; the stderr capture in
+    ``_silence_yfinance_stderr`` handles the second.
+    """
+    import logging
+
+    for name in (
+        "yfinance",
+        "yfinance.cache",
+        "yfinance.shared",
+        "yfinance.utils",
+        "yfinance.ticker",
+    ):
+        lg = logging.getLogger(name)
+        lg.setLevel(logging.CRITICAL + 1)
+        lg.propagate = False
+
+
+class _silence_yfinance_stderr:
+    """Context manager that redirects stderr to /dev/null around
+    a yfinance call. yfinance occasionally bypasses its own
+    logger and writes directly to stderr (e.g., the "Failed to
+    perform" lines from the embedded curl_cffi). Capturing once
+    per call keeps the operator's terminal clean."""
+
+    def __enter__(self):
+        import os
+        import sys
+
+        self._old_stderr_fd = os.dup(2)
+        self._devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(self._devnull, 2)
+        # Also redirect Python-level sys.stderr — some yfinance
+        # codepaths print to that instead of fd 2.
+        self._old_sys_stderr = sys.stderr
+        sys.stderr = open(os.devnull, "w")  # noqa: SIM115
+        return self
+
+    def __exit__(self, *exc):
+        import os
+        import sys
+
+        sys.stderr.close()
+        sys.stderr = self._old_sys_stderr
+        os.dup2(self._old_stderr_fd, 2)
+        os.close(self._old_stderr_fd)
+        os.close(self._devnull)
+        return False  # don't suppress the exception
+
+
 def _default_bar_downloader(
     symbol: str,
     timeframe_value: str,
@@ -309,17 +367,23 @@ def _default_bar_downloader(
     pandas. It executes only when ``allow_network=True`` and a cache
     miss occurs — i.e., during the recorder script's bootstrap, not
     during normal backtests or CI.
+
+    yfinance's stderr noise is suppressed around the download call
+    so a transient network outage doesn't spam the operator's
+    terminal at the paper-tick cadence.
     """
     yf = _import_yfinance()
+    _silence_yfinance_loggers()
     try:
-        df = yf.download(
-            symbol,
-            interval=timeframe_value,
-            start=start,
-            end=end,
-            progress=False,
-            auto_adjust=False,  # REQ_F_DAT_008: keep raw Close
-        )
+        with _silence_yfinance_stderr():
+            df = yf.download(
+                symbol,
+                interval=timeframe_value,
+                start=start,
+                end=end,
+                progress=False,
+                auto_adjust=False,  # REQ_F_DAT_008: keep raw Close
+            )
     except Exception as e:
         raise TransientDownloadError(f"data:network:{e}") from e
     return df
@@ -327,9 +391,11 @@ def _default_bar_downloader(
 
 def _default_dividend_downloader(symbol: str, year: int) -> Any:
     yf = _import_yfinance()
+    _silence_yfinance_loggers()
     try:
-        ticker = yf.Ticker(symbol)
-        series = ticker.dividends
+        with _silence_yfinance_stderr():
+            ticker = yf.Ticker(symbol)
+            series = ticker.dividends
     except Exception as e:
         raise TransientDownloadError(f"data:network:{e}") from e
     if series is None or len(series) == 0:

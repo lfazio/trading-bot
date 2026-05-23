@@ -132,6 +132,11 @@
       },
       "Body_post_step2_onboarding_step2_post": {
         "properties": {
+          "bar_source": {
+            "default": "simulated",
+            "title": "Bar Source",
+            "type": "string"
+          },
           "starting_capital": {
             "title": "Starting Capital",
             "type": "string"
