@@ -70,6 +70,12 @@ class WizardState:
     starting_capital: str = "10000"
     universe: str = "eu-dividend-starter"
     strategy: str = "CoreStrategy"
+    # REQ_F_PAP_002 — bar-source selection. ``"simulated"`` runs
+    # the deterministic Gaussian-walk simulator; ``"yfinance"``
+    # wires the CR-009 adapter so the runtime trades against
+    # actual market prices (cached-only when the upstream feed is
+    # down — graceful degradation per REQ_F_PAP_002).
+    bar_source: str = "simulated"
 
     def to_json_dict(self) -> dict[str, object]:
         return {
@@ -77,6 +83,7 @@ class WizardState:
             "starting_capital": self.starting_capital,
             "universe": self.universe,
             "strategy": self.strategy,
+            "bar_source": self.bar_source,
         }
 
 
@@ -140,11 +147,15 @@ def decode_state(cookie_value: str, *, secret: bytes) -> WizardState | None:
     capital = payload.get("starting_capital", "10000")
     if not isinstance(capital, str):
         return None
+    bar_source = payload.get("bar_source", "simulated")
+    if bar_source not in ("simulated", "yfinance"):
+        bar_source = "simulated"
     return WizardState(
         step=step,
         starting_capital=capital,
         universe=universe,
         strategy=strategy,
+        bar_source=bar_source,
     )
 
 

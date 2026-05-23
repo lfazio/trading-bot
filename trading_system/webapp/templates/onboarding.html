@@ -57,6 +57,22 @@
           {% endfor %}
         </select>
       </p>
+      <p class="field">
+        <label for="bar_source">Market data source</label>
+        <select id="bar_source" name="bar_source" required>
+          <option value="simulated" {% if state.bar_source == 'simulated' %}selected{% endif %}>
+            Simulated (deterministic random walk)
+          </option>
+          <option value="yfinance" {% if state.bar_source == 'yfinance' %}selected{% endif %}>
+            Yahoo Finance (real market prices, cached fallback on outage)
+          </option>
+        </select>
+        <small>
+          The simulated source runs immediately, no network required.
+          Yahoo Finance polls the CR-009 cache; if the upstream feed is
+          down the runtime degrades to cached-only mode + a banner.
+        </small>
+      </p>
     </fieldset>
     <div class="row">
       <button type="submit" class="button">Next →</button>
@@ -97,6 +113,7 @@
         <dt>Starting capital</dt><dd>€ {{ state.starting_capital }}</dd>
         <dt>Universe</dt><dd><code>{{ state.universe }}</code></dd>
         <dt>Strategy</dt><dd><code>{{ state.strategy }}</code></dd>
+        <dt>Market data</dt><dd><code>{{ state.bar_source }}</code></dd>
       </dl>
       <p>
         Submitting starts a paper-trading session under a fresh

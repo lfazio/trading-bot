@@ -85,6 +85,27 @@ _DEFAULT_INSTRUMENTS: dict[str, Stock] = {
 router = APIRouter(prefix="/onboarding")
 
 
+def _build_bar_source(kind: str, *, instrument, account_id):  # type: ignore[no-untyped-def]
+    """Construct the requested BarSource. The yfinance path
+    delegates to the runtime-layer helper so the views layer
+    stays free of any ``trading_system.data.*`` reach
+    (structural-audit constraint)."""
+    if kind == "yfinance":
+        from trading_system.webapp.runtimes.yfinance_bar_source import (
+            build_yfinance_bar_source,
+        )
+
+        return build_yfinance_bar_source(instrument=instrument)
+
+    # Default: simulated bars.
+    return SimulatedBarSource(
+        instrument_id=instrument.id,
+        # Derive the RNG seed from the account_id so each session
+        # walks its own deterministic path.
+        seed=abs(hash(str(account_id))) % (2**31),
+    )
+
+
 def _verifier_secret(request: Request) -> bytes:
     verifier = getattr(request.app.state, "token_verifier", None)
     if verifier is None or not hasattr(verifier, "secret"):
@@ -177,6 +198,7 @@ async def post_step2(
     request: Request,
     starting_capital: str = Form(...),
     universe: str = Form(...),
+    bar_source: str = Form("simulated"),
 ) -> HTMLResponse:
     """POST /onboarding/step2 — validate step 1, advance to step 2."""
     if not is_valid_capital(starting_capital):
@@ -193,11 +215,19 @@ async def post_step2(
             error="webapp:onboarding:bad_universe",
             status_code=400,
         )
+    if bar_source not in ("simulated", "yfinance"):
+        return _render(
+            request,
+            WizardState(starting_capital=starting_capital, universe=universe),
+            error="webapp:onboarding:bad_bar_source",
+            status_code=400,
+        )
     new_state = WizardState(
         step="step2",
         starting_capital=starting_capital.strip(),
         universe=universe,
         strategy=_load_state(request).strategy,
+        bar_source=bar_source,
     )
     response = _render(request, new_state)
     _set_cookie(response, new_state, _verifier_secret(request))
@@ -223,6 +253,7 @@ async def post_step3(
         starting_capital=current.starting_capital,
         universe=current.universe,
         strategy=strategy,
+        bar_source=current.bar_source,
     )
     response = _render(request, new_state)
     _set_cookie(response, new_state, _verifier_secret(request))
@@ -297,11 +328,8 @@ async def post_finish(request: Request) -> RedirectResponse:
         max_drawdown=Decimal("0.15"),
     )
     instrument = _DEFAULT_INSTRUMENTS[state.universe]
-    bar_source = SimulatedBarSource(
-        instrument_id=instrument.id,
-        # Derive the RNG seed from the account_id so each session
-        # walks its own deterministic path.
-        seed=abs(hash(str(account_id))) % (2**31),
+    bar_source = _build_bar_source(
+        state.bar_source, instrument=instrument, account_id=account_id
     )
 
     # Build the chosen strategy instance via the runtime-layer
@@ -346,9 +374,17 @@ async def post_finish(request: Request) -> RedirectResponse:
     # Attach the simulated market-data provider so the strategy
     # step inside ``tick_once`` has bars to consult. Also set
     # the tax config so portfolio.apply has the rate.
-    runtime.market_data_provider = SimulatedMarketDataProvider(
-        source=bar_source, instrument=instrument
-    )
+    # Only the simulated source has a corresponding pure-Python
+    # MarketDataProvider wrapper. The yfinance path wires the
+    # provider directly (it already satisfies the Protocol).
+    if state.bar_source == "simulated":
+        runtime.market_data_provider = SimulatedMarketDataProvider(
+            source=bar_source, instrument=instrument
+        )
+    else:
+        runtime.market_data_provider = getattr(
+            bar_source, "_provider", None
+        )
 
     # Register against the shared registry so the dashboard
     # panel + tick driver both see the new session.
