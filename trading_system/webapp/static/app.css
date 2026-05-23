@@ -359,6 +359,48 @@ table.data td.empty {
   border: 1px solid var(--border);
 }
 
+/* Summary <dl> on the job-detail page — left-aligned label/value
+ * pairs that wrap cleanly when a value (hash, path) is long. */
+dl.summary-grid {
+  display: grid;
+  grid-template-columns: minmax(10em, max-content) 1fr;
+  gap: 0.4rem 1rem;
+  margin: 0;
+}
+dl.summary-grid dt {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  align-self: center;
+}
+dl.summary-grid dd {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.ellipsis {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+  background: var(--surface-muted);
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-sm);
+  font-family: var(--mono);
+  font-size: 0.92em;
+}
+.copy-btn {
+  padding: 0.15rem 0.5rem;
+  font-size: 0.78rem;
+}
+
 /* Mobile */
 @media (max-width: 640px) {
   header.topbar { flex-wrap: wrap; padding: 0.5rem 1rem; gap: 0.5rem; }

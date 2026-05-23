@@ -60,14 +60,26 @@
   <h2>Result</h2>
   <div id="summary-block">
     {% if job.summary %}
-      <div class="card-grid">
+      <dl class="summary-grid">
         {% for key, value in job.summary.items() %}
-        <div class="stat">
-          <span class="label">{{ key.replace('_', ' ') }}</span>
-          <span class="value mono numeric">{{ value }}</span>
-        </div>
+        <dt>{{ key.replace('_', ' ') }}</dt>
+        <dd>
+          {% if key == 'config_hash' %}
+            <code class="ellipsis" title="{{ value }}">{{ value[:12] }}…</code>
+            <button type="button"
+                    class="button secondary copy-btn"
+                    data-clipboard="{{ value }}"
+                    aria-label="Copy full config hash">Copy</button>
+          {% elif key == 'report_dir' %}
+            <code class="ellipsis" title="{{ value }}">{{ value }}</code>
+          {% elif key in ('final_equity_after_tax',) %}
+            <span class="numeric">{{ "%.2f"|format(value|float) }}</span>
+          {% else %}
+            <span class="numeric">{{ value }}</span>
+          {% endif %}
+        </dd>
         {% endfor %}
-      </div>
+      </dl>
     {% else %}
       <p class="muted">No summary yet — waiting for the worker to finish.</p>
     {% endif %}
@@ -101,25 +113,69 @@ function renderState(raw) {
   // Summary.
   if (data.summary && Object.keys(data.summary).length > 0) {
     const block = document.getElementById('summary-block');
-    const grid = document.createElement('div');
-    grid.className = 'card-grid';
+    const dl = document.createElement('dl');
+    dl.className = 'summary-grid';
+    const fmtMoney = (raw) => {
+      const n = Number(raw);
+      if (!isFinite(n)) return raw;
+      return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
     for (const [key, value] of Object.entries(data.summary)) {
-      const stat = document.createElement('div');
-      stat.className = 'stat';
-      const label = document.createElement('span');
-      label.className = 'label';
-      label.textContent = key.replace(/_/g, ' ');
-      const v = document.createElement('span');
-      v.className = 'value mono numeric';
-      v.textContent = value;
-      stat.appendChild(label);
-      stat.appendChild(v);
-      grid.appendChild(stat);
+      const dt = document.createElement('dt');
+      dt.textContent = key.replace(/_/g, ' ');
+      const dd = document.createElement('dd');
+      if (key === 'config_hash') {
+        const c = document.createElement('code');
+        c.className = 'ellipsis';
+        c.title = value;
+        c.textContent = String(value).slice(0, 12) + '…';
+        dd.appendChild(c);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'button secondary copy-btn';
+        btn.dataset.clipboard = value;
+        btn.setAttribute('aria-label', 'Copy full config hash');
+        btn.textContent = 'Copy';
+        dd.appendChild(btn);
+      } else if (key === 'report_dir') {
+        const c = document.createElement('code');
+        c.className = 'ellipsis';
+        c.title = value;
+        c.textContent = value;
+        dd.appendChild(c);
+      } else if (key === 'final_equity_after_tax') {
+        const span = document.createElement('span');
+        span.className = 'numeric';
+        span.textContent = fmtMoney(value);
+        dd.appendChild(span);
+      } else {
+        const span = document.createElement('span');
+        span.className = 'numeric';
+        span.textContent = value;
+        dd.appendChild(span);
+      }
+      dl.appendChild(dt);
+      dl.appendChild(dd);
     }
     block.innerHTML = '';
-    block.appendChild(grid);
+    block.appendChild(dl);
   }
 }
+
+// Copy-to-clipboard helper for the hash field.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.copy-btn');
+  if (!btn) return;
+  const text = btn.dataset.clipboard || '';
+  if (!text) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      const orig = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = orig; }, 1500);
+    });
+  }
+});
 
 document.addEventListener('htmx:afterSwap', (e) => {
   if (e.target && e.target.id === 'sse-state') {
