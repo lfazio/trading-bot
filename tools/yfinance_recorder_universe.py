@@ -110,6 +110,99 @@ def _parse_date(s: str) -> datetime:
     return dt
 
 
+def _probe_yahoo_reachability() -> None:
+    """Diagnostic probe: do a single yfinance.download() on AAPL
+    over the last 5 days and report what comes back.
+
+    yfinance has its own session-setup logic (cookie/crumb mint,
+    curl_cffi browser impersonation, retry); a true reachability
+    test has to go through yfinance itself, not raw urllib. The
+    probe prints a concrete diagnosis when the call fails — most
+    often a stale cookie cache or an outdated yfinance version.
+    """
+    from datetime import UTC as _UTC
+    from datetime import timedelta as _td
+
+    try:
+        import yfinance as yf  # type: ignore[import-untyped]
+    except ImportError:
+        print(
+            "ERROR: yfinance is not installed. Run "
+            "`pip install trading-bot[yfinance]` first.",
+            file=sys.stderr,
+        )
+        return
+
+    end = datetime.now(tz=_UTC)
+    start = end - _td(days=5)
+    try:
+        df = yf.download(
+            "AAPL",
+            start=start,
+            end=end,
+            interval="1d",
+            progress=False,
+            auto_adjust=False,
+        )
+    except Exception as e:  # noqa: BLE001 — diagnostic
+        print(
+            f"WARNING: yfinance.download(AAPL) raised "
+            f"{type(e).__name__}: {str(e)[:200]}",
+            file=sys.stderr,
+        )
+        _print_yfinance_remediation()
+        return
+
+    n_rows = 0
+    try:
+        n_rows = len(df) if df is not None else 0
+    except Exception:  # noqa: BLE001
+        n_rows = 0
+    if n_rows == 0:
+        print(
+            "WARNING: yfinance.download(AAPL, last 5 days) returned an "
+            "empty DataFrame. Yahoo is responding but with no bars; "
+            "yfinance's session setup likely failed silently.",
+            file=sys.stderr,
+        )
+        _print_yfinance_remediation()
+        return
+    print(
+        f"OK: yfinance.download(AAPL) returned {n_rows} bars "
+        f"({df.index[0]} .. {df.index[-1]})",
+        file=sys.stderr,
+    )
+
+
+def _print_yfinance_remediation() -> None:
+    print(
+        "Remediation steps to try (in order):",
+        file=sys.stderr,
+    )
+    print(
+        "  1. Upgrade yfinance:    pip install --upgrade yfinance",
+        file=sys.stderr,
+    )
+    print(
+        "  2. Clear yfinance cookie cache:    "
+        "rm -rf ~/.cache/py-yfinance ~/.cache/yfinance",
+        file=sys.stderr,
+    )
+    print(
+        "  3. Test directly:    python -c \"import yfinance, "
+        "datetime as dt; print(yfinance.download('AAPL', "
+        "start=dt.date.today()-dt.timedelta(days=5), "
+        "end=dt.date.today()))\"",
+        file=sys.stderr,
+    )
+    print(
+        "  4. If steps 1-3 fail, try a VPN / mobile hotspot. Some "
+        "ISPs block fc.yahoo.com without blocking ICMP, so ping "
+        "succeeds while HTTPS fails.",
+        file=sys.stderr,
+    )
+
+
 def _index_stock(index_id: str, currency: Currency) -> Stock:
     """Build a ``Stock`` for a ^FCHI-style index symbol so we can
     reuse the per-stock fetching path. ``InstrumentClass.STOCK``
@@ -152,25 +245,51 @@ def main() -> int:
         print(f"start ({start}) must be < end ({end})", file=sys.stderr)
         return 2
 
-    # Validate the date range against Yahoo's intraday-history cap
-    # so the operator gets a clear error instead of 41 silent
-    # "not_found" failures.
+    # Validate the date range against Yahoo's intraday-history cap.
+    # Yahoo Finance only ships ~7d of 1m and ~60d of 5m/15m/30m/1h
+    # bars regardless of what --start you ask for; the rest comes
+    # back as empty DataFrames which the provider categorises as
+    # data:not_found.
+    #
+    # Auto-truncate the start to the cap when the operator's range
+    # is too wide. Print a banner so they understand what
+    # happened. The end date is unchanged.
     cap_days = _INTRADAY_MAX_LOOKBACK_DAYS.get(args.timeframe)
     if cap_days is not None:
         from datetime import UTC as _UTC
+        from datetime import timedelta as _td
 
         now = datetime.now(tz=_UTC)
         lookback_days = (now - start).days
         if lookback_days > cap_days:
+            clamped_start = now - _td(days=cap_days)
             print(
-                f"ERROR: --timeframe {args.timeframe} only has the last "
+                f"NOTE: --timeframe {args.timeframe} only has the last "
                 f"~{cap_days} days of bars available from Yahoo Finance "
-                f"(your --start is {lookback_days} days back). For "
-                f"multi-year ranges use --timeframe 1d. To record the "
-                f"intraday window, set --start {(now - __import__('datetime').timedelta(days=cap_days)).date()}.",
+                f"(your --start was {lookback_days} days back). "
+                f"Clamping --start from {start.date()} to {clamped_start.date()}. "
+                f"For multi-year history use --timeframe 1d.",
                 file=sys.stderr,
             )
-            return 2
+            start = clamped_start
+
+    # Bump yfinance's documented network-retry knob so transient
+    # 429s + cookie-refresh races don't return empty DataFrames
+    # silently. The default is 2; we use 5.
+    # https://ranaroussi.github.io/yfinance/ — yf.config.network.retries
+    try:
+        import yfinance as _yf
+
+        _yf.config.network.retries = 5  # type: ignore[attr-defined]
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Probe Yahoo Finance reachability before walking the universe.
+    # yfinance needs fc.yahoo.com to mint a cookie/crumb on first
+    # use; if THAT endpoint is unreachable every fetch returns
+    # an empty DataFrame and the operator sees N silent failures.
+    # Fail fast with a concrete diagnosis instead.
+    _probe_yahoo_reachability()
 
     uni_res = load_universe(args.universe)
     if isinstance(uni_res, Err):
