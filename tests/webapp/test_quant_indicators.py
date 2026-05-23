@@ -238,6 +238,48 @@ def test_reader_emits_recent_close_series_for_dashboard_chart() -> None:
     assert snap.recent_close_series[-1] == _d("80")
 
 
+def test_reader_emits_sma_overlays_aligned_with_close_window() -> None:
+    """SMA-20 / SMA-50 series SHALL be parallel to the trimmed
+    close window: same length, None at indices that don't have
+    enough history yet."""
+    closes = [_d(str(i)) for i in range(1, 81)]
+    runtime = _FakeRuntime(closes=closes, points=[])
+    reader = RuntimePaperStateReader(
+        registry=_FakeRegistry(runtimes={_AID: runtime})
+    )
+    snap = reader.paper_state(account_id=_AID, as_of=_NOW)
+    assert len(snap.recent_sma20_series) == 60
+    assert len(snap.recent_sma50_series) == 60
+    # SMA20 needs 20 bars; with 80 closes the rolling output is
+    # defined at indices 19..79 (61 values). When trimmed to the
+    # last 60, every entry SHALL be defined.
+    assert all(v is not None for v in snap.recent_sma20_series)
+    # SMA50 needs 50 bars; defined at indices 49..79 (31 values).
+    # The trim-to-60 keeps indices 20..79 — so indices 20..48 (29
+    # positions) hold None and 49..79 (31 positions) hold values.
+    defined_sma50 = [v for v in snap.recent_sma50_series if v is not None]
+    assert len(defined_sma50) == 31
+    # SMA20 at the last position = mean of closes 61..80 = 70.5
+    assert snap.recent_sma20_series[-1] == _d("70.5")
+    # SMA50 at the last position = mean of closes 31..80 = 55.5
+    assert snap.recent_sma50_series[-1] == _d("55.5")
+
+
+def test_reader_emits_partial_sma_when_window_underfull() -> None:
+    """If the close series is shorter than the SMA window, the
+    early indices SHALL hold None rather than producing garbage."""
+    # 10 closes — not enough for SMA20 anywhere; SMA50 never
+    # defined.
+    closes = [_d(str(i)) for i in range(1, 11)]
+    runtime = _FakeRuntime(closes=closes, points=[])
+    reader = RuntimePaperStateReader(
+        registry=_FakeRegistry(runtimes={_AID: runtime})
+    )
+    snap = reader.paper_state(account_id=_AID, as_of=_NOW)
+    assert all(v is None for v in snap.recent_sma20_series)
+    assert all(v is None for v in snap.recent_sma50_series)
+
+
 def test_open_positions_carry_sparkline_and_pnl_when_bars_available() -> None:
     """Each OpenPositionView SHALL carry the recent close series +
     latest close + unrealized P&L % so the dashboard can render

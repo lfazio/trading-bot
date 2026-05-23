@@ -319,6 +319,37 @@ def _index_bars_for_runtime(  # type: ignore[no-untyped-def]
     return str(symbol), closes, timestamps
 
 
+def _rolling_sma(values: list, window: int) -> list:
+    """Return a parallel list with the rolling SMA at every index;
+    indices that don't have enough history hold ``None``."""
+    out: list = []
+    for i in range(len(values)):
+        if i + 1 < window:
+            out.append(None)
+            continue
+        head = values[i + 1 - window:i + 1]
+        out.append(sum(head, start=Decimal("0")) / Decimal(window))
+    return out
+
+
+def _volume_history_for_runtime(runtime) -> list:  # type: ignore[no-untyped-def]
+    """Pull the volume series parallel to the close series.
+
+    Returns ``[]`` when the bar source doesn't keep volume + the
+    provider can't be reached. Splices into the dashboard so the
+    chart's volume row stays aligned with the price line.
+    """
+    bar_source = getattr(runtime, "bar_source", None)
+    if bar_source is None:
+        return []
+    if hasattr(bar_source, "history"):
+        try:
+            return [b.volume for b in bar_source.history()]
+        except Exception:  # noqa: BLE001
+            return []
+    return []  # yfinance source: volume not surfaced through the bar-window helper yet
+
+
 def _bar_history_for_runtime(runtime) -> tuple[list, list]:  # type: ignore[no-untyped-def]
     """Load the bar-close window the runtime can expose. Two paths:
 
@@ -380,12 +411,24 @@ def _indicator_kwargs(runtime, history, closes, bar_timestamps) -> dict:  # type
         regime = raw.upper() if isinstance(raw, str) else str(raw)
     snap = compute_indicators(closes, equity_amounts, regime=str(regime))
     # Cap the surfaced series at the last 60 bars so the SSE
-    # payload stays bounded.
+    # payload stays bounded. Compute the SMA(20/50) overlays
+    # on the FULL close series first so the rolling means see
+    # enough history, then trim to the same 60-bar window.
     series_window = 60
+    if closes:
+        sma20_full = _rolling_sma(closes, 20)
+        sma50_full = _rolling_sma(closes, 50)
+    else:
+        sma20_full = []
+        sma50_full = []
+    volumes = _volume_history_for_runtime(runtime) if closes else []
     recent_closes = tuple(closes[-series_window:]) if closes else ()
     recent_ts = (
         tuple(bar_timestamps[-series_window:]) if bar_timestamps else ()
     )
+    recent_volumes = tuple(volumes[-series_window:]) if volumes else ()
+    recent_sma20 = tuple(sma20_full[-series_window:]) if sma20_full else ()
+    recent_sma50 = tuple(sma50_full[-series_window:]) if sma50_full else ()
     return {
         "sma_20": snap.sma_20,
         "sma_50": snap.sma_50,
@@ -397,4 +440,7 @@ def _indicator_kwargs(runtime, history, closes, bar_timestamps) -> dict:  # type
         "regime": snap.regime,
         "recent_close_series": recent_closes,
         "recent_close_timestamps": recent_ts,
+        "recent_volume_series": recent_volumes,
+        "recent_sma20_series": recent_sma20,
+        "recent_sma50_series": recent_sma50,
     }

@@ -230,6 +230,15 @@ class PaperStateResponse:
     # available yet.
     recent_close_series: tuple[Decimal, ...] = ()
     recent_close_timestamps: tuple[datetime, ...] = ()
+    # Companion series — same length as recent_close_series so
+    # the dashboard can overlay volume bars + SMA(20/50) lines on
+    # the main price chart.
+    recent_volume_series: tuple[Decimal, ...] = ()
+    # SMA windows that don't have enough history yet emit ``None``
+    # at that position so the chart can render the SMA line only
+    # where it's defined.
+    recent_sma20_series: tuple[Decimal | None, ...] = ()
+    recent_sma50_series: tuple[Decimal | None, ...] = ()
     # REQ_F_WEB2_010 follow-up — reference-index series so the
     # dashboard's main chart shows the broader market context
     # (e.g. ^FCHI for cac40, ^STOXX50E for eu-dividend-starter)

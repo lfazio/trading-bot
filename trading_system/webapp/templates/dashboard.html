@@ -269,6 +269,11 @@
   </div>
 
   <h3 style="margin-top:1.2em">Price evolution — <span data-field="paper_instrument_caption">instrument</span></h3>
+  <p class="muted" style="font-size:0.85rem; margin-top:-0.25em">
+    The runtime trades one instrument per paper session in v1 — the first stock from the universe YAML
+    (<span data-field="paper_universe_label">universe</span>). Multi-instrument support lands with the live-trading amendment;
+    until then, edit <code>data/universes/&lt;name&gt;.yaml</code> + restart to swap.
+  </p>
   <div data-field="paper_price_chart" style="width:100%; min-height:140px">
     <p class="muted">Waiting for bar history…</p>
   </div>
@@ -552,64 +557,170 @@ function renderPaperState(raw) {
   renderPositions();
   renderTrades();
 
-  // Inline SVG line chart. No external chart lib; SVG paths
-  // render natively + scale cleanly. ``unit`` is the value
-  // suffix in the caption ("€" or "" for indices); ``aria``
-  // labels the chart for assistive tech.
-  const renderLineChart = (slot, series, timestamps, { unit = "€", aria = "Recent price evolution" } = {}) => {
+  // Inline SVG chart with price line, optional SMA overlays,
+  // volume strip, gridlines + axis labels. No external chart
+  // library; everything renders via native SVG paths so it
+  // scales cleanly and works offline.
+  //
+  // opts:
+  //   unit            — value-axis suffix ("€" / "")
+  //   aria            — accessible name for the chart
+  //   sma20 / sma50   — parallel series (nullable per index)
+  //   volume          — parallel series; renders bar strip below
+  //   showAxisLabels  — when true, prints min/max + first/last
+  //                     timestamps as SVG text inside the chart
+  const renderLineChart = (slot, series, timestamps, opts = {}) => {
     if (!slot) return false;
+    const {
+      unit = '€',
+      aria = 'Recent price evolution',
+      sma20 = null,
+      sma50 = null,
+      volume = null,
+    } = opts;
     const values = (Array.isArray(series) ? series : []).map((v) => Number(v)).filter((n) => isFinite(n));
     if (values.length < 2) {
       slot.innerHTML = '<p class="muted">Waiting for bar history…</p>';
       return false;
     }
+    // Chart dimensions: 720x180 price pane on top + 36 volume
+    // strip below + 24 axis labels along the bottom.
+    const W = 720;
+    const padL = 44;
+    const padR = 12;
+    const padT = 10;
+    const priceH = 180;
+    const volH = volume && volume.length >= 2 ? 36 : 0;
+    const labelH = 24;
+    const H = padT + priceH + volH + labelH;
+    const innerW = W - padL - padR;
+    // Y-range = price min/max, padded 2 % so the line never
+    // touches the frame.
     const lo = Math.min.apply(null, values);
     const hi = Math.max.apply(null, values);
-    const range = hi - lo || 1;
-    const W = 600;
-    const H = 140;
-    const padX = 10;
-    const padY = 10;
-    const stepX = (W - 2 * padX) / (values.length - 1);
-    const points = values.map((v, i) => {
-      const x = padX + i * stepX;
-      const y = H - padY - ((v - lo) / range) * (H - 2 * padY);
-      return [x, y];
-    });
-    const path = points.map(([x, y], i) => `${i === 0 ? 'M' : 'L'} ${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
-    const [lastX, lastY] = points[points.length - 1];
+    const span = hi - lo || 1;
+    const yLo = lo - span * 0.02;
+    const yHi = hi + span * 0.02;
+    const yRange = yHi - yLo;
+    const stepX = innerW / (values.length - 1);
+    const xAt = (i) => padL + i * stepX;
+    const yAt = (v) => padT + priceH - ((v - yLo) / yRange) * priceH;
+
+    const pricePoints = values.map((v, i) => [xAt(i), yAt(v)]);
+    const pricePath = pricePoints.map(([x, y], i) => `${i === 0 ? 'M' : 'L'} ${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
+    const [lastX, lastY] = pricePoints[pricePoints.length - 1];
+
+    // 4 horizontal gridlines (5 segments) — log-friendly even
+    // for tight ranges.
+    let grid = '';
+    let yAxisLabels = '';
+    const fmtAxis = (v) => (Math.abs(v) >= 1000 ? v.toFixed(0) : v.toFixed(2));
+    for (let i = 0; i <= 4; i++) {
+      const y = padT + (priceH / 4) * i;
+      grid += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="2,3"></line>`;
+      const v = yHi - (yRange / 4) * i;
+      yAxisLabels += `<text x="${padL - 6}" y="${y + 3}" text-anchor="end" font-size="9" fill="var(--text-muted)">${unit ? unit + ' ' : ''}${fmtAxis(v)}</text>`;
+    }
+
+    // SMA-20 / SMA-50 overlays (nullable per index).
+    const overlayPath = (arr, color, label) => {
+      if (!Array.isArray(arr) || arr.length < 2) return '';
+      let started = false;
+      const parts = [];
+      for (let i = 0; i < arr.length; i++) {
+        const raw = arr[i];
+        if (raw === null || raw === undefined || raw === '') continue;
+        const n = Number(raw);
+        if (!isFinite(n)) continue;
+        const x = xAt(i);
+        const y = yAt(n);
+        parts.push(`${started ? 'L' : 'M'} ${x.toFixed(2)},${y.toFixed(2)}`);
+        started = true;
+      }
+      if (parts.length < 2) return '';
+      return `<path d="${parts.join(' ')}" fill="none" stroke="${color}" stroke-width="1.2" stroke-dasharray="${label === 'SMA20' ? '4,2' : '6,3'}" opacity="0.8"></path>`;
+    };
+    const sma20Path = overlayPath(sma20, 'var(--accent)', 'SMA20');
+    const sma50Path = overlayPath(sma50, 'var(--text-muted)', 'SMA50');
+
+    // Tone of the price line: green when last >= first, red otherwise.
     const firstVal = values[0];
     const lastVal = values[values.length - 1];
     const pctDelta = ((lastVal - firstVal) / firstVal) * 100;
     const tone = pctDelta >= 0 ? 'var(--success)' : 'var(--error)';
-    const firstTs = (timestamps && timestamps[0]) || '';
-    const lastTs = (timestamps && timestamps[timestamps.length - 1]) || '';
-    const fmt = (ts) => (ts ? ts.replace('T', ' ').slice(0, 19) : '');
-    const u = unit ? unit + ' ' : '';
+
+    // Volume strip — light gray vertical bars under the price pane.
+    let volBars = '';
+    let volLabel = '';
+    if (volume && volume.length >= 2) {
+      const vols = volume.map((v) => Number(v) || 0);
+      const vmax = Math.max.apply(null, vols) || 1;
+      const volY0 = padT + priceH + 4;
+      const volBarW = Math.max(1, stepX * 0.7);
+      for (let i = 0; i < vols.length; i++) {
+        const v = vols[i];
+        if (v <= 0) continue;
+        const h = (v / vmax) * (volH - 8);
+        const x = xAt(i) - volBarW / 2;
+        const y = volY0 + (volH - 8) - h;
+        volBars += `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${volBarW.toFixed(2)}" height="${h.toFixed(2)}" fill="var(--text-muted)" opacity="0.55"></rect>`;
+      }
+      volLabel = `<text x="${padL - 6}" y="${volY0 + (volH - 8) / 2}" text-anchor="end" font-size="9" fill="var(--text-muted)">vol</text>`;
+    }
+
+    // Bottom-axis date labels — earliest left, latest right.
+    const fmt = (ts) => (ts ? ts.replace('T', ' ').slice(0, 10) : '');
+    const firstTs = fmt((timestamps && timestamps[0]) || '');
+    const lastTs = fmt((timestamps && timestamps[timestamps.length - 1]) || '');
+    const labelY = padT + priceH + volH + 14;
+    const xAxisLabels =
+      `<text x="${padL}" y="${labelY}" font-size="9" fill="var(--text-muted)">${firstTs}</text>` +
+      `<text x="${W - padR}" y="${labelY}" text-anchor="end" font-size="9" fill="var(--text-muted)">${lastTs}</text>`;
+
+    // Legend (top-left of the chart).
+    let legend = `<text x="${padL + 4}" y="${padT + 12}" font-size="10" fill="${tone}" font-weight="600">price</text>`;
+    if (sma20Path) legend += `<text x="${padL + 50}" y="${padT + 12}" font-size="10" fill="var(--accent)">SMA20</text>`;
+    if (sma50Path) legend += `<text x="${padL + 92}" y="${padT + 12}" font-size="10" fill="var(--text-muted)">SMA50</text>`;
+
     slot.innerHTML =
       `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${aria}" style="width:100%; height:auto; background:var(--surface-muted); border:1px solid var(--border); border-radius:var(--radius-sm)">` +
-        `<path d="${path}" fill="none" stroke="${tone}" stroke-width="1.6"></path>` +
+        grid +
+        yAxisLabels +
+        volLabel +
+        volBars +
+        xAxisLabels +
+        sma50Path +
+        sma20Path +
+        `<path d="${pricePath}" fill="none" stroke="${tone}" stroke-width="1.6"></path>` +
         `<circle cx="${lastX.toFixed(2)}" cy="${lastY.toFixed(2)}" r="3" fill="${tone}"></circle>` +
+        legend +
       `</svg>` +
       `<p class="muted" style="font-size:0.85rem; margin-top:0.25em">` +
         `${values.length} bars · ` +
-        `low <code>${u}${lo.toFixed(2)}</code> · ` +
-        `high <code>${u}${hi.toFixed(2)}</code> · ` +
+        `low <code>${unit ? unit + ' ' : ''}${lo.toFixed(2)}</code> · ` +
+        `high <code>${unit ? unit + ' ' : ''}${hi.toFixed(2)}</code> · ` +
         `<span style="color:${tone}">${pctDelta >= 0 ? '↗' : '↘'} ${pctDelta.toFixed(2)} %</span>` +
-        `<br><span style="font-size:0.78rem">latest <code>${fmt(lastTs)}</code> · earliest <code>${fmt(firstTs)}</code></span>` +
       `</p>`;
     return true;
   };
 
   // Instrument chart — uses the runtime's primary instrument
-  // (the strategy targets it).
+  // (the strategy targets it). Overlays SMA-20 + SMA-50 + a
+  // volume strip when the series are available.
   const instrCaption = document.querySelector('[data-field="paper_instrument_caption"]');
   if (instrCaption) instrCaption.textContent = data.instrument_symbol || 'instrument';
+  const uniLabel = document.querySelector('[data-field="paper_universe_label"]');
+  if (uniLabel) uniLabel.textContent = data.universe || 'universe';
   renderLineChart(
     document.querySelector('[data-field="paper_price_chart"]'),
     data.recent_close_series,
     data.recent_close_timestamps,
-    { aria: 'Instrument price evolution' }
+    {
+      aria: 'Instrument price evolution',
+      sma20: data.recent_sma20_series,
+      sma50: data.recent_sma50_series,
+      volume: data.recent_volume_series,
+    }
   );
 
   // Reference-index chart — REQ_F_WEB2_010. Empty when the
