@@ -365,3 +365,20 @@ table.data td.empty {
   header.topbar nav { order: 3; width: 100%; }
   main.page { padding: 0 1rem; margin: 1rem auto; }
 }
+
+/* REQ_NF_WEB2_004 + REQ_SDD_WEB2_008 — prefers-reduced-motion.
+ * Operators who set the OS-level accessibility preference get
+ * instant state changes instead of the 120 ms transitions used
+ * elsewhere. The SSE channels (live-state, paper-state) are
+ * already event-driven (EventSource, not polling), so no
+ * fallback wiring is needed — only the CSS animation-suppression
+ * block.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

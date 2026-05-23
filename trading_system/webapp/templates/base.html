@@ -27,5 +27,92 @@
   </header>
   {% endif %}
   <main class="page">{% block content %}{% endblock %}</main>
+
+  <!--
+    REQ_SDD_WEB2_007 — focus-trap helper for modal dialogs.
+    ~30 LOC, no library. Activates on any element with
+    role="dialog" + aria-modal="true". Tab forward from the
+    last focusable element wraps to the first; Shift-Tab from
+    the first wraps to the last. Esc focuses the trigger and
+    closes the dialog when the dialog declares
+    data-close-on-esc.
+
+    Mounted on DOMContentLoaded for static markup + via a
+    MutationObserver so future HTMX swaps that insert a fresh
+    dialog re-arm the trap automatically.
+  -->
+  <script>
+  (function() {
+    const FOCUSABLE = [
+      'a[href]', 'area[href]', 'button:not([disabled])',
+      'input:not([disabled]):not([type="hidden"])',
+      'select:not([disabled])', 'textarea:not([disabled])',
+      '[tabindex]:not([tabindex="-1"])',
+    ].join(',');
+
+    function focusableWithin(dialog) {
+      return Array.from(dialog.querySelectorAll(FOCUSABLE))
+        .filter((el) => !el.hasAttribute('disabled') && el.offsetParent !== null);
+    }
+
+    function trapFocus(dialog) {
+      if (dialog.dataset.focusTrapArmed === 'true') return;
+      dialog.dataset.focusTrapArmed = 'true';
+      const handler = (e) => {
+        if (e.key === 'Escape' && dialog.dataset.closeOnEsc === 'true') {
+          // The dialog's trigger element carries data-trigger-id
+          // pointing back to its opener; focus returns there on
+          // close. Falls back to <body> if no trigger is set.
+          const trigger = document.querySelector(
+            '[data-opens-dialog="' + dialog.id + '"]'
+          );
+          if (trigger && trigger.focus) trigger.focus();
+          return;
+        }
+        if (e.key !== 'Tab') return;
+        const focusables = focusableWithin(dialog);
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      };
+      dialog.addEventListener('keydown', handler);
+      // First focus lands inside the dialog so keyboard users
+      // start within the trap.
+      const initial = focusableWithin(dialog)[0];
+      if (initial && typeof initial.focus === 'function') {
+        // Wait for layout so :focus styles apply correctly.
+        setTimeout(() => initial.focus(), 0);
+      }
+    }
+
+    function armAllDialogs(root) {
+      const scope = root || document;
+      scope
+        .querySelectorAll('[role="dialog"][aria-modal="true"]')
+        .forEach(trapFocus);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => armAllDialogs());
+
+    // Re-arm whenever HTMX (or any other script) inserts a fresh
+    // dialog into the DOM. Cheap — the trapFocus() guard skips
+    // already-armed dialogs.
+    const observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const node of m.addedNodes) {
+          if (node.nodeType === 1) armAllDialogs(node);
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  })();
+  </script>
 </body>
 </html>

@@ -7,7 +7,8 @@
          aria-modal="true"
          aria-labelledby="onboarding-heading"
          tabindex="-1"
-         id="onboarding-dialog">
+         id="onboarding-dialog"
+         data-close-on-esc="true">
   <h1 id="onboarding-heading">Set up your paper-trading session</h1>
   <ol class="wizard-steps" aria-label="Wizard progress">
     <li class="{% if step == 'step1' %}current{% elif step in ['step2','step3','finished'] %}done{% endif %}">
