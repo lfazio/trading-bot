@@ -79,6 +79,23 @@ def get_dashboard(request: Request):
     mode_raw = request.query_params.get("mode", "paper").strip().lower()
     if mode_raw not in ("paper", "backtest", "live"):
         mode_raw = "paper"
+    # REQ_F_WEB2_008 — household-drawdown indicator + per-account
+    # equity roll-up. Computed only when ≥ 2 live sessions exist
+    # so single-account dashboards stay byte-identical.
+    household = None
+    paper_reader = getattr(request.app.state, "paper_state_reader", None)
+    if (
+        registry is not None
+        and paper_reader is not None
+        and len(live_paper_sessions) >= 2
+    ):
+        from datetime import UTC, datetime
+
+        from trading_system.webapp.household import household_snapshot
+
+        household = household_snapshot(
+            registry, paper_reader, as_of=datetime.now(tz=UTC)
+        )
     return _templates(request).TemplateResponse(
         request=request,
         name="dashboard.html",
@@ -86,5 +103,6 @@ def get_dashboard(request: Request):
             "account_id": account_id,
             "live_paper_sessions": live_paper_sessions,
             "active_mode": mode_raw,
+            "household": household,
         },
     )

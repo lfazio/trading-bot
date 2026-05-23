@@ -46,18 +46,99 @@
 </nav>
 
 {% if live_paper_sessions %}
-<form method="get" action="/" class="row" style="margin-bottom:1em">
-  <label for="session-switch">Active paper session:</label>
-  <select name="account_id" id="session-switch" onchange="this.form.submit()">
-    {% for sid in live_paper_sessions %}
-    <option value="{{ sid }}" {% if account_id == sid %}selected{% endif %}>{{ sid }}</option>
-    {% endfor %}
-    {% if account_id not in live_paper_sessions %}
-    <option value="{{ account_id }}" selected>{{ account_id }} (no live session)</option>
-    {% endif %}
-  </select>
-  <noscript><button type="submit">Switch</button></noscript>
-</form>
+<section class="card"
+         aria-labelledby="account-switcher-heading">
+  <h2 id="account-switcher-heading">Account switcher</h2>
+  <form method="get" action="/" class="row" style="margin-bottom:0.5em">
+    <label for="session-switch">Active paper session:</label>
+    <select name="account_id" id="session-switch" onchange="this.form.submit()"
+            aria-label="Active paper session">
+      {% for sid in live_paper_sessions %}
+      <option value="{{ sid }}" {% if account_id == sid %}selected{% endif %}>{{ sid }}</option>
+      {% endfor %}
+      {% if account_id not in live_paper_sessions %}
+      <option value="{{ account_id }}" selected>{{ account_id }} (no live session)</option>
+      {% endif %}
+    </select>
+    <noscript><button type="submit">Switch</button></noscript>
+  </form>
+
+  {% if household %}
+  <!-- REQ_F_WEB2_008 — household-drawdown indicator + per-account
+       equity roll-up surface when ≥ 2 paper sessions are live. -->
+  <h3 style="margin-top:1em">Household roll-up</h3>
+  <p class="subhead">
+    {{ household.account_count }} live paper session{% if household.account_count != 1 %}s{% endif %}.
+  </p>
+  <div class="card-grid">
+    <div class="stat">
+      <span class="label">Total equity (after tax)</span>
+      <span class="value numeric" data-field="household_total">
+        {% if household.total_equity_after_tax is not none %}€ {{ "%.2f"|format(household.total_equity_after_tax) }}{% else %}—{% endif %}
+      </span>
+    </div>
+    <div class="stat">
+      <span class="label">Worst drawdown</span>
+      <span class="value numeric" data-field="household_dd">
+        {% if household.max_drawdown_pct is not none %}
+          {% set tone = 'error' if household.max_drawdown_pct >= 15 else 'warn' if household.max_drawdown_pct >= 5 else 'success' %}
+          <span class="badge {{ tone }}"
+                aria-label="Household worst drawdown {{ household.max_drawdown_pct }} percent">
+            {{ "%.2f"|format(household.max_drawdown_pct) }} %
+          </span>
+        {% else %}
+          —
+        {% endif %}
+      </span>
+    </div>
+    <div class="stat">
+      <span class="label">Accounts live</span>
+      <span class="value numeric" data-field="household_count">
+        {{ household.account_count }}
+      </span>
+    </div>
+  </div>
+
+  <h3 style="margin-top:1em">Per-account</h3>
+  <table class="data" style="width:100%">
+    <thead>
+      <tr>
+        <th>Account</th>
+        <th>Instrument</th>
+        <th class="right">Equity (after tax)</th>
+        <th class="right">Drawdown</th>
+        <th>State</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in household.accounts %}
+      <tr>
+        <td>
+          <a href="/?account_id={{ a.account_id|urlencode }}"
+             title="Switch to {{ a.account_id }}">
+            <code>{{ a.account_id }}</code>
+          </a>
+        </td>
+        <td><code>{{ a.instrument_symbol or '—' }}</code></td>
+        <td class="right">
+          {% if a.equity_after_tax is not none %}€ {{ "%.2f"|format(a.equity_after_tax) }}{% else %}—{% endif %}
+        </td>
+        <td class="right">
+          {% if a.drawdown_pct is not none %}{{ "%.2f"|format(a.drawdown_pct) }} %{% else %}—{% endif %}
+        </td>
+        <td>
+          {% if a.is_alive %}
+          <span class="badge success" aria-label="Account state Live">Live</span>
+          {% else %}
+          <span class="badge info" aria-label="Account state Stopped">Stopped</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
 {% endif %}
 
 <section class="card"
