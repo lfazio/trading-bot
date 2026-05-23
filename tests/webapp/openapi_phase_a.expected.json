@@ -84,6 +84,52 @@
         "title": "Body_jobs_submit_jobs_submit_post",
         "type": "object"
       },
+      "Body_operator_recovery_submit_operator_recovery_post": {
+        "properties": {
+          "backtests_stable": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backtests Stable"
+          },
+          "drawdown_recovered": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drawdown Recovered"
+          },
+          "integrity_restored": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Integrity Restored"
+          },
+          "operator_token": {
+            "title": "Operator Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operator_token"
+        ],
+        "title": "Body_operator_recovery_submit_operator_recovery_post",
+        "type": "object"
+      },
       "Body_post_step2_onboarding_step2_post": {
         "properties": {
           "starting_capital": {
@@ -865,6 +911,61 @@
           }
         },
         "summary": "Post Step3"
+      }
+    },
+    "/operator/recovery": {
+      "get": {
+        "description": "Render the wizard or the informational page based on state.",
+        "operationId": "operator_recovery_operator_recovery_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Operator-Recovery"
+      },
+      "post": {
+        "operationId": "operator_recovery_submit_operator_recovery_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_operator_recovery_submit_operator_recovery_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Operator-Recovery-Submit"
       }
     },
     "/paper-sessions/{account_id}/stop": {

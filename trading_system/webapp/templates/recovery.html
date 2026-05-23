@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% set active_nav = 'operator' %}
+{% block title %}Kill-switch recovery &mdash; trading-bot{% endblock %}
+{% block content %}
+<h1>Kill-switch recovery</h1>
+
+{% set _tones = {'ACTIVE':'success', 'DEGRADED':'warn', 'KILL':'error'} %}
+<p class="subhead">
+  Current state:
+  <span class="badge {{ _tones.get(ks_state, 'info') }}"
+        aria-label="Kill-switch state {{ ks_state }}">{{ ks_state }}</span>
+  {% if last_trigger %}
+  · last trigger: <code>{{ last_trigger }}</code>
+  {% endif %}
+</p>
+
+{% if error %}
+<div class="alert error" role="alert">
+  <p>
+  {% if error == 'safety:recovery_conditions_unmet' %}
+    Every recovery condition must be confirmed before submitting.
+    Check each box below.
+  {% elif error == 'safety:invalid_operator_token' %}
+    Operator token is invalid or expired. Issue a fresh token and
+    paste it below.
+  {% elif error == 'safety:no_recovery_needed' %}
+    Kill switch is already <code>ACTIVE</code>; no recovery needed.
+  {% elif error == 'safety:no_recovery_gate_wired' %}
+    No recovery gate wired in this deployment. Attach a
+    <code>RecoveryGate</code> to <code>app.state.recovery_gate</code>
+    and reboot the webapp.
+  {% else %}
+    {{ error }}
+  {% endif %}
+  </p>
+  <!-- Categorised error code, surfaced for tooling + tests. -->
+  <p class="muted" style="margin-top:0.25em; font-size:0.85rem">
+    Error code: <code>{{ error }}</code>
+  </p>
+</div>
+{% endif %}
+
+{% if ks_state == 'ACTIVE' %}
+<section class="card">
+  <h2>No recovery needed</h2>
+  <p>
+    The kill switch is in the <strong>ACTIVE</strong> state — the trading
+    loop is running normally. This page becomes interactive when a
+    <code>KILL</code> trigger fires.
+  </p>
+  <p class="muted">
+    Recovery requires three documented conditions per <code>REQ_S_KS_009</code>:
+    drawdown recovered, system integrity restored, and the most-recent
+    backtests are stable. An operator-issued HMAC token authenticates the
+    operator's intent.
+  </p>
+</section>
+
+{% else %}
+<section class="card"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="recovery-heading"
+         tabindex="-1"
+         id="recovery-dialog"
+         data-close-on-esc="true">
+  <h2 id="recovery-heading">Confirm recovery conditions</h2>
+  <p>
+    All three conditions below must hold and you must paste a fresh
+    operator-token before the system clears the kill switch.
+  </p>
+
+  <form method="post" action="/operator/recovery" id="recovery-form">
+    <ol class="recovery-conditions">
+      <li class="field">
+        <label>
+          <input type="checkbox" name="drawdown_recovered" value="on"
+                 data-recovery-checkbox required>
+          <strong>Drawdown recovered</strong> — current max-drawdown is below
+          the configured re-entry threshold (per <code>REQ_S_KS_009</code>).
+        </label>
+      </li>
+      <li class="field">
+        <label>
+          <input type="checkbox" name="integrity_restored" value="on"
+                 data-recovery-checkbox required>
+          <strong>System integrity restored</strong> — no data-feed outages,
+          adapter health checks green, no pending broker reconciliations.
+        </label>
+      </li>
+      <li class="field">
+        <label>
+          <input type="checkbox" name="backtests_stable" value="on"
+                 data-recovery-checkbox required>
+          <strong>Backtests stable</strong> — the most-recent walk-forward
+          run cleared all gates without out-of-sample collapse.
+        </label>
+      </li>
+    </ol>
+
+    <div class="field">
+      <label for="operator_token">Operator token</label>
+      <input type="password" id="operator_token" name="operator_token"
+             autocomplete="off" required
+             placeholder="Paste the HMAC-signed token issued by tools/issue_operator_token.py">
+      <small class="hint">Tokens expire after ~5 minutes; issue a fresh one if needed.</small>
+    </div>
+
+    <div class="row">
+      <button type="submit" id="recovery-submit" disabled>
+        Submit recovery
+      </button>
+      <a href="/" class="button secondary">Cancel</a>
+    </div>
+  </form>
+</section>
+
+<script>
+// REQ_F_WEB2_007 — DOM-disabled submit until every checkbox is set.
+// The server-side handler ALSO enforces this; the JS is purely
+// for UX (the operator sees the button activate as they tick).
+(function() {
+  document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('recovery-form');
+    const submit = document.getElementById('recovery-submit');
+    if (!form || !submit) return;
+    const boxes = form.querySelectorAll('input[data-recovery-checkbox]');
+    const token = form.querySelector('input[name="operator_token"]');
+    const update = () => {
+      const allBoxesChecked = Array.from(boxes).every((b) => b.checked);
+      const hasToken = token && token.value.trim() !== '';
+      submit.disabled = !(allBoxesChecked && hasToken);
+    };
+    boxes.forEach((b) => b.addEventListener('change', update));
+    if (token) token.addEventListener('input', update);
+    update();
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}
