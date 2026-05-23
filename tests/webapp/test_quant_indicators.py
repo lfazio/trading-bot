@@ -220,6 +220,24 @@ def test_reader_populates_quant_fields_when_history_available() -> None:
     assert snap.sharpe_ratio is not None
 
 
+def test_reader_emits_recent_close_series_for_dashboard_chart() -> None:
+    """REQ_F_WEB2_010 follow-up — the SSE payload SHALL carry the
+    recent close series + timestamps so the dashboard can render
+    an inline sparkline. Capped at 60 bars."""
+    # 80 bars — the reader SHALL trim to the last 60.
+    closes = [_d(str(i)) for i in range(1, 81)]
+    runtime = _FakeRuntime(closes=closes, points=[])
+    reader = RuntimePaperStateReader(
+        registry=_FakeRegistry(runtimes={_AID: runtime})
+    )
+    snap = reader.paper_state(account_id=_AID, as_of=_NOW)
+    assert len(snap.recent_close_series) == 60
+    assert len(snap.recent_close_timestamps) == 60
+    # The trimmed window keeps the LAST 60 bars (so closes 21..80).
+    assert snap.recent_close_series[0] == _d("21")
+    assert snap.recent_close_series[-1] == _d("80")
+
+
 def test_reader_returns_n_a_indicators_when_no_session() -> None:
     """No registered runtime SHALL still produce a valid snapshot
     with the documented sentinels — the dashboard panel renders

@@ -316,21 +316,14 @@ async def post_finish(request: Request) -> RedirectResponse:
         started_at=datetime.now(tz=UTC),
     )
 
-    # v1: hand-rolled minimal PhaseConstraints — the wizard
-    # doesn't yet ask the operator about phase; Phase 1 defaults
-    # work for any starting capital up to 3 000 € and stay safe
-    # above that until the phase_engine wiring lands.
-    constraints = PhaseConstraints(
-        max_positions=3,
-        max_trades_per_month=4,
-        allocation_targets={
-            AllocationBucket.STOCK: Decimal("0.90"),
-            AllocationBucket.TACTICAL: Decimal("0.10"),
-        },
-        turbo_exposure_max=Decimal("0"),
-        risk_per_trade_band=(Decimal("0.01"), Decimal("0.02")),
-        max_drawdown=Decimal("0.15"),
+    # Derive the natural phase from the starting capital + load
+    # the matching constraints from config/phases.yaml. Defaults
+    # to the Phase-1 fallback when the loader fails.
+    from trading_system.webapp.runtimes.phase_loader import (
+        phase_constraints_for_capital,
     )
+
+    constraints = phase_constraints_for_capital(capital_amount)
     # Pull the actual first instrument from the universe YAML so
     # the wizard reflects the validated CAC 40 list (and any future
     # universes the operator adds) without code changes. The

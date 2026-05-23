@@ -65,6 +65,11 @@ _RUNTIMES_ALLOWED_EXTRA_PREFIXES = (
     # live strategy step needs ``ScoredStock`` + ``ScoreBreakdown``
     # (pure dataclasses, no decisioning logic).
     "trading_system.screener",
+    # Phase-engine YAML loader — the wizard's finish handler reads
+    # config/phases.yaml to pick the natural phase for the
+    # operator's starting capital. Pure data; no decisioning.
+    "trading_system.phase_engine",
+    "trading_system.config",
 )
 
 

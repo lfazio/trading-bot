@@ -252,11 +252,30 @@ def _indicator_kwargs(runtime, history) -> dict:  # type: ignore[no-untyped-def]
     """
     bar_source = getattr(runtime, "bar_source", None)
     closes: list = []
+    bar_timestamps: list = []
     if bar_source is not None and hasattr(bar_source, "history"):
         try:
-            closes = [b.close for b in bar_source.history()]
+            bar_history = bar_source.history()
+            closes = [b.close for b in bar_history]
+            bar_timestamps = [b.at for b in bar_history]
         except Exception:  # noqa: BLE001
             closes = []
+            bar_timestamps = []
+    # The yfinance source doesn't keep a full history (just the
+    # last emitted bar); pull a window via the runtime-layer
+    # helper that wraps the provider's ``bars()`` Protocol call.
+    elif bar_source is not None and hasattr(bar_source, "_provider"):
+        from trading_system.webapp.runtimes.provider_bar_window import (
+            fetch_recent_close_window,
+        )
+
+        instrument = getattr(runtime, "instrument", None)
+        if instrument is not None:
+            closes, bar_timestamps = fetch_recent_close_window(
+                bar_source._provider,  # noqa: SLF001
+                instrument,
+                days=120,
+            )
     equity_amounts = [p.equity_after_tax.amount for p in history] if history else []
     regime = "n/a"
     rgm = getattr(runtime, "regime", None)
@@ -267,6 +286,13 @@ def _indicator_kwargs(runtime, history) -> dict:  # type: ignore[no-untyped-def]
         raw = getattr(rgm, "value", str(rgm))
         regime = raw.upper() if isinstance(raw, str) else str(raw)
     snap = compute_indicators(closes, equity_amounts, regime=str(regime))
+    # Cap the surfaced series at the last 60 bars so the SSE
+    # payload stays bounded.
+    series_window = 60
+    recent_closes = tuple(closes[-series_window:]) if closes else ()
+    recent_ts = (
+        tuple(bar_timestamps[-series_window:]) if bar_timestamps else ()
+    )
     return {
         "sma_20": snap.sma_20,
         "sma_50": snap.sma_50,
@@ -276,4 +302,6 @@ def _indicator_kwargs(runtime, history) -> dict:  # type: ignore[no-untyped-def]
         "sharpe_ratio": snap.sharpe_ratio,
         "trend_signal": snap.trend_signal,
         "regime": snap.regime,
+        "recent_close_series": recent_closes,
+        "recent_close_timestamps": recent_ts,
     }

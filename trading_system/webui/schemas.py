@@ -214,6 +214,13 @@ class PaperStateResponse:
     sharpe_ratio: Decimal | None = None
     trend_signal: str = "n/a"
     regime: str = "n/a"
+    # REQ_F_WEB2_010 follow-up — recent close prices (last ~60
+    # bars) for the runtime's primary instrument. Surfaced as
+    # parallel arrays so the dashboard can render an inline
+    # sparkline without re-fetching. Empty when no bars are
+    # available yet.
+    recent_close_series: tuple[Decimal, ...] = ()
+    recent_close_timestamps: tuple[datetime, ...] = ()
 
     def __post_init__(self) -> None:
         if not str(self.account_id).strip():

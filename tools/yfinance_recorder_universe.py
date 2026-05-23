@@ -1,0 +1,222 @@
+#!/usr/bin/env python3
+"""Bulk-cache a whole universe (plus its indices) from Yahoo Finance.
+
+Loops over every stock in ``data/universes/<name>.yaml`` + the
+declared ``indices:`` (e.g., ^FCHI for cac40) and persists daily
+bars into the ``YFinanceCache``. Run once per refresh window; the
+paper-trading runtime reads from the cache afterwards.
+
+Usage::
+
+    python tools/yfinance_recorder_universe.py \\
+        --universe cac40 \\
+        --start 2025-01-01 \\
+        --end   2026-05-23 \\
+        --cache-root var/yfinance-cache
+
+The default cache root matches what the wizard's ``yfinance`` bar
+source uses (``TRADING_BOT_YFINANCE_CACHE`` env var, fallback
+``var/yfinance-cache``).
+
+REQ refs: REQ_F_DAT_002, REQ_F_DAT_004 (cache as system of
+record), REQ_NF_DAT_001 (replay determinism).
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+
+from trading_system.data.types import Timeframe
+from trading_system.data.universes import load_universe
+from trading_system.data.yfinance import YFinanceCache, YFinanceMarketDataProvider
+from trading_system.models.identifiers import InstrumentId
+from trading_system.models.instrument import InstrumentClass, Stock
+from trading_system.models.money import Currency
+from trading_system.result import Err, Ok
+
+
+def _parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description=(
+            "Bulk-cache a universe's bars from Yahoo Finance "
+            "(operator-run; populates YFinanceCache)."
+        )
+    )
+    p.add_argument("--universe", required=True, help="Universe name (e.g., cac40)")
+    p.add_argument(
+        "--start",
+        required=True,
+        help="ISO-8601 date (e.g., 2025-01-01)",
+    )
+    p.add_argument(
+        "--end",
+        default=datetime.now(tz=UTC).date().isoformat(),
+        help="ISO-8601 date (default: today)",
+    )
+    p.add_argument(
+        "--timeframe",
+        default="1d",
+        choices=[t.value for t in Timeframe],
+        help="Bar resolution (default: 1d)",
+    )
+    p.add_argument(
+        "--cache-root",
+        type=Path,
+        default=Path("var") / "yfinance-cache",
+        help="Cache directory (default: var/yfinance-cache)",
+    )
+    p.add_argument(
+        "--include-dividends",
+        action="store_true",
+        help="Also fetch dividend events for every stock",
+    )
+    p.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="Skip symbols whose cache key already has bars",
+    )
+    return p.parse_args()
+
+
+def _parse_date(s: str) -> datetime:
+    dt = datetime.fromisoformat(s) if "T" in s else datetime.fromisoformat(s + "T00:00:00")
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt
+
+
+def _index_stock(index_id: str, currency: Currency) -> Stock:
+    """Build a ``Stock`` for a ^FCHI-style index symbol so we can
+    reuse the per-stock fetching path. ``InstrumentClass.STOCK``
+    is a structural approximation — yfinance treats indices the
+    same as stocks for ``download()`` purposes."""
+    # Strip the leading caret for the domain id (NewType is just
+    # a string); keep it for yahoo_symbol_for via the symbol field.
+    domain_id = index_id.lstrip("^")
+    return Stock(
+        id=InstrumentId(index_id),
+        symbol=index_id,
+        exchange="INDEX",  # synthetic; yahoo_symbol_for has caret-handling
+        currency=currency,
+        cls=InstrumentClass.STOCK,
+        isin=f"INDEX_{domain_id}",
+        sector="index",
+        country="FR",
+    )
+
+
+def main() -> int:
+    args = _parse_args()
+    start = _parse_date(args.start)
+    end = _parse_date(args.end)
+    if start >= end:
+        print(f"start ({start}) must be < end ({end})", file=sys.stderr)
+        return 2
+
+    uni_res = load_universe(args.universe)
+    if isinstance(uni_res, Err):
+        print(f"universe load failed: {uni_res.error}", file=sys.stderr)
+        return 2
+    universe = uni_res.value
+    print(
+        f"recorder: universe {universe.name!r} "
+        f"({len(universe.stocks)} stocks)",
+        file=sys.stderr,
+    )
+
+    cache = YFinanceCache(root=args.cache_root)
+    # The universe loader ignores the YAML's ``indices:`` key; we
+    # re-read the file to grab them.
+    import yaml as _yaml
+
+    universe_root = Path(__file__).resolve().parent.parent / "data" / "universes"
+    raw = _yaml.safe_load(
+        (universe_root / f"{args.universe}.yaml").read_text(encoding="utf-8")
+    )
+    indices = raw.get("indices", []) or []
+
+    timeframe = Timeframe(args.timeframe)
+    args.cache_root.mkdir(parents=True, exist_ok=True)
+
+    # One provider per currency keeps the cache-key + currency
+    # invariants consistent. CAC 40 is EUR throughout.
+    eur_provider = YFinanceMarketDataProvider(
+        cache=cache,
+        currency=Currency.EUR,
+        allow_network=True,
+    )
+
+    ok_count = 0
+    err_count = 0
+    skipped = 0
+
+    def _fetch(instrument: Stock) -> bool:
+        nonlocal ok_count, err_count, skipped
+        sym = str(instrument.id)
+        if args.skip_existing:
+            # Quick check — does the cache already have ANY bars
+            # for this symbol/timeframe? Use the symbols.py helper
+            # to mirror what the provider will look up.
+            from trading_system.data.yfinance.cache import CacheKey
+
+            key = CacheKey(
+                symbol=instrument.symbol if sym.startswith("^") else sym,
+                timeframe=timeframe.value,
+                start=start,
+                end=end,
+            )
+            existing = cache.get_bars(key)
+            if hasattr(existing, "is_some") and existing.is_some():
+                print(f"  {sym}: cached — skip", file=sys.stderr)
+                skipped += 1
+                return True
+        print(
+            f"  {sym}: fetching "
+            f"{start.date()}..{end.date()} ({timeframe.value})",
+            file=sys.stderr,
+        )
+        provider = eur_provider  # currency-agnostic for CAC40 (all EUR)
+        bars_res = provider.bars(instrument, timeframe, start, end)
+        if isinstance(bars_res, Err):
+            print(f"  {sym}: ERROR {bars_res.error}", file=sys.stderr)
+            err_count += 1
+            return False
+        bars = bars_res.value
+        print(f"  {sym}: {len(bars)} bars persisted", file=sys.stderr)
+        ok_count += 1
+        if args.include_dividends and not sym.startswith("^"):
+            for year in range(start.year, end.year + 1):
+                div_res = provider.dividends(instrument, year)
+                if isinstance(div_res, Ok):
+                    print(
+                        f"    dividends {year}: {len(div_res.value)} events",
+                        file=sys.stderr,
+                    )
+        return True
+
+    # Stocks first.
+    for stock in universe.stocks:
+        _fetch(stock)
+
+    # Then indices (just need bars; no dividends).
+    for idx in indices:
+        idx_id = idx.get("id", "")
+        if not idx_id:
+            continue
+        idx_currency = Currency(idx.get("currency", "EUR"))
+        idx_stock = _index_stock(idx_id, idx_currency)
+        _fetch(idx_stock)
+
+    print(
+        f"recorder: done — {ok_count} ok, {err_count} errors, "
+        f"{skipped} skipped",
+        file=sys.stderr,
+    )
+    return 0 if err_count == 0 else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
