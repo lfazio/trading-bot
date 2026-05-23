@@ -220,6 +220,56 @@ async def test_tick_driver_stop_is_idempotent() -> None:
 
 
 @pytest.mark.asyncio
+async def test_tick_driver_throttles_repeated_error_logs(caplog) -> None:  # type: ignore[no-untyped-def]
+    """A runtime stuck in a transient-error loop SHALL re-log the
+    same (account_id, error) at most once per _LOG_COOLDOWN_SECONDS
+    so the logs don't spam at the tick cadence (2s)."""
+    import logging
+
+    from trading_system.result import Err
+
+    class _PersistentErrRegistry:
+        """Returns the same erroring runtime on every sweep."""
+
+        def __init__(self) -> None:
+            class _R:
+                def is_alive(self) -> bool:
+                    return True
+
+                def tick_once(self):
+                    return Err("paper:persistent_err")
+
+            self._r = _R()
+
+        def live_account_ids(self):
+            return (AccountId(f"{PAPER_ACCOUNT_PREFIX}log-spam"),)
+
+        def status(self, account_id):
+            del account_id
+            return Some(self._r)
+
+    driver = PaperTickDriver(
+        registry=_PersistentErrRegistry(),  # type: ignore[arg-type]
+        interval_seconds=0.01,
+    )
+    caplog.set_level(logging.WARNING)
+    driver.start()
+    await asyncio.sleep(0.1)  # ~10 ticks
+    await driver.stop()
+    # Many ticks happened; the spam guard SHALL collapse them
+    # into at most one log entry within the cooldown window.
+    matching = [
+        rec
+        for rec in caplog.records
+        if "paper:persistent_err" in rec.getMessage()
+    ]
+    assert 1 <= len(matching) <= 2, (
+        f"expected 1-2 throttled log entries, got {len(matching)}: "
+        f"{[r.getMessage() for r in matching]}"
+    )
+
+
+@pytest.mark.asyncio
 async def test_tick_driver_continues_after_runtime_err() -> None:
     """A tick that returns Err SHALL be logged but SHALL NOT
     crash the loop — the dashboard surfaces the degraded /

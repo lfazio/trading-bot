@@ -96,13 +96,25 @@ class YFinanceBarSource:
             self.instrument, self.timeframe, start, now
         )
         if isinstance(result, Err):
-            # Categorise network / upstream-blocked into the
-            # documented paper-runtime fallback code.
+            # Categorise upstream-blocked into the documented
+            # paper-runtime fallback code. Includes:
+            # - network:* (curl errors, DNS, timeout)
+            # - data:cache_miss_offline (no cached bar + offline)
+            # - upstream:* (proxied through provider)
+            # - data:not_found:<symbol> (yfinance returned an
+            #   empty DataFrame because curl couldn't reach the
+            #   upstream — symbol resolution is offline; if the
+            #   ticker was genuinely delisted the cache would
+            #   already hold older bars + the operator would see
+            #   a stable last_close in the panel).
+            # - data:rate_limited (yfinance throttled the call)
             reason = result.error
             if (
                 "network" in reason
                 or "cache_miss_offline" in reason
                 or "upstream" in reason
+                or "not_found" in reason
+                or "rate_limited" in reason
             ):
                 return Err("data:upstream_blocked")
             return Err(reason)

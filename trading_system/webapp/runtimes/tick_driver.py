@@ -31,6 +31,9 @@ from trading_system.webapp.runtimes.paper_trading import (
 
 
 _LOG = logging.getLogger(__name__)
+# Re-log the same (account_id, error) at most once per minute so
+# a runtime stuck in a transient-error loop doesn't flood the log.
+_LOG_COOLDOWN_SECONDS = 60.0
 
 
 @dataclass(slots=True)
@@ -42,6 +45,14 @@ class PaperTickDriver:
     _task: asyncio.Task | None = field(default=None, init=False, repr=False)
     _stopped: asyncio.Event = field(
         default_factory=asyncio.Event, init=False, repr=False
+    )
+    # Per-(account_id, error) cooldown so a runtime stuck in a
+    # transient-error loop (e.g. yfinance offline -> the source
+    # returns ``data:upstream_blocked`` every 2s) doesn't spam the
+    # log. We re-log the same error at most once per
+    # ``_LOG_COOLDOWN_SECONDS``.
+    _last_log_at: dict[tuple[str, str], float] = field(
+        default_factory=dict, init=False, repr=False
     )
 
     def __post_init__(self) -> None:
@@ -89,11 +100,23 @@ class PaperTickDriver:
                             # others. The dashboard surfaces the
                             # degraded/stopped state through the
                             # paper-state reader.
-                            _LOG.warning(
-                                "paper_tick:%s:%s",
-                                account_id,
-                                result.error,
-                            )
+                            #
+                            # Dedupe identical (account_id, error)
+                            # pairs within the cooldown window so a
+                            # persistent transient error (yfinance
+                            # offline, cache miss) doesn't spam.
+                            import time as _time
+
+                            key = (str(account_id), result.error)
+                            now = _time.monotonic()
+                            last = self._last_log_at.get(key, 0.0)
+                            if now - last >= _LOG_COOLDOWN_SECONDS:
+                                _LOG.warning(
+                                    "paper_tick:%s:%s",
+                                    account_id,
+                                    result.error,
+                                )
+                                self._last_log_at[key] = now
                 try:
                     await asyncio.wait_for(
                         self._stopped.wait(),

@@ -148,25 +148,42 @@ def test_next_bar_returns_nothing_on_empty_provider_response() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_provider_network_err_maps_to_data_upstream_blocked() -> None:
-    """REQ_F_PAP_002 — network / upstream Errs from the provider
-    SHALL be re-categorised as ``data:upstream_blocked`` so the
-    paper-runtime's fallback path kicks in."""
-    provider = _FakeProvider(bar_err="data:cache_miss_offline:ASML.AS")
+@pytest.mark.parametrize(
+    "raw_err",
+    [
+        "data:cache_miss_offline:ASML.AS",
+        "data:network:curl:7",
+        "data:network:yfinance_not_installed",
+        # yfinance returns an empty DataFrame when curl couldn't
+        # reach the upstream — surfaced by the provider as
+        # ``data:not_found:<symbol>``. This was the operator-
+        # reported failure mode where the panel spammed
+        # "not_found" instead of degrading.
+        "data:not_found:ASML.AS",
+        "data:rate_limited:yahoo",
+        "upstream:proxy_timeout",
+    ],
+)
+def test_upstream_err_categories_map_to_upstream_blocked(raw_err: str) -> None:
+    """REQ_F_PAP_002 — network / cache-miss / not-found /
+    rate-limited / upstream Errs SHALL all collapse to
+    ``data:upstream_blocked`` so the paper runtime falls back
+    cleanly instead of surfacing a confusing categorised Err."""
+    provider = _FakeProvider(bar_err=raw_err)
     src = YFinanceBarSource(provider=provider, instrument=_stock())
     result = src.next_bar()
     assert isinstance(result, Err)
     assert result.error == "data:upstream_blocked"
 
 
-def test_other_provider_err_propagates_unchanged() -> None:
-    """Errs that aren't network-shaped SHALL surface as-is so the
-    paper-runtime can categorise them separately."""
-    provider = _FakeProvider(bar_err="data:not_found:ASML.AS")
+def test_unknown_err_category_propagates_unchanged() -> None:
+    """Errs the wrapper doesn't recognise SHALL surface as-is so
+    the operator + the runtime see the categorised code."""
+    provider = _FakeProvider(bar_err="data:invalid_range")
     src = YFinanceBarSource(provider=provider, instrument=_stock())
     result = src.next_bar()
     assert isinstance(result, Err)
-    assert result.error == "data:not_found:ASML.AS"
+    assert result.error == "data:invalid_range"
 
 
 def test_bar_dataclass_already_rejects_zero_prices() -> None:
