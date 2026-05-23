@@ -108,6 +108,11 @@ class RuntimePaperStateReader:
             latest_amount: Decimal | None = history[-1].equity_after_tax.amount
         else:
             latest_amount = None
+
+        # Load the bar-history window ONCE — both the positions
+        # view (for per-position sparklines) and the quant-
+        # indicators view (for SMA / vol / drawdown) consume it.
+        bar_closes, bar_timestamps = _bar_history_for_runtime(runtime)
         # Session metadata + live price — best-effort. The Protocol
         # surface (PaperRuntimeView) doesn't pin these so tests with
         # minimal stubs still work; we duck-type via getattr.
@@ -152,16 +157,44 @@ class RuntimePaperStateReader:
                     p for p in positions.values() if getattr(p, "quantity", 0) != 0
                 ]
                 open_positions_count = len(live_positions)
-                open_positions_view = tuple(
-                    OpenPositionView(
-                        instrument_symbol=getattr(
-                            getattr(p, "instrument", None), "symbol", ""
-                        ),
-                        quantity=p.quantity,
-                        avg_price=p.avg_price,
-                    )
-                    for p in live_positions
+                # Per-position sparkline window — cap at 30 bars
+                # so the SSE payload stays tight even with many
+                # open positions. v1 runtime trades a single
+                # instrument per session so all rows share the
+                # same series; a future multi-instrument runtime
+                # would key the window by instrument id.
+                position_window = 30
+                shared_series = (
+                    tuple(bar_closes[-position_window:]) if bar_closes else ()
                 )
+                latest_in_series = (
+                    bar_closes[-1] if bar_closes else None
+                )
+                rows: list[OpenPositionView] = []
+                for p in live_positions:
+                    avg = getattr(p, "avg_price", None)
+                    pnl_pct: Decimal | None = None
+                    if (
+                        latest_in_series is not None
+                        and avg is not None
+                        and avg > 0
+                    ):
+                        pnl_pct = (
+                            (latest_in_series - avg) / avg * Decimal("100")
+                        ).quantize(Decimal("0.01"))
+                    rows.append(
+                        OpenPositionView(
+                            instrument_symbol=getattr(
+                                getattr(p, "instrument", None), "symbol", ""
+                            ),
+                            quantity=p.quantity,
+                            avg_price=p.avg_price,
+                            recent_close_series=shared_series,
+                            latest_close=latest_in_series,
+                            unrealized_pnl_pct=pnl_pct,
+                        )
+                    )
+                open_positions_view = tuple(rows)
             except Exception:  # noqa: BLE001
                 open_positions_count = 0
                 open_positions_view = ()
@@ -217,7 +250,7 @@ class RuntimePaperStateReader:
             open_positions_count=open_positions_count,
             recent_trades=recent_view,
             open_positions=open_positions_view,
-            **_indicator_kwargs(runtime, history),
+            **_indicator_kwargs(runtime, history, bar_closes, bar_timestamps),
         )
 
     async def subscribe(
@@ -237,45 +270,60 @@ class RuntimePaperStateReader:
 
 
 # ---------------------------------------------------------------------------
-# Quant-indicator extraction helper
+# Bar-history loader — shared between positions + indicators
 # ---------------------------------------------------------------------------
 
 
-def _indicator_kwargs(runtime, history) -> dict:  # type: ignore[no-untyped-def]
-    """Pull the bar history off the runtime's BarSource (best-effort)
-    + compute the quant indicators. Returns a kwargs dict matching
-    the ``PaperStateResponse`` field names so the construction site
-    can splat it.
+def _bar_history_for_runtime(runtime) -> tuple[list, list]:  # type: ignore[no-untyped-def]
+    """Load the bar-close window the runtime can expose. Two paths:
 
-    On any failure (no source / no bars / no equity), every field
-    falls back to its documented ``None`` / ``"n/a"`` sentinel.
+    1. ``bar_source.history()`` — the simulated bar source keeps a
+       full history of every emitted bar.
+    2. ``bar_source._provider`` — the yfinance source only keeps
+       the most recent bar; this fetches a 120-day window through
+       the wrapped MarketDataProvider.
+
+    Returns ``(closes, timestamps)`` lists. Empty on any failure
+    so callers can render the empty-state placeholder.
     """
     bar_source = getattr(runtime, "bar_source", None)
-    closes: list = []
-    bar_timestamps: list = []
-    if bar_source is not None and hasattr(bar_source, "history"):
+    if bar_source is None:
+        return [], []
+    if hasattr(bar_source, "history"):
         try:
             bar_history = bar_source.history()
-            closes = [b.close for b in bar_history]
-            bar_timestamps = [b.at for b in bar_history]
+            return [b.close for b in bar_history], [b.at for b in bar_history]
         except Exception:  # noqa: BLE001
-            closes = []
-            bar_timestamps = []
-    # The yfinance source doesn't keep a full history (just the
-    # last emitted bar); pull a window via the runtime-layer
-    # helper that wraps the provider's ``bars()`` Protocol call.
-    elif bar_source is not None and hasattr(bar_source, "_provider"):
+            return [], []
+    if hasattr(bar_source, "_provider"):
         from trading_system.webapp.runtimes.provider_bar_window import (
             fetch_recent_close_window,
         )
 
         instrument = getattr(runtime, "instrument", None)
         if instrument is not None:
-            closes, bar_timestamps = fetch_recent_close_window(
+            return fetch_recent_close_window(
                 bar_source._provider,  # noqa: SLF001
                 instrument,
                 days=120,
             )
+    return [], []
+
+
+# ---------------------------------------------------------------------------
+# Quant-indicator extraction helper
+# ---------------------------------------------------------------------------
+
+
+def _indicator_kwargs(runtime, history, closes, bar_timestamps) -> dict:  # type: ignore[no-untyped-def]
+    """Compute the quant indicators using the pre-loaded
+    ``(closes, timestamps)`` window. ``history`` is the equity-
+    point list; ``closes`` is the bar-close series the caller
+    already loaded via ``_bar_history_for_runtime``.
+
+    On any failure (no equity), every field falls back to its
+    documented ``None`` / ``"n/a"`` sentinel.
+    """
     equity_amounts = [p.equity_after_tax.amount for p in history] if history else []
     regime = "n/a"
     rgm = getattr(runtime, "regime", None)

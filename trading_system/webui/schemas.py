@@ -151,11 +151,20 @@ class RecentTradeView:
 
 @dataclass(frozen=True, slots=True)
 class OpenPositionView:
-    """Compact open-position summary for the paper-trading panel."""
+    """Compact open-position summary for the paper-trading panel.
+
+    ``recent_close_series`` carries the last ~30 close prices for
+    the position's instrument so the dashboard can render an
+    inline SVG sparkline next to the position row. Empty when no
+    bar history is available for the instrument yet.
+    """
 
     instrument_symbol: str
     quantity: Decimal  # signed
     avg_price: Decimal
+    recent_close_series: tuple[Decimal, ...] = ()
+    latest_close: Decimal | None = None
+    unrealized_pnl_pct: Decimal | None = None
 
 
 @dataclass(frozen=True, slots=True)

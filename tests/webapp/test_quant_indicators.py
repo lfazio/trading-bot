@@ -238,6 +238,66 @@ def test_reader_emits_recent_close_series_for_dashboard_chart() -> None:
     assert snap.recent_close_series[-1] == _d("80")
 
 
+def test_open_positions_carry_sparkline_and_pnl_when_bars_available() -> None:
+    """Each OpenPositionView SHALL carry the recent close series +
+    latest close + unrealized P&L % so the dashboard can render
+    an inline sparkline next to the position row."""
+    from decimal import Decimal as _D
+
+    from trading_system.models.instrument import InstrumentClass, Stock
+    from trading_system.models.identifiers import InstrumentId
+    from trading_system.models.money import Currency
+    from trading_system.models.trading import Position, StopLoss
+
+    class _FakePortfolio:
+        def __init__(self, position: Position) -> None:
+            self._pos = position
+
+        def positions(self):
+            return {self._pos.instrument.id: self._pos}
+
+    stock = Stock(
+        id=InstrumentId("ASML.AS"),
+        symbol="ASML",
+        exchange="AS",
+        currency=Currency.EUR,
+        cls=InstrumentClass.STOCK,
+        isin="NL0010273215",
+        sector="tech",
+        country="NL",
+    )
+    pos = Position(
+        instrument=stock,
+        quantity=_D("5"),
+        avg_price=_D("100"),
+        opened_at=_NOW,
+        stop_loss=StopLoss(price=_D("80")),
+    )
+
+    @dataclass(slots=True)
+    class _PosRuntime(_FakeRuntime):
+        _portfolio: _FakePortfolio | None = None
+
+        @property
+        def portfolio(self):
+            return self._portfolio
+
+    closes = [_d(str(i)) for i in range(1, 51)]  # last = 50
+    runtime = _PosRuntime(closes=closes, points=[])
+    runtime._portfolio = _FakePortfolio(pos)
+    reader = RuntimePaperStateReader(
+        registry=_FakeRegistry(runtimes={_AID: runtime})
+    )
+    snap = reader.paper_state(account_id=_AID, as_of=_NOW)
+    assert snap.open_positions_count == 1
+    row = snap.open_positions[0]
+    # Sparkline series + latest close populated.
+    assert len(row.recent_close_series) == 30
+    assert row.latest_close == _D("50")
+    # Unrealized P&L % = (50 - 100) / 100 * 100 = -50.00
+    assert row.unrealized_pnl_pct == _D("-50.00")
+
+
 def test_reader_returns_n_a_indicators_when_no_session() -> None:
     """No registered runtime SHALL still produce a valid snapshot
     with the documented sentinels — the dashboard panel renders

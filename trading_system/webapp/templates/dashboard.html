@@ -269,11 +269,18 @@
   <h3 style="margin-top:1.2em">Open positions</h3>
   <table class="data-table" data-field="paper_positions_table" style="width:100%; margin-bottom:1em">
     <thead>
-      <tr><th>Instrument</th><th class="numeric">Quantity</th><th class="numeric">Avg price</th></tr>
+      <tr>
+        <th>Instrument</th>
+        <th class="numeric">Quantity</th>
+        <th class="numeric">Avg price</th>
+        <th class="numeric">Last close</th>
+        <th class="numeric">P&amp;L</th>
+        <th>Recent</th>
+      </tr>
     </thead>
     <tbody></tbody>
     <tfoot>
-      <tr><td colspan="3" class="muted">No open positions yet.</td></tr>
+      <tr><td colspan="6" class="muted">No open positions yet.</td></tr>
     </tfoot>
   </table>
 
@@ -442,6 +449,36 @@ function renderPaperState(raw) {
     if (!isFinite(n)) return q;
     return n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 4 });
   };
+  // Tiny inline-SVG sparkline. Same shape as the main price
+  // chart but smaller (110×26 viewBox) so it fits a table cell.
+  // ``tone`` flips on the +/- sign of the series delta.
+  const sparkline = (raw) => {
+    const series = Array.isArray(raw) ? raw : [];
+    const values = series.map((v) => Number(v)).filter((n) => isFinite(n));
+    if (values.length < 2) return '<span class="muted">—</span>';
+    const lo = Math.min.apply(null, values);
+    const hi = Math.max.apply(null, values);
+    const range = hi - lo || 1;
+    const W = 110;
+    const H = 26;
+    const padY = 3;
+    const stepX = W / (values.length - 1);
+    const points = values.map((v, i) => {
+      const x = i * stepX;
+      const y = H - padY - ((v - lo) / range) * (H - 2 * padY);
+      return [x, y];
+    });
+    const path = points.map(([x, y], i) => `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+    const first = values[0];
+    const last = values[values.length - 1];
+    const tone = last >= first ? 'var(--success)' : 'var(--error)';
+    return (
+      `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Recent price sparkline" style="width:110px; height:26px; vertical-align:middle">` +
+        `<path d="${path}" fill="none" stroke="${tone}" stroke-width="1.4"></path>` +
+      `</svg>`
+    );
+  };
+
   const renderPositions = () => {
     const table = document.querySelector('[data-field="paper_positions_table"]');
     if (!table) return;
@@ -457,9 +494,22 @@ function renderPaperState(raw) {
     tfoot.style.display = 'none';
     for (const p of positions) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td><code>${p.instrument_symbol || '?'}</code></td>` +
-                     `<td class="numeric">${fmtQty(p.quantity)}</td>` +
-                     `<td class="numeric">${fmtMoney(p.avg_price) || p.avg_price}</td>`;
+      const pnlPct = p.unrealized_pnl_pct;
+      let pnlCell = '<span class="muted">—</span>';
+      if (pnlPct !== undefined && pnlPct !== null && pnlPct !== '') {
+        const n = Number(pnlPct);
+        if (isFinite(n)) {
+          const tone = n >= 0 ? 'success' : 'error';
+          pnlCell = `<span class="badge ${tone}" aria-label="Unrealized P&L ${n.toFixed(2)} percent">${n >= 0 ? '+' : ''}${n.toFixed(2)} %</span>`;
+        }
+      }
+      tr.innerHTML =
+        `<td><code>${p.instrument_symbol || '?'}</code></td>` +
+        `<td class="numeric">${fmtQty(p.quantity)}</td>` +
+        `<td class="numeric">${fmtMoney(p.avg_price) || p.avg_price}</td>` +
+        `<td class="numeric">${fmtMoney(p.latest_close) || '—'}</td>` +
+        `<td class="numeric">${pnlCell}</td>` +
+        `<td>${sparkline(p.recent_close_series)}</td>`;
       tbody.appendChild(tr);
     }
   };
