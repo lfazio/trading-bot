@@ -68,8 +68,8 @@ from trading_system.strategies.core import CoreStrategy, CoreStrategyConfig
 from trading_system.tax.config import TaxConfig
 
 DEFAULT_CONFIG_DIR = Path("config")
-DEFAULT_START = datetime(2026, 1, 1, tzinfo=UTC)
-DEFAULT_END = datetime(2026, 4, 1, tzinfo=UTC)
+DEFAULT_START = datetime(2025, 1, 1, tzinfo=UTC)
+DEFAULT_END = datetime(2026, 5, 23, tzinfo=UTC)
 
 
 @dataclass(frozen=True, slots=True)

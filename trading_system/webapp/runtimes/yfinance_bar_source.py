@@ -69,6 +69,14 @@ class YFinanceBarSource:
     # because daily bars only update once per day after market
     # close.
     backfill_days: int = 90
+    # CR-022 — after the backfill queue drains, route the live
+    # poll through ``provider.fetch_live_bars`` (when available)
+    # instead of ``provider.bars``. The range-aware cache (CR-021)
+    # makes ``bars()`` return the same cached envelope on every
+    # call, so the paper runtime would never see fresh ticks. The
+    # ``fetch_live_bars`` path forces a network refresh; the cache
+    # is updated as a side-effect of the fetch.
+    force_network: bool = True
     # Cached bar history accumulated across polls. Surfaced to the
     # dashboard reader via ``history()`` so the sparkline + main
     # price chart see the full series without re-polling.
@@ -170,11 +178,19 @@ class YFinanceBarSource:
             return Ok(Some(bar))
 
         # Backfill empty — poll the upstream for any newer bars.
+        # CR-022 — prefer ``fetch_live_bars`` so the range-aware
+        # cache (CR-021) doesn't pin us to a stale envelope. Fall
+        # back to ``bars()`` only when the provider doesn't expose
+        # the live path (test fakes / older adapters).
         now = datetime.now(tz=UTC)
         start = now - timedelta(days=self.bar_window_days)
-        result = self.provider.bars(
-            self.instrument, self.timeframe, start, now
-        )
+        fetch_fn = getattr(self.provider, "fetch_live_bars", None)
+        if self.force_network and callable(fetch_fn):
+            result = fetch_fn(self.instrument, self.timeframe, start, now)
+        else:
+            result = self.provider.bars(
+                self.instrument, self.timeframe, start, now
+            )
         if isinstance(result, Err):
             return Err(self._classify_provider_err(result.error))
         bars = result.value

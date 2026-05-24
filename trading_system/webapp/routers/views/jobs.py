@@ -120,11 +120,16 @@ def get_jobs_page(request: Request) -> HTMLResponse | RedirectResponse:
     # row links here with start/end/universe/with_slippage; the
     # operator can also bookmark a particular setup.
     q = request.query_params
+    # Prefill defaults match ``trading_system.main.DEFAULT_START /
+    # DEFAULT_END`` so a form-submit-with-no-edits hits the same
+    # window as ``trading-bot backtest``. Aligning with the operator's
+    # recorded cache (CR-021) is the difference between a working
+    # demo backtest and a ``data:cache_miss_offline`` error.
     prefill = {
         "config_dir": q.get("config_dir", "config"),
-        "start": q.get("start", "2024-01-02T00:00:00+00:00"),
-        "end": q.get("end", "2024-12-31T00:00:00+00:00"),
-        "universe": q.get("universe", "eu-dividend-starter"),
+        "start": q.get("start", "2025-01-01T00:00:00+00:00"),
+        "end": q.get("end", "2026-05-23T00:00:00+00:00"),
+        "universe": q.get("universe", "cac40"),
         "with_slippage": q.get("with_slippage", "").lower() == "on",
     }
     return _templates(request).TemplateResponse(

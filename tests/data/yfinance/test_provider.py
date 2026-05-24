@@ -406,6 +406,150 @@ class TestLatestOfflineOnly:
 
 
 # ----------------------------------------------------------------------
+# CR-022 — fetch_live_bars bypass-cache fetch
+# ----------------------------------------------------------------------
+
+
+def test_fetch_live_bars_hits_network_even_when_cache_has_envelope(
+    tmp_path: Path,
+) -> None:
+    """REQ_SDD_DAT_015 — ``fetch_live_bars`` SHALL call the network
+    even when the CR-021 envelope cache could satisfy the request,
+    so the paper-trading bar source sees fresh bars on each poll.
+    """
+    # Pre-populate the cache with stale bars covering the window…
+    bars = [
+        Bar(
+            at=_ts(2026, 1, 2),
+            open=Decimal("100"),
+            high=Decimal("100"),
+            low=Decimal("100"),
+            close=Decimal("100"),
+            volume=Decimal("0"),
+        )
+    ]
+    cache = YFinanceCache(root=tmp_path)
+    key = CacheKey(
+        symbol="ASML.AS",
+        timeframe="1d",
+        start=_ts(2026, 1, 1),
+        end=_ts(2026, 1, 5),
+    )
+    cache.put_bars(key, bars)
+    # …and have the downloader return fresher bars.
+    downloader = _RecordingDownloader(
+        results=[_df_for(start_day=3, count=3)],
+        calls=[],
+    )
+    provider = YFinanceMarketDataProvider(
+        cache=cache,
+        currency=EUR,
+        allow_network=True,
+        bar_downloader=downloader,
+        backoff_sleep=_no_sleep,
+    )
+    res = provider.fetch_live_bars(
+        _stock(), Timeframe.D1, _ts(2026, 1, 1), _ts(2026, 1, 5)
+    )
+    match res:
+        case Ok(received):
+            # 3 fresh bars from the network — not the stale single
+            # cache entry.
+            assert len(received) == 3
+            assert received[0].at == _ts(2026, 1, 3)
+        case Err(e):
+            raise AssertionError(f"unexpected Err: {e}")
+    assert downloader.calls, "fetch_live_bars SHALL hit the network"
+
+
+def test_fetch_live_bars_falls_back_to_cache_on_network_failure(
+    tmp_path: Path,
+) -> None:
+    """REQ_F_PAP_002 — graceful degradation. When the network is
+    unavailable, ``fetch_live_bars`` SHALL return the cached
+    envelope so the paper runtime keeps surfacing the last-known
+    bars instead of an upstream-blocked Err."""
+    bars = [
+        Bar(
+            at=_ts(2026, 1, 2),
+            open=Decimal("100"),
+            high=Decimal("100"),
+            low=Decimal("100"),
+            close=Decimal("100"),
+            volume=Decimal("0"),
+        )
+    ]
+    cache = YFinanceCache(root=tmp_path)
+    key = CacheKey(
+        symbol="ASML.AS",
+        timeframe="1d",
+        start=_ts(2026, 1, 1),
+        end=_ts(2026, 1, 5),
+    )
+    cache.put_bars(key, bars)
+
+    def _fail(*_args: Any, **_kw: Any) -> Any:
+        raise TransientDownloadError("data:network:fake-timeout")
+
+    provider = YFinanceMarketDataProvider(
+        cache=cache,
+        currency=EUR,
+        allow_network=True,
+        bar_downloader=_fail,
+        backoff_sleep=_no_sleep,
+    )
+    res = provider.fetch_live_bars(
+        _stock(), Timeframe.D1, _ts(2026, 1, 1), _ts(2026, 1, 5)
+    )
+    match res:
+        case Ok(received):
+            assert received == bars
+        case Err(e):
+            raise AssertionError(f"expected cache fallback, got Err: {e}")
+
+
+def test_fetch_live_bars_offline_uses_cache_only(tmp_path: Path) -> None:
+    """``allow_network=False`` SHALL keep ``fetch_live_bars`` on the
+    cache path (no network attempt) — operators that want strict
+    replay opt out of the live bypass."""
+    bars = [
+        Bar(
+            at=_ts(2026, 1, 2),
+            open=Decimal("100"),
+            high=Decimal("100"),
+            low=Decimal("100"),
+            close=Decimal("100"),
+            volume=Decimal("0"),
+        )
+    ]
+    cache = YFinanceCache(root=tmp_path)
+    key = CacheKey(
+        symbol="ASML.AS",
+        timeframe="1d",
+        start=_ts(2026, 1, 1),
+        end=_ts(2026, 1, 5),
+    )
+    cache.put_bars(key, bars)
+    downloader = _RecordingDownloader(results=[], calls=[])
+    provider = YFinanceMarketDataProvider(
+        cache=cache,
+        currency=EUR,
+        allow_network=False,
+        bar_downloader=downloader,
+        backoff_sleep=_no_sleep,
+    )
+    res = provider.fetch_live_bars(
+        _stock(), Timeframe.D1, _ts(2026, 1, 1), _ts(2026, 1, 5)
+    )
+    match res:
+        case Ok(received):
+            assert received == bars
+        case Err(e):
+            raise AssertionError(f"unexpected Err: {e}")
+    assert downloader.calls == [], "allow_network=False SHALL skip network"
+
+
+# ----------------------------------------------------------------------
 # Hermetic test environment — no yfinance / pandas import on this path
 # ----------------------------------------------------------------------
 

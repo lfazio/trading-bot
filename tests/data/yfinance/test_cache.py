@@ -200,3 +200,132 @@ def test_pytest_imports_dont_pull_yfinance() -> None:
     # tests run with allow_network=False semantics by default).
     assert "yfinance" not in sys.modules
     assert "pandas" not in sys.modules
+
+
+# ---------------------------------------------------------------------------
+# CR-021 — range-aware lookup (TC_DAT_C1_001..004)
+# ---------------------------------------------------------------------------
+
+
+class TestRangeAwareLookup:
+    """REQ_SDD_DAT_014 — on exact-key miss, scan the symbol/timeframe
+    dir for any cached file whose stored window envelopes the
+    requested range, slice the bars inside, return.
+
+    REQ_NF_DAT_004 — the sliced read SHALL be byte-equal (same Bar
+    values, same order) to what an exact-key recorder run for
+    ``[key.start, key.end]`` would have produced. The
+    ``test_envelope_hit_slices_to_requested_range`` test exercises
+    that invariant directly: a recorder run that wrote one bar per
+    day for Jan 2..Jan 8 SHALL produce the same four-bar list as
+    the envelope-sliced read for Jan 3..Jan 6.
+    """
+
+    def _envelope_key(self, start: datetime, end: datetime) -> CacheKey:
+        return CacheKey(
+            symbol="ASML.AS", timeframe="1d", start=start, end=end
+        )
+
+    def test_exact_key_hit_still_byte_identical(self, tmp_path: Path) -> None:
+        """The exact-key fast path SHALL be unchanged."""
+        cache = YFinanceCache(root=tmp_path)
+        cache.put_bars(_key(), [_bar(2), _bar(3), _bar(4)])
+        match cache.get_bars(_key()):
+            case Some(bars):
+                assert bars == [_bar(2), _bar(3), _bar(4)]
+            case _:
+                raise AssertionError("expected Some(bars)")
+
+    def test_envelope_hit_slices_to_requested_range(self, tmp_path: Path) -> None:
+        """A wider cached file SHALL satisfy a narrower query."""
+        cache = YFinanceCache(root=tmp_path)
+        # Cache an envelope Jan 1..Jan 10 with bars on days 2..8.
+        envelope_key = self._envelope_key(
+            datetime(2026, 1, 1, tzinfo=UTC),
+            datetime(2026, 1, 10, tzinfo=UTC),
+        )
+        cache.put_bars(envelope_key, [_bar(d) for d in range(2, 9)])
+        # Query for a sub-window Jan 3..Jan 6.
+        narrow = self._envelope_key(
+            datetime(2026, 1, 3, tzinfo=UTC),
+            datetime(2026, 1, 6, tzinfo=UTC),
+        )
+        match cache.get_bars(narrow):
+            case Some(bars):
+                assert [b.at.day for b in bars] == [3, 4, 5, 6]
+            case _:
+                raise AssertionError("expected envelope hit")
+
+    def test_no_enveloping_file_returns_nothing(self, tmp_path: Path) -> None:
+        """A query partially outside every cached envelope SHALL
+        return Nothing (no partial-coverage merge in v1)."""
+        cache = YFinanceCache(root=tmp_path)
+        # Only days 2..4 are cached.
+        envelope_key = self._envelope_key(
+            datetime(2026, 1, 2, tzinfo=UTC),
+            datetime(2026, 1, 4, tzinfo=UTC),
+        )
+        cache.put_bars(envelope_key, [_bar(2), _bar(3), _bar(4)])
+        # Query asks for Jan 1..Jan 5 — wider than any cached file.
+        wide = self._envelope_key(
+            datetime(2026, 1, 1, tzinfo=UTC),
+            datetime(2026, 1, 5, tzinfo=UTC),
+        )
+        assert cache.get_bars(wide) == Nothing()
+
+    def test_widest_envelope_wins_when_multiple_match(self, tmp_path: Path) -> None:
+        """When several cached files envelope the request, the
+        widest (largest end-start span) is chosen — that's
+        ``CR-021`` open question (2)."""
+        cache = YFinanceCache(root=tmp_path)
+        # Narrow envelope Jan 2..Jan 5; wide envelope Jan 1..Jan 10.
+        narrow_key = self._envelope_key(
+            datetime(2026, 1, 2, tzinfo=UTC),
+            datetime(2026, 1, 5, tzinfo=UTC),
+        )
+        wide_key = self._envelope_key(
+            datetime(2026, 1, 1, tzinfo=UTC),
+            datetime(2026, 1, 10, tzinfo=UTC),
+        )
+        cache.put_bars(narrow_key, [_bar(3, close="999")])  # poisoned
+        cache.put_bars(wide_key, [_bar(d) for d in range(2, 9)])
+        # Query Jan 3..Jan 3 — both envelopes cover; widest wins.
+        query = self._envelope_key(
+            datetime(2026, 1, 3, tzinfo=UTC),
+            datetime(2026, 1, 3, tzinfo=UTC),
+        )
+        match cache.get_bars(query):
+            case Some([bar]):
+                # From the wide envelope, close == "100" (default).
+                assert bar.close == Decimal("100")
+            case _:
+                raise AssertionError("expected widest envelope hit")
+
+    def test_naive_datetime_in_cache_normalised_on_read(
+        self, tmp_path: Path
+    ) -> None:
+        """Older recorder runs wrote naïve datetimes; the read path
+        SHALL surface them as UTC-aware so the envelope predicate
+        compares uniformly."""
+        cache = YFinanceCache(root=tmp_path)
+        # Write a cache file with a hand-crafted naïve timestamp.
+        sym_dir = tmp_path / "ASML.AS" / "1d"
+        sym_dir.mkdir(parents=True)
+        naive_file = sym_dir / (
+            "2026-01-01T000000__2026-01-10T000000_bars.jsonl"
+        )
+        naive_file.write_text(
+            '{"at":"2026-01-03T00:00:00","open":"100","high":"100",'
+            '"low":"100","close":"100","volume":"1000"}\n',
+            encoding="utf-8",
+        )
+        # Range-aware query — picks up the naïve file and slices.
+        query = self._envelope_key(
+            datetime(2026, 1, 3, tzinfo=UTC),
+            datetime(2026, 1, 3, tzinfo=UTC),
+        )
+        match cache.get_bars(query):
+            case Some([bar]):
+                assert bar.at.tzinfo is UTC
+            case _:
+                raise AssertionError("expected UTC-normalised bar")

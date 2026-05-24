@@ -97,6 +97,13 @@ class YFinanceMarketDataProvider:
     bar_downloader: BarDownloader | None = None
     dividend_downloader: DividendDownloader | None = None
     backoff_sleep: Callable[[float], None] = field(default=time.sleep)
+    # CR-021 perf — ``latest()`` is hot in the backtest loop
+    # (strategy.evaluate calls it per stock per tick). The cache
+    # contents don't change inside a single backtest run, so memoise
+    # the latest-bar scan per (symbol, allow_network=False). With
+    # ``allow_network=True`` the cache may be mutated by a concurrent
+    # bar fetch, so the memo is bypassed there.
+    _latest_cache: dict[str, Bar] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         if self.run_mode == "live":
@@ -161,18 +168,76 @@ class YFinanceMarketDataProvider:
         if isinstance(sym_res, Err):
             return Err(sym_res.error)
         sym = sym_res.value
-        # Walk every cached file under the symbol and pick the bar
-        # with the latest timestamp. v1 implementation keeps it simple;
-        # SQLite migration (CR-008) will replace with an indexed query.
+        # CR-021 perf — backtest hot path. ``latest()`` is called by
+        # the strategy on every tick for every stock; the per-call
+        # cost was an ``rglob('*_bars.jsonl')`` over the symbol's
+        # entire cache tree (often thousands of files when the
+        # operator has recorded multiple timeframes). Memoise on
+        # ``(symbol)`` while the cache is read-only (the offline
+        # backtest mode).
+        if not self.allow_network and sym in self._latest_cache:
+            return Ok(self._latest_cache[sym])
         latest_bar = _scan_latest_cached_bar(self.cache, sym)
         if latest_bar is None:
             return Err(f"data:not_found:{sym}:latest")
+        if not self.allow_network:
+            self._latest_cache[sym] = latest_bar
         return Ok(latest_bar)
 
     def fundamentals(self, instrument: Instrument) -> Result[Fundamentals, str]:
         # REQ_F_DAT_010: fundamentals NOT sourced from yfinance.
         _ = instrument
         return Err("data:not_supported:fundamentals_via_yfinance")
+
+    def fetch_live_bars(
+        self,
+        instrument: Instrument,
+        timeframe: Timeframe,
+        start: datetime,
+        end: datetime,
+    ) -> Result[list[Bar], str]:
+        """CR-022 — bypass-cache fetch for the paper-trading live
+        poll.
+
+        ``bars()`` returns a cache hit if any cached file envelopes
+        the requested window (CR-021), which is correct for replay
+        determinism but kills the live polling loop: every poll
+        would return the same cached bars, no fresh ticks. The
+        paper-trading bar source calls ``fetch_live_bars`` instead
+        on its post-backfill poll path so each call hits the network
+        and the on-disk cache is refreshed with the newest bars.
+
+        Falls back to the cached envelope only when network is
+        unavailable (``allow_network=False`` or a transient network
+        Err) so the paper runtime's graceful-degradation path keeps
+        working (REQ_F_PAP_002).
+        """
+        sym_res = yahoo_symbol_for(instrument)
+        if isinstance(sym_res, Err):
+            return Err(sym_res.error)
+        sym = sym_res.value
+        key = CacheKey(symbol=sym, timeframe=timeframe.value, start=start, end=end)
+        if not self.allow_network:
+            # Network forbidden — fall back to the standard cache
+            # lookup (which already includes CR-021 envelope search).
+            match self.cache.get_bars(key):
+                case Some(bars):
+                    return Ok(bars)
+                case Nothing():
+                    return Err(f"data:cache_miss_offline:{sym}")
+        net_res = self._download_bars(instrument, timeframe, start, end, key, sym)
+        if isinstance(net_res, Ok):
+            # Newly-fetched bars may invalidate the memoised latest
+            # snapshot, so evict that entry.
+            self._latest_cache.pop(sym, None)
+            return net_res
+        # Network failed — graceful degradation to whatever the
+        # cache can serve (CR-021 range-aware lookup).
+        match self.cache.get_bars(key):
+            case Some(bars) if bars:
+                return Ok(bars)
+            case _:
+                return net_res
 
     # ------------------------------------------------------------------
     # Internals
@@ -271,18 +336,46 @@ def _empty(df: Any) -> bool:
 
 
 def _scan_latest_cached_bar(cache: YFinanceCache, symbol: str) -> Bar | None:
-    """Walk every bars file under ``<root>/<symbol>/`` and return the
-    newest bar by ``Bar.at``. v1 implementation; SQLite migration
-    replaces it with an indexed lookup."""
+    """Return the newest bar across every cache file under
+    ``<root>/<symbol>/``.
+
+    CR-021 perf — the v0 implementation walked every jsonl file
+    and read every bar (O(files × bars-per-file)). With multi-
+    timeframe recordings that ran into thousands of files per
+    symbol. The new approach parses the encoded end-timestamp out
+    of each filename (cheap; no I/O), picks the file with the
+    largest ``file_end``, reads only that file, and returns its
+    last bar.
+
+    Fallback: if no filename parses, fall back to the legacy
+    full-scan so corrupt or hand-written paths still work.
+    """
+    from trading_system.data.yfinance.cache import _parse_filename_window
+
     safe = symbol.replace("/", "_")
     sym_dir = cache.root / safe
     if not sym_dir.exists():
         return None
+    best_end = None
+    best_path = None
+    for path in sym_dir.rglob("*_bars.jsonl"):
+        window = _parse_filename_window(path.name)
+        if window is None:
+            continue
+        _, file_end = window
+        if best_end is None or file_end > best_end:
+            best_end = file_end
+            best_path = path
+    if best_path is not None:
+        bars_res = cache._read_jsonl_bars(best_path)
+        if not isinstance(bars_res, Err) and bars_res.value:
+            # The recorder writes bars in ascending time order, so
+            # the last entry is the newest. Guard with max() in case
+            # a future writer breaks that invariant.
+            return max(bars_res.value, key=lambda b: b.at)
+    # Legacy full-scan fallback.
     latest: Bar | None = None
     for path in sym_dir.rglob("*_bars.jsonl"):
-        # We don't have the original CacheKey, but _read_jsonl_bars
-        # only needs the file path. Reach in deliberately — this
-        # stays internal to data/yfinance/.
         bars_res = cache._read_jsonl_bars(path)
         if isinstance(bars_res, Err):
             continue

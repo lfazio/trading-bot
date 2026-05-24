@@ -58,6 +58,8 @@ class _FakeProvider:
     bar_err: str | None = None
     latest_response: Bar | None = None
     calls: int = 0
+    live_response: list | None = None
+    live_calls: int = 0
 
     def bars(self, instrument, timeframe, start, end):
         self.calls += 1
@@ -75,6 +77,19 @@ class _FakeProvider:
 
     def fundamentals(self, instrument):
         return Err("data:not_supported:fakes")
+
+
+@dataclass(slots=True)
+class _FakeLiveProvider(_FakeProvider):
+    """Extends _FakeProvider with the CR-022 ``fetch_live_bars`` hook."""
+
+    def fetch_live_bars(self, instrument, timeframe, start, end):
+        self.live_calls += 1
+        if self.live_response is None:
+            # Default: same response as ``bars`` so single-stub tests
+            # still work.
+            return self.bars(instrument, timeframe, start, end)
+        return Ok(self.live_response)
 
 
 # ---------------------------------------------------------------------------
@@ -285,3 +300,69 @@ def test_yfinance_bar_source_rejects_non_positive_window() -> None:
             instrument=_stock(),
             bar_window_days=0,
         )
+
+
+# ---------------------------------------------------------------------------
+# CR-022 — post-backfill polls route through ``fetch_live_bars``
+# ---------------------------------------------------------------------------
+
+
+def test_post_backfill_poll_prefers_fetch_live_bars() -> None:
+    """REQ_F_PAP_010 / CR-022 — once the backfill queue drains, the
+    bar source SHALL prefer ``provider.fetch_live_bars`` over the
+    cache-backed ``provider.bars`` so the range-aware cache
+    (CR-021) doesn't pin the panel to a stale envelope.
+    """
+    provider = _FakeLiveProvider(
+        bar_response=[_bar(at=_T0, close="100")]
+    )
+    src = YFinanceBarSource(provider=provider, instrument=_stock())
+    src.next_bar()  # drains the backfill queue
+    provider.live_response = [
+        _bar(at=_T0, close="100"),
+        _bar(at=_T0 + timedelta(days=1), close="111"),
+    ]
+    result = src.next_bar()
+    assert isinstance(result, Ok) and isinstance(result.value, Some)
+    assert result.value.value.close == Decimal("111")
+    # ``fetch_live_bars`` was called for the post-backfill poll.
+    assert provider.live_calls >= 1
+
+
+def test_post_backfill_poll_falls_back_to_bars_when_no_live_hook() -> None:
+    """Test fakes without ``fetch_live_bars`` SHALL stay on the
+    legacy ``bars`` path so the bar source remains compatible
+    with simulated providers."""
+    provider = _FakeProvider(bar_response=[_bar(at=_T0, close="100")])
+    src = YFinanceBarSource(provider=provider, instrument=_stock())
+    src.next_bar()
+    provider.bar_response = [
+        _bar(at=_T0, close="100"),
+        _bar(at=_T0 + timedelta(days=1), close="105"),
+    ]
+    result = src.next_bar()
+    assert isinstance(result, Ok) and isinstance(result.value, Some)
+    assert result.value.value.close == Decimal("105")
+
+
+def test_force_network_false_stays_on_cache_path() -> None:
+    """Operators that want strict replay (no network on the bar
+    source either) opt out by setting ``force_network=False``."""
+    provider = _FakeLiveProvider(
+        bar_response=[_bar(at=_T0, close="100")]
+    )
+    src = YFinanceBarSource(
+        provider=provider, instrument=_stock(), force_network=False
+    )
+    src.next_bar()  # drain backfill
+    provider.live_response = [
+        _bar(at=_T0 + timedelta(days=1), close="999")
+    ]
+    provider.bar_response = [
+        _bar(at=_T0 + timedelta(days=1), close="105")
+    ]
+    result = src.next_bar()
+    assert isinstance(result, Ok) and isinstance(result.value, Some)
+    # 105 wins (came from bars, not the live hook).
+    assert result.value.value.close == Decimal("105")
+    assert provider.live_calls == 0

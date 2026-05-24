@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -75,17 +75,61 @@ class YFinanceCache:
     # ------------------------------------------------------------------
 
     def get_bars(self, key: CacheKey) -> Option[list[Bar]]:
+        # Exact-key fast path — bit-identical to the legacy lookup.
         path = self._bars_path(key)
-        if not path.exists():
+        if path.exists():
+            match self._read_jsonl_bars(path):
+                case Ok(bars):
+                    return Some(bars)
+                case Err(_):
+                    # Corrupted file → fall through to the envelope
+                    # scan; another file may cover the same window.
+                    pass
+        # CR-021 range-aware second pass — any cached file whose
+        # stored [file_start, file_end] envelopes the requested
+        # [start, end] satisfies the query after slicing.
+        return self._envelope_lookup(key)
+
+    def _envelope_lookup(self, key: CacheKey) -> Option[list[Bar]]:
+        """CR-021 — search every cached file under the symbol /
+        timeframe for one whose stored range envelopes the
+        requested ``[start, end]``. Returns the bars sliced to that
+        window, byte-identical to what an exact-key recorder run
+        would have produced.
+
+        The widest enveloping file wins (largest ``file_end -
+        file_start``); ties broken by lexicographic filename order.
+        Older recorder runs are inspected; corrupted files are
+        skipped.
+        """
+        safe_symbol = key.symbol.replace("/", "_")
+        safe_tf = key.timeframe.replace("/", "_")
+        sym_tf_dir = self.root / safe_symbol / safe_tf
+        if not sym_tf_dir.exists():
             return Nothing()
-        match self._read_jsonl_bars(path):
-            case Ok(bars):
-                return Some(bars)
-            case Err(_):
-                # Corrupted file is treated as a miss; the put_bars
-                # path will overwrite if/when network is allowed.
-                # The caller decides whether to surface this.
-                return Nothing()
+        candidates: list[tuple[int, str, Path]] = []
+        for path in sym_tf_dir.glob("*_bars.jsonl"):
+            window = _parse_filename_window(path.name)
+            if window is None:
+                continue
+            file_start, file_end = window
+            if file_start <= key.start and file_end >= key.end:
+                width = int((file_end - file_start).total_seconds())
+                # Negative width so ``sort`` returns widest first.
+                candidates.append((-width, path.name, path))
+        if not candidates:
+            return Nothing()
+        candidates.sort()
+        for _, _, path in candidates:
+            match self._read_jsonl_bars(path):
+                case Ok(bars):
+                    sliced = [
+                        b for b in bars if key.start <= b.at <= key.end
+                    ]
+                    return Some(sliced)
+                case Err(_):
+                    continue
+        return Nothing()
 
     def put_bars(self, key: CacheKey, bars: list[Bar]) -> Result[None, str]:
         path = self._bars_path(key)
@@ -176,6 +220,75 @@ class YFinanceCache:
 # ----------------------------------------------------------------------
 
 
+def _parse_filename_window(name: str) -> tuple[datetime, datetime] | None:
+    """CR-021 — invert ``CacheKey.filename()``.
+
+    Filename shape: ``<start_iso>__<end_iso>_bars.jsonl`` where the
+    ISO timestamps have had ``:`` removed and ``+`` replaced with
+    ``Z`` (see ``CacheKey.filename``). We reverse those substitutions
+    + reattach ``:`` to ``HHMMSS`` so ``datetime.fromisoformat``
+    succeeds. Returns ``None`` for names that don't match the schema
+    (the envelope-lookup caller treats those as non-candidates).
+    """
+    if not name.endswith("_bars.jsonl"):
+        return None
+    stem = name[: -len("_bars.jsonl")]
+    parts = stem.split("__")
+    if len(parts) != 2:
+        return None
+    start_s, end_s = parts
+    try:
+        s_dt = _decode_iso(start_s)
+        e_dt = _decode_iso(end_s)
+    except ValueError:
+        return None
+    return (s_dt, e_dt)
+
+
+def _decode_iso(token: str) -> datetime:
+    """Reverse ``CacheKey.filename`` token encoding.
+
+    Encoding strips ``:`` and rewrites the ``+`` of the offset to
+    ``Z``; decoding undoes both. The date / time / offset segments
+    are positional in ISO-8601: ``YYYY-MM-DDTHHMMSS[.ffffff][Z±HHMM]``.
+    """
+    # Locate the offset boundary (``Z`` immediately preceded by a
+    # date/time character; the literal trailing ``Z0000`` form).
+    body = token
+    offset = ""
+    z_idx = body.rfind("Z")
+    if z_idx >= 0 and z_idx + 1 < len(body):
+        offset_raw = body[z_idx + 1 :]
+        # Expect 4 digits ``HHMM`` after the Z, optionally signed.
+        if len(offset_raw) >= 4 and offset_raw.lstrip("+-")[:4].isdigit():
+            sign = "+" if not offset_raw.startswith("-") else "-"
+            digits = offset_raw.lstrip("+-")
+            offset = f"{sign}{digits[:2]}:{digits[2:4]}"
+            body = body[:z_idx]
+    # Split into ``date`` and ``time`` (+ optional fractional secs).
+    if "T" not in body:
+        raise ValueError(f"missing T separator in {token!r}")
+    date_part, time_part = body.split("T", 1)
+    # ``HHMMSS`` or ``HHMMSS.ffffff`` — re-insert the colons.
+    if "." in time_part:
+        hms, frac = time_part.split(".", 1)
+    else:
+        hms, frac = time_part, ""
+    if len(hms) != 6 or not hms.isdigit():
+        raise ValueError(f"unexpected HMS shape in {token!r}: {hms!r}")
+    iso_time = f"{hms[0:2]}:{hms[2:4]}:{hms[4:6]}"
+    if frac:
+        iso_time = f"{iso_time}.{frac}"
+    iso = f"{date_part}T{iso_time}{offset}"
+    parsed = datetime.fromisoformat(iso)
+    # Cache files from older recorder runs encoded naïve datetimes
+    # (no ``Z`` suffix); normalise to UTC on parse so the envelope
+    # predicate compares uniformly tz-aware values.
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed
+
+
 def _bar_to_record(b: Bar) -> dict:
     return {
         "at": b.at.isoformat(),
@@ -188,8 +301,16 @@ def _bar_to_record(b: Bar) -> dict:
 
 
 def _record_to_bar(rec: dict) -> Bar:
+    at = datetime.fromisoformat(rec["at"])
+    # Cache files historically stored naïve datetimes (yfinance's
+    # daily bars come from pandas Timestamps without tz). Normalise
+    # to UTC on read so cross-file comparisons (e.g.
+    # ``_scan_latest_cached_bar``) never mix offset-naive with
+    # offset-aware values.
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=UTC)
     return Bar(
-        at=datetime.fromisoformat(rec["at"]),
+        at=at,
         open=Decimal(rec["open"]),
         high=Decimal(rec["high"]),
         low=Decimal(rec["low"]),

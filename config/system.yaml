@@ -15,3 +15,9 @@ broker:
                           # `local` -> LocalBrokerAdapter (in-process, deterministic;
                           # the only concrete adapter shipped through this lifecycle).
                           # Live-broker adapters are deferred (REQ_F_BRK_003).
+
+data:
+  provider: yfinance
+  cache_root: var/yfinance-cache    # your actual cache dir (default was .cache/yfinance)
+  bundled_fixtures: false           # cache is already populated; don't overwrite
+  universe: cac40                   # 40 stocks + ^FCHI
