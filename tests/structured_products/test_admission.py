@@ -389,3 +389,76 @@ class TestAdmissionConfig:
                 assert reason.startswith("data:bad_allocation_pct")
             case Ok(_):
                 raise AssertionError("expected Err")
+
+
+# ---------------------------------------------------------------------------
+# Decomposition invariants — Phase-8 C1 coverage cleanup (REQ_SDD_DAT_*)
+# ---------------------------------------------------------------------------
+
+
+class TestDecompositionInvariants:
+    """REQ_SDD_ALG_012 — the four-field signature SHALL validate its
+    own bounds at construction. Targeted Err-branch tests to lift
+    `trading_system/structured_products/decomposition.py` from 69%
+    to 100% coverage."""
+
+    def _ok_kwargs(self) -> dict:
+        return {
+            "equity_equiv": Decimal("0.85"),
+            "hidden_leverage": Decimal("0"),
+            "worst_case_loss": Decimal("0.40"),
+            "break_even_prob": Decimal("0.65"),
+        }
+
+    def test_negative_equity_equiv_rejected(self) -> None:
+        kwargs = self._ok_kwargs()
+        kwargs["equity_equiv"] = Decimal("-0.01")
+        with pytest.raises(ValueError, match="equity_equiv"):
+            Decomposition(**kwargs)
+
+    def test_negative_hidden_leverage_rejected(self) -> None:
+        kwargs = self._ok_kwargs()
+        kwargs["hidden_leverage"] = Decimal("-0.5")
+        with pytest.raises(ValueError, match="hidden_leverage"):
+            Decomposition(**kwargs)
+
+    def test_worst_case_loss_above_one_rejected(self) -> None:
+        kwargs = self._ok_kwargs()
+        kwargs["worst_case_loss"] = Decimal("1.5")
+        with pytest.raises(ValueError, match="worst_case_loss"):
+            Decomposition(**kwargs)
+
+    def test_worst_case_loss_below_zero_rejected(self) -> None:
+        kwargs = self._ok_kwargs()
+        kwargs["worst_case_loss"] = Decimal("-0.01")
+        with pytest.raises(ValueError, match="worst_case_loss"):
+            Decomposition(**kwargs)
+
+    def test_break_even_prob_above_one_rejected(self) -> None:
+        kwargs = self._ok_kwargs()
+        kwargs["break_even_prob"] = Decimal("1.5")
+        with pytest.raises(ValueError, match="break_even_prob"):
+            Decomposition(**kwargs)
+
+    def test_break_even_prob_below_zero_rejected(self) -> None:
+        kwargs = self._ok_kwargs()
+        kwargs["break_even_prob"] = Decimal("-0.5")
+        with pytest.raises(ValueError, match="break_even_prob"):
+            Decomposition(**kwargs)
+
+    def test_endpoints_accepted(self) -> None:
+        """``[0, 1]`` is inclusive on both ends — equity_equiv = 0
+        and break_even_prob = 1.0 SHALL be valid (zero exposure;
+        guaranteed break-even)."""
+        Decomposition(
+            equity_equiv=Decimal("0"),
+            hidden_leverage=Decimal("0"),
+            worst_case_loss=Decimal("0"),
+            break_even_prob=Decimal("0"),
+        )
+        Decomposition(
+            equity_equiv=Decimal("2.0"),
+            hidden_leverage=Decimal("3.0"),
+            worst_case_loss=Decimal("1.0"),
+            break_even_prob=Decimal("1.0"),
+        )
