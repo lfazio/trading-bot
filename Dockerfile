@@ -102,6 +102,14 @@ USER trading
 
 EXPOSE 8000
 
+# Phase-8 hardening C7 — uvicorn handles SIGTERM cleanly (flushes
+# pending logs, closes broker subscriptions). Without an explicit
+# STOPSIGNAL, Docker sends SIGKILL after `--time` (default 10s),
+# which would skip the shutdown handlers. Operators tightening
+# the grace window in compose.yaml's ``stop_grace_period`` rely
+# on this.
+STOPSIGNAL SIGTERM
+
 # REQ_F_FAS_007 — the HEALTHCHECK uses a stdlib-only probe so it works
 # without curl in the runtime layer.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \

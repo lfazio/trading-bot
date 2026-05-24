@@ -46,3 +46,17 @@ dist/
 # CR-016 / CR-009 data + fixtures travel via mounted volumes, not the image.
 data/yfinance-fixtures/
 .cache/
+
+# Phase-8 hardening C7 — belt-and-suspenders against secrets / state
+# leaking into image layers. config/ is bind-mounted at runtime (see
+# compose.yaml) so it doesn't belong in the image. The SQLite + .env
+# patterns catch operator-local artefacts that should never be
+# committed but might slip through during local builds.
+config/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+.env
+.env.*
+*.secret
+*.key

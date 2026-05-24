@@ -268,3 +268,210 @@ def test_runtime_install_is_offline_from_wheels() -> None:
     assert "/wheels" in runtime_section, (
         "runtime stage SHALL consume the builder's /wheels archive"
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase-8 hardening C7 — Docker container hardening (2026-05-23)
+# ---------------------------------------------------------------------------
+
+
+def test_dockerfile_declares_stopsignal_sigterm() -> None:
+    """Phase-8 C7 — uvicorn's clean-shutdown handlers (structured
+    log flush, broker unsubscribe) only run on SIGTERM. Without an
+    explicit STOPSIGNAL Docker sends SIGKILL after the grace
+    period, skipping those handlers."""
+    text = _dockerfile_text()
+    assert re.search(r"^STOPSIGNAL\s+SIGTERM\s*$", text, flags=re.MULTILINE), (
+        "Dockerfile SHALL declare STOPSIGNAL SIGTERM for clean shutdown"
+    )
+
+
+def _compose_text() -> str:
+    return _COMPOSE.read_text(encoding="utf-8")
+
+
+def test_compose_runs_with_init_true() -> None:
+    """Phase-8 C7 — ``init: true`` injects tini as PID 1 so
+    SIGTERM propagates correctly to uvicorn (Python procs as
+    PID 1 lose default signal semantics)."""
+    text = _compose_text()
+    assert re.search(r"^\s*init:\s*true\s*$", text, flags=re.MULTILINE), (
+        "compose service SHALL set init: true for clean signal propagation"
+    )
+
+
+def test_compose_root_filesystem_is_read_only() -> None:
+    """Phase-8 C7 — defence-in-depth. The application doesn't write
+    to the root fs; making it read-only blocks an exploit from
+    dropping a backdoor binary even if the process is compromised."""
+    text = _compose_text()
+    assert re.search(r"^\s*read_only:\s*true\s*$", text, flags=re.MULTILINE), (
+        "compose service SHALL declare read_only: true"
+    )
+
+
+def test_compose_drops_all_linux_capabilities() -> None:
+    """Phase-8 C7 — the webapp needs zero Linux capabilities
+    (no raw network sockets, no chroot, no mount). Drop them all
+    so an attacker who escapes the Python sandbox still has no
+    privileges."""
+    text = _compose_text()
+    assert re.search(
+        r"^\s*cap_drop:\s*\n\s*-\s*ALL\s*$",
+        text,
+        flags=re.MULTILINE,
+    ), (
+        "compose service SHALL declare cap_drop: [ALL]"
+    )
+
+
+def test_compose_disables_no_new_privileges() -> None:
+    """Phase-8 C7 — ``no-new-privileges:true`` prevents setuid
+    binaries inside the container from escalating. Belt-and-
+    suspenders since the image SHALL NOT contain setuid binaries
+    in the first place."""
+    text = _compose_text()
+    assert "no-new-privileges:true" in text, (
+        "compose service SHALL include security_opt: no-new-privileges:true"
+    )
+
+
+def test_compose_declares_tmpfs_for_writable_space() -> None:
+    """Phase-8 C7 — with read_only: true, /tmp must come from
+    tmpfs so SQLite WAL spill + uvicorn temp files have somewhere
+    to land. The size cap prevents runaway disk use."""
+    text = _compose_text()
+    assert re.search(
+        r"^\s*tmpfs:\s*\n\s*-\s*/tmp:[^\n]*size=",
+        text,
+        flags=re.MULTILINE,
+    ), (
+        "compose service SHALL declare tmpfs: /tmp with a size cap"
+    )
+
+
+def test_compose_declares_memory_limit() -> None:
+    """Phase-8 C7 — a runaway backtest job SHALL NOT OOM the host."""
+    text = _compose_text()
+    assert re.search(r"^\s*mem_limit:\s*\S+\s*$", text, flags=re.MULTILINE), (
+        "compose service SHALL declare a mem_limit"
+    )
+
+
+def test_compose_declares_pids_limit() -> None:
+    """Phase-8 C7 — fork-bomb defence. The webapp's process model
+    is uvicorn + a small ProcessPoolExecutor for backtest jobs;
+    256 is generous."""
+    text = _compose_text()
+    assert re.search(r"^\s*pids_limit:\s*\d+\s*$", text, flags=re.MULTILINE), (
+        "compose service SHALL declare a pids_limit"
+    )
+
+
+def test_compose_declares_stop_grace_period() -> None:
+    """Phase-8 C7 — give uvicorn enough time to flush logs +
+    close subscriptions on SIGTERM. The default 10s is too short
+    for the in-flight backtest job to checkpoint."""
+    text = _compose_text()
+    assert re.search(
+        r"^\s*stop_grace_period:\s*\S+\s*$",
+        text,
+        flags=re.MULTILINE,
+    ), (
+        "compose service SHALL declare a stop_grace_period (≥ 30s)"
+    )
+
+
+def test_compose_does_not_mount_docker_socket() -> None:
+    """Phase-8 C7 — mounting ``/var/run/docker.sock`` into a
+    container is a container-escape primitive. The webapp has no
+    need for it; catch any accidental addition early."""
+    text = _compose_text()
+    assert "docker.sock" not in text, (
+        "compose service SHALL NOT mount /var/run/docker.sock"
+    )
+
+
+def test_compose_does_not_run_as_privileged() -> None:
+    """Phase-8 C7 — privileged: true bypasses every cap_drop +
+    no-new-privileges guardrail. The webapp SHALL NOT need it."""
+    text = _compose_text()
+    assert "privileged: true" not in text, (
+        "compose service SHALL NOT run privileged"
+    )
+
+
+def test_dockerfile_has_no_hardcoded_operator_secret() -> None:
+    """Phase-8 C7 — defense against an accidental
+    ``ENV TRADING_BOT_OPERATOR_SECRET=...`` line baked into the
+    image layer. The secret SHALL only flow through the runtime
+    env, never through the image."""
+    text = _dockerfile_text()
+    # Match any ENV line that assigns a literal value to the secret.
+    bad = re.search(
+        r"^ENV\s+TRADING_BOT_OPERATOR_SECRET\s*=\s*[^$\s]",
+        text,
+        flags=re.MULTILINE,
+    )
+    assert bad is None, (
+        "Dockerfile SHALL NOT bake TRADING_BOT_OPERATOR_SECRET into the image"
+    )
+
+
+def test_compose_has_no_hardcoded_secrets() -> None:
+    """Phase-8 C7 — every secret-shaped env var in compose.yaml
+    SHALL come from a host env (``${VAR}`` interpolation), never
+    a literal value baked into the file."""
+    text = _compose_text()
+    # Heuristic: lines mentioning known secret keys SHALL contain '${'.
+    for key in (
+        "TRADING_BOT_OPERATOR_SECRET",
+        "TRADING_BOT_SLACK_WEBHOOK_URL",
+        "API_KEY",
+        "SECRET",
+        "PASSWORD",
+        "TOKEN",
+    ):
+        # Only check lines that look like an env assignment for that key.
+        pattern = rf"^\s*{re.escape(key)}\s*:\s*([^\s].*)$"
+        for match in re.finditer(pattern, text, flags=re.MULTILINE):
+            value = match.group(1).strip()
+            # Allow the documented YAML reference syntax to a host env.
+            if value.startswith("${") or value.startswith("$"):
+                continue
+            # Allow comments or empty strings.
+            if value.startswith("#") or value == '""':
+                continue
+            raise AssertionError(
+                f"compose.yaml SHALL NOT hardcode {key}={value!r}; "
+                "use ${{{key}}} interpolation"
+            )
+
+
+def test_dockerignore_excludes_secret_artefacts() -> None:
+    """Phase-8 C7 — belt-and-suspenders. The Dockerfile doesn't
+    COPY config/ today but a future regression that adds
+    ``COPY . .`` would silently bake config + .env files into
+    the image layer. Exclude them at the .dockerignore boundary."""
+    text = _DOCKERIGNORE.read_text(encoding="utf-8")
+    for pattern in ("config/", "*.sqlite", ".env", "*.secret", "*.key"):
+        assert pattern in text, (
+            f".dockerignore SHALL exclude {pattern} (Phase-8 C7)"
+        )
+
+
+def test_compose_persistence_volume_is_only_writable_mount() -> None:
+    """Phase-8 C7 — when ``read_only: true`` is in effect, every
+    writable path must be explicitly enumerated. Beyond ``/tmp``
+    (tmpfs) the persistence volume at /data is the only writable
+    bind. The config bind SHALL be read-only (`:ro` suffix)."""
+    text = _compose_text()
+    # Find every bind mount.
+    bind_lines = re.findall(r"^\s*-\s+[^:\s#]+:[^\s#]+", text, flags=re.MULTILINE)
+    # Filter to ones referencing ./config or named volumes.
+    for line in bind_lines:
+        line = line.strip()
+        if "./config" in line:
+            assert ":ro" in line, (
+                "config/ bind SHALL be mounted read-only (`:ro`)"
+            )

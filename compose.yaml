@@ -1,4 +1,7 @@
 # CR-017 Phase A — single-service webapp topology.
+# Phase-8 hardening C7 (2026-05-23) — read-only root fs, dropped
+# capabilities, no-new-privileges, resource limits, init=true for
+# clean signal propagation.
 #
 # Usage:
 #   TRADING_BOT_OPERATOR_SECRET=<hex> docker compose up --build
@@ -14,13 +17,47 @@ services:
       dockerfile: Dockerfile
     image: trading-bot:${TRADING_BOT_VERSION:-dev}
     container_name: trading-bot-webapp
+
+    # Phase-8 C7 — clean signal propagation. Without ``init: true``
+    # uvicorn would receive SIGTERM as PID 1, which has different
+    # signal semantics than a regular process (no default handlers).
+    # The tini reaper Docker provides via ``init: true`` forwards
+    # SIGTERM correctly so the structured-logger flush + broker
+    # unsubscribe paths run on shutdown.
+    init: true
+
+    # Phase-8 C7 — non-bypassable hardening. Defence-in-depth on
+    # top of the Dockerfile's USER trading + non-root uid.
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    # /tmp must be writable for SQLite WAL spill + uvicorn's
+    # temp files (e.g. SSE buffer). Backing it with tmpfs keeps
+    # the root fs read-only while giving the runtime its working
+    # space.
+    tmpfs:
+      - /tmp:size=64M,mode=1777
+
+    # Phase-8 C7 — resource ceilings. Without them a runaway
+    # backtest job could saturate the host (CPU / OOM / fork bomb).
+    mem_limit: 1g
+    pids_limit: 256
+
+    # Honour STOPSIGNAL by giving uvicorn time to flush.
+    stop_grace_period: 30s
+
     ports:
       - "8000:8000"
     volumes:
       # Operator's config directory is read-only inside the container.
       - ./config:/config:ro
       # Persistence volume — CR-008's SQLite DB + CR-016 var/reports/
-      # land here so they survive container restarts.
+      # land here so they survive container restarts. WAL files
+      # need write access; ``/data`` is the only writable mount in
+      # the read-only root fs setup.
       - trading-data:/data
     environment:
       TRADING_BOT_CONFIG_DIR: /config
@@ -28,6 +65,9 @@ services:
       # REQ_F_FAS_005 — required at boot.
       TRADING_BOT_OPERATOR_SECRET: ${TRADING_BOT_OPERATOR_SECRET}
       TRADING_BOT_TOKEN_TTL_SECONDS: ${TRADING_BOT_TOKEN_TTL_SECONDS:-300}
+      # Phase-8 C2 — structured logging level (defaults INFO + JSON).
+      TRADING_BOT_LOG_LEVEL: ${TRADING_BOT_LOG_LEVEL:-INFO}
+      TRADING_BOT_LOG_HUMAN: ${TRADING_BOT_LOG_HUMAN:-}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=2).status==200 else 1)"]
