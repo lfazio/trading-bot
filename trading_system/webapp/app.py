@@ -38,6 +38,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from trading_system.accounts.token_verifier import AccountScopedTokenVerifier
+from trading_system.observability import (
+    configure_logging,
+    structured_log,
+)
 from trading_system.webapp.health import router as health_router
 from trading_system.webapp.job_queue import InProcessJobQueue, JobQueue
 from trading_system.webapp.routers.api.backtests import router as backtests_router
@@ -144,6 +148,13 @@ def create_app(state: WebappState) -> FastAPI:
         lifespan=lifespan,
     )
 
+    # REQ_SDS_CRS_001 + Phase-8 hardening C2 — every request
+    # carries a correlation id; downstream structured_log() calls
+    # inherit it via the LogContext ContextVar.
+    from trading_system.webapp.middleware import CorrelationMiddleware
+
+    app.add_middleware(CorrelationMiddleware)
+
     # Mount static assets first so the templates' url_for resolves.
     app.mount(
         "/static",
@@ -216,6 +227,23 @@ def default_app() -> FastAPI:
     B wires the CR-008 ``RegistryRepository``.
     """
     import os
+
+    # Phase-8 hardening C2 — configure JSON-line structured
+    # logging at boot so every request's correlation id flows
+    # into the stderr stream the operator (or Docker driver)
+    # tails. Operators who want the human-readable format set
+    # TRADING_BOT_LOG_HUMAN=1.
+    configure_logging(
+        level=os.environ.get("TRADING_BOT_LOG_LEVEL", "INFO"),
+        json_output=os.environ.get("TRADING_BOT_LOG_HUMAN", "").strip() == "",
+    )
+    structured_log(
+        __import__("logging").getLogger(__name__),
+        __import__("logging").INFO,
+        "system",
+        "webapp:boot",
+        version="0.1.0",
+    )
 
     secret_env = os.environ.get("TRADING_BOT_OPERATOR_SECRET")
     if not secret_env:

@@ -19,6 +19,7 @@ from trading_system.observability.logger import (
     LogCategory,
     LogContext,
     configure_logging,
+    current_context,
     log_scope,
     structured_log,
 )
@@ -34,6 +35,7 @@ __all__ = [
     "LogContext",
     "LoggingConfig",
     "configure_logging",
+    "current_context",
     "load_logging_config",
     "log_scope",
     "structured_log",

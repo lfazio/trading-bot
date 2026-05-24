@@ -27,6 +27,7 @@ _ALLOWED_PROJECT_IMPORT_PREFIXES = (
     "trading_system.accounts",
     "trading_system.notifications",
     "trading_system.analytics",
+    "trading_system.observability",  # Phase-8 C2 — structured logging + correlation IDs
     "trading_system.persistence",
     "trading_system.result",
     # CR-017 Phase B — the backtest JobQueue worker bridges into the
