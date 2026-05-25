@@ -118,3 +118,194 @@ def test_account_isolation_on_snapshots(tmp_path: Path) -> None:
             assert reason.startswith("persistence:not_found:")
         case Ok(_):
             raise AssertionError("alt account leaked default's snapshot")
+
+
+# ---------------------------------------------------------------------------
+# Phase-8 C1 — Err-branch coverage (DB exception paths)
+# ---------------------------------------------------------------------------
+
+
+class _RaisingExecProxy:
+    """Delegating proxy around ``sqlite3.Connection`` that raises a
+    chosen exception whenever ``execute(sql, ...)`` matches the
+    predicate. Used to exercise the repository's DatabaseError
+    branches without needing a real corrupt DB."""
+
+    def __init__(self, real, when, exc):
+        self._real = real
+        self._when = when
+        self._exc = exc
+
+    def execute(self, sql, *args, **kwargs):
+        if self._when(sql):
+            raise self._exc
+        return self._real.execute(sql, *args, **kwargs)
+
+    def __getattr__(self, name):
+        # Delegate everything else (close, commit, etc.) to the real
+        # connection. ``__getattr__`` is only consulted for missing
+        # attrs, so ``execute`` is intercepted above.
+        return getattr(self._real, name)
+
+
+def _install_raw_execute_interceptor(conn, monkeypatch, *, when, exc):
+    """Replace ``conn._raw`` with a proxy that raises ``exc`` on
+    matching executes. ``Connection._raw`` is a slot field (settable
+    on instances) so ``monkeypatch.setattr`` works against it."""
+    proxy = _RaisingExecProxy(conn._raw, when, exc)
+    monkeypatch.setattr(conn, "_raw", proxy)
+
+
+def test_write_integrity_error_surfaces_categorised_err(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """An IntegrityError on insert SHALL surface as
+    `persistence:integrity:ks_snapshots:<reason>` and SHALL trigger
+    a safe rollback so the connection stays usable."""
+    from trading_system.persistence.connection import IntegrityError
+
+    conn = _migrated_conn(tmp_path)
+    repo = KillSwitchSnapshotRepository(conn=conn)
+    _install_raw_execute_interceptor(
+        conn,
+        monkeypatch,
+        when=lambda sql: "INSERT INTO ks_snapshots" in sql,
+        exc=IntegrityError("UNIQUE constraint failed"),
+    )
+    match repo.write(_snap("integrity-probe")):
+        case Err(reason):
+            assert reason.startswith("persistence:integrity:ks_snapshots:")
+        case Ok(_):
+            raise AssertionError("expected Err on integrity")
+
+
+def test_write_operational_error_surfaces_locked_category(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """An OperationalError (busy-locked DB, malformed PRAGMA) SHALL
+    surface as `persistence:locked:ks_snapshots:<reason>`."""
+    from trading_system.persistence.connection import OperationalError
+
+    conn = _migrated_conn(tmp_path)
+    repo = KillSwitchSnapshotRepository(conn=conn)
+    _install_raw_execute_interceptor(
+        conn,
+        monkeypatch,
+        when=lambda sql: "INSERT INTO ks_snapshots" in sql,
+        exc=OperationalError("database is locked"),
+    )
+    match repo.write(_snap("locked-probe")):
+        case Err(reason):
+            assert reason.startswith("persistence:locked:ks_snapshots:")
+        case Ok(_):
+            raise AssertionError("expected Err on operational")
+
+
+def test_write_generic_database_error_surfaces_corrupt_category(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Any other ``DatabaseError`` (catch-all) SHALL surface as
+    `persistence:corrupt:ks_snapshots:<reason>`."""
+    from trading_system.persistence.connection import DatabaseError
+
+    conn = _migrated_conn(tmp_path)
+    repo = KillSwitchSnapshotRepository(conn=conn)
+    _install_raw_execute_interceptor(
+        conn,
+        monkeypatch,
+        when=lambda sql: "INSERT INTO ks_snapshots" in sql,
+        exc=DatabaseError("disk image corrupt"),
+    )
+    match repo.write(_snap("corrupt-probe")):
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:ks_snapshots:")
+        case Ok(_):
+            raise AssertionError("expected Err on generic DB")
+
+
+def test_record_panics_on_write_failure(tmp_path: Path, monkeypatch) -> None:
+    """REQ_SDD_PER_007 — the ``SnapshotSink`` Protocol's ``record``
+    SHALL panic on write failure since a half-written audit is
+    worse than a crash (matches FileSnapshotSink's contract)."""
+    import pytest
+
+    from trading_system.persistence.connection import DatabaseError
+
+    conn = _migrated_conn(tmp_path)
+    repo = KillSwitchSnapshotRepository(conn=conn)
+    _install_raw_execute_interceptor(
+        conn,
+        monkeypatch,
+        when=lambda sql: "INSERT INTO ks_snapshots" in sql,
+        exc=DatabaseError("disk image corrupt"),
+    )
+    with pytest.raises(RuntimeError, match="KillSwitchSnapshotRepository.record failed"):
+        repo.record(_snap("panic-probe"))
+
+
+def test_get_database_error_on_read_surfaces_categorised_err(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A SELECT failure SHALL surface as
+    `persistence:corrupt:ks_snapshots:read:<reason>` rather than
+    bubbling up the raw sqlite3 exception."""
+    from trading_system.persistence.connection import DatabaseError
+
+    conn = _migrated_conn(tmp_path)
+    repo = KillSwitchSnapshotRepository(conn=conn)
+    _install_raw_execute_interceptor(
+        conn,
+        monkeypatch,
+        when=lambda sql: sql.lstrip().upper().startswith("SELECT"),
+        exc=DatabaseError("read failed"),
+    )
+    match repo.get(SnapshotId("read-probe")):
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:ks_snapshots:read:")
+        case Ok(_):
+            raise AssertionError("expected Err on read failure")
+
+
+def test_safe_rollback_swallows_database_errors(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """`_safe_rollback` SHALL NOT propagate a DatabaseError raised
+    during rollback — the original write Err is what the caller
+    needs, not a secondary rollback fault. Exercises the bare
+    except branch under `_safe_rollback`."""
+    from trading_system.persistence.connection import (
+        DatabaseError,
+        IntegrityError,
+    )
+
+    conn = _migrated_conn(tmp_path)
+    repo = KillSwitchSnapshotRepository(conn=conn)
+
+    real = conn._raw
+
+    def matcher(sql):
+        return (
+            "INSERT INTO ks_snapshots" in sql
+            or sql.lstrip().upper().startswith("ROLLBACK")
+        )
+
+    class _DualFault:
+        def execute(self, sql, *args, **kwargs):
+            if "INSERT INTO ks_snapshots" in sql:
+                raise IntegrityError("simulated integrity")
+            if sql.lstrip().upper().startswith("ROLLBACK"):
+                raise DatabaseError("rollback also failed")
+            return real.execute(sql, *args, **kwargs)
+
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+    monkeypatch.setattr(conn, "_raw", _DualFault())
+    _ = matcher  # silence unused-warning; logic is inlined in _DualFault
+    # Should still surface the original Integrity Err, not a
+    # secondary rollback exception.
+    match repo.write(_snap("rollback-probe")):
+        case Err(reason):
+            assert reason.startswith("persistence:integrity:ks_snapshots:")
+        case Ok(_):
+            raise AssertionError("expected Err")

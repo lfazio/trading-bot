@@ -247,3 +247,375 @@ def test_account_isolation_on_registry(tmp_path: Path) -> None:
             assert a.validated is False
         case _:
             raise AssertionError("both accounts should hold their own row")
+
+
+# ---------------------------------------------------------------------------
+# Phase-8 C1 — Err-branch coverage (DB exception paths + missing methods)
+# ---------------------------------------------------------------------------
+
+
+class _RaisingExecProxy:
+    """Proxy raising ``exc`` on a matching SQL; otherwise delegates."""
+
+    def __init__(self, real, when, exc):
+        self._real = real
+        self._when = when
+        self._exc = exc
+
+    def execute(self, sql, *args, **kwargs):
+        if self._when(sql):
+            raise self._exc
+        return self._real.execute(sql, *args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
+def _install(conn, monkeypatch, *, when, exc) -> None:
+    monkeypatch.setattr(conn, "_raw", _RaisingExecProxy(conn._raw, when, exc))
+
+
+def test_get_database_error_surfaces_categorised_err(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import DatabaseError
+
+    conn = _migrated_conn(tmp_path)
+    repo = RegistryRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "FROM strategy_registry" in sql,
+        exc=DatabaseError("read failed"),
+    )
+    match repo.get(StrategyId("s1")):
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:strategy_registry:read:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_list_validated_database_error_surfaces_err(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import DatabaseError
+
+    conn = _migrated_conn(tmp_path)
+    repo = RegistryRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "validated = 1" in sql,
+        exc=DatabaseError("read failed"),
+    )
+    match repo.list_validated():
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:strategy_registry:read:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_list_experimental_returns_only_unvalidated(tmp_path: Path) -> None:
+    """The experimental-list accessor SHALL surface every row
+    where ``validated = 0``, sorted by strategy_id. The legacy
+    test suite covered ``list_validated`` but not the experimental
+    branch."""
+    conn = _migrated_conn(tmp_path)
+    repo = RegistryRepository(conn=conn)
+    repo.store(_entry("alpha", validated=False))
+    repo.store(_entry("beta", validated=True))
+    repo.store(_entry("gamma", validated=False))
+    match repo.list_experimental():
+        case Ok(rows):
+            ids = [str(r.strategy_id) for r in rows]
+            assert ids == ["alpha", "gamma"]
+        case _:
+            raise AssertionError("expected Ok")
+
+
+def test_list_experimental_database_error_surfaces_err(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import DatabaseError
+
+    conn = _migrated_conn(tmp_path)
+    repo = RegistryRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "validated = 0" in sql,
+        exc=DatabaseError("read failed"),
+    )
+    match repo.list_experimental():
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:strategy_registry:read:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_store_propagates_read_err_from_get(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """`store` calls `get` first to check the validated-immutable
+    invariant. If `get` returns Err, the same Err SHALL propagate."""
+    from trading_system.persistence.connection import DatabaseError
+
+    conn = _migrated_conn(tmp_path)
+    repo = RegistryRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "FROM strategy_registry" in sql,
+        exc=DatabaseError("read failed"),
+    )
+    match repo.store(_entry("s1")):
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:strategy_registry:read:")
+        case _:
+            raise AssertionError("expected Err propagation")
+
+
+def test_store_integrity_error_surfaces_categorised_err(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import IntegrityError
+
+    conn = _migrated_conn(tmp_path)
+    repo = RegistryRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "INSERT INTO strategy_registry" in sql,
+        exc=IntegrityError("simulated"),
+    )
+    match repo.store(_entry("s1")):
+        case Err(reason):
+            assert reason.startswith("persistence:integrity:strategy_registry:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_store_operational_error_surfaces_locked_category(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import OperationalError
+
+    conn = _migrated_conn(tmp_path)
+    repo = RegistryRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "INSERT INTO strategy_registry" in sql,
+        exc=OperationalError("database is locked"),
+    )
+    match repo.store(_entry("s1")):
+        case Err(reason):
+            assert reason.startswith("persistence:locked:strategy_registry:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_store_generic_database_error_surfaces_corrupt_category(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import DatabaseError
+
+    conn = _migrated_conn(tmp_path)
+    repo = RegistryRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "INSERT INTO strategy_registry" in sql,
+        exc=DatabaseError("disk corrupt"),
+    )
+    match repo.store(_entry("s1")):
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:strategy_registry:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_request_promotion_propagates_read_err(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import DatabaseError
+
+    conn = _migrated_conn(tmp_path)
+    repo = RegistryRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "FROM strategy_registry" in sql,
+        exc=DatabaseError("read failed"),
+    )
+    match repo.request_promotion(
+        StrategyId("s1"),
+        "token",
+        verifier=AlwaysValidVerifier(),
+        operator_id="op",
+        rationale="r",
+    ):
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:strategy_registry:read:")
+        case _:
+            raise AssertionError("expected Err propagation")
+
+
+def test_request_promotion_integrity_error_during_update(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import IntegrityError
+
+    conn = _migrated_conn(tmp_path)
+    repo = RegistryRepository(conn=conn)
+    repo.store(_entry("s1"))  # so the get + Some path succeeds
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "UPDATE strategy_registry" in sql,
+        exc=IntegrityError("simulated"),
+    )
+    match repo.request_promotion(
+        StrategyId("s1"),
+        "token",
+        verifier=AlwaysValidVerifier(),
+        operator_id="op",
+        rationale="r",
+    ):
+        case Err(reason):
+            assert reason.startswith("persistence:integrity:registry_promotions:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_request_promotion_operational_error_during_update(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import OperationalError
+
+    conn = _migrated_conn(tmp_path)
+    repo = RegistryRepository(conn=conn)
+    repo.store(_entry("s1"))
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "UPDATE strategy_registry" in sql,
+        exc=OperationalError("database is locked"),
+    )
+    match repo.request_promotion(
+        StrategyId("s1"),
+        "token",
+        verifier=AlwaysValidVerifier(),
+        operator_id="op",
+        rationale="r",
+    ):
+        case Err(reason):
+            assert reason.startswith("persistence:locked:registry_promotions:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_request_promotion_generic_database_error_during_update(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import DatabaseError
+
+    conn = _migrated_conn(tmp_path)
+    repo = RegistryRepository(conn=conn)
+    repo.store(_entry("s1"))
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "UPDATE strategy_registry" in sql,
+        exc=DatabaseError("disk corrupt"),
+    )
+    match repo.request_promotion(
+        StrategyId("s1"),
+        "token",
+        verifier=AlwaysValidVerifier(),
+        operator_id="op",
+        rationale="r",
+    ):
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:registry_promotions:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_promotion_audit_returns_rows_in_chronological_order(
+    tmp_path: Path,
+) -> None:
+    """REQ_SDD_PER_005 — the audit reader SHALL surface every row
+    for the given strategy_id in chronological order; the raw
+    token is never present (only token_hash)."""
+    conn = _migrated_conn(tmp_path)
+    repo = RegistryRepository(conn=conn)
+    repo.store(_entry("s1"))
+    repo.request_promotion(
+        StrategyId("s1"),
+        "token-1",
+        verifier=AlwaysValidVerifier(),
+        operator_id="op-a",
+        rationale="first promotion",
+    )
+    match repo.promotion_audit(StrategyId("s1")):
+        case Ok(rows):
+            assert len(rows) == 1
+            row = rows[0]
+            assert row["promoted_by"] == "op-a"
+            # SHA-256 hex of "token-1".
+            expected = hashlib.sha256(b"token-1").hexdigest()
+            assert row["promoter_token_hash"] == expected
+        case _:
+            raise AssertionError("expected Ok")
+
+
+def test_promotion_audit_database_error_surfaces_err(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import DatabaseError
+
+    conn = _migrated_conn(tmp_path)
+    repo = RegistryRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "FROM registry_promotions" in sql,
+        exc=DatabaseError("read failed"),
+    )
+    match repo.promotion_audit(StrategyId("s1")):
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:registry_promotions:read:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_safe_rollback_swallows_secondary_error(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import (
+        DatabaseError,
+        IntegrityError,
+    )
+
+    conn = _migrated_conn(tmp_path)
+    repo = RegistryRepository(conn=conn)
+    real = conn._raw
+
+    class _DualFault:
+        def execute(self, sql, *args, **kwargs):
+            if "INSERT INTO strategy_registry" in sql:
+                raise IntegrityError("simulated integrity")
+            if sql.lstrip().upper().startswith("ROLLBACK"):
+                raise DatabaseError("rollback also failed")
+            return real.execute(sql, *args, **kwargs)
+
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+    monkeypatch.setattr(conn, "_raw", _DualFault())
+    match repo.store(_entry("s1")):
+        case Err(reason):
+            assert reason.startswith("persistence:integrity:strategy_registry:")
+        case _:
+            raise AssertionError("expected Err")

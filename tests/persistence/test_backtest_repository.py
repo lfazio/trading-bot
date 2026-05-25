@@ -190,3 +190,166 @@ def test_account_isolation_on_backtest_archive(tmp_path: Path) -> None:
             assert reason.startswith("persistence:not_found:")
         case Ok(_):
             raise AssertionError("alt account should not see default's archive")
+
+
+# ---------------------------------------------------------------------------
+# Phase-8 C1 — Err-branch coverage (DB exception paths)
+# ---------------------------------------------------------------------------
+
+
+class _RaisingExecProxy:
+    """Proxy around ``sqlite3.Connection`` raising ``exc`` on a
+    matching SQL. Used to exercise the repository's DatabaseError
+    branches without needing a real corrupt DB."""
+
+    def __init__(self, real, when, exc):
+        self._real = real
+        self._when = when
+        self._exc = exc
+
+    def execute(self, sql, *args, **kwargs):
+        if self._when(sql):
+            raise self._exc
+        return self._real.execute(sql, *args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
+def _install(conn, monkeypatch, *, when, exc) -> None:
+    monkeypatch.setattr(conn, "_raw", _RaisingExecProxy(conn._raw, when, exc))
+
+
+def test_archive_integrity_error_surfaces_categorised_err(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import IntegrityError
+
+    conn = _migrated_conn(tmp_path)
+    repo = BacktestResultRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "INSERT INTO backtest_results" in sql,
+        exc=IntegrityError("UNIQUE constraint failed"),
+    )
+    match repo.archive(
+        _result(),
+        strategy_id=StrategyId("alpha"),
+        git_sha="sha1",
+        config_hash="cfg1",
+        seed=7,
+    ):
+        case Err(reason):
+            assert reason.startswith("persistence:integrity:backtest_results:")
+        case Ok(_):
+            raise AssertionError("expected Err on integrity")
+
+
+def test_archive_operational_error_surfaces_locked_category(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import OperationalError
+
+    conn = _migrated_conn(tmp_path)
+    repo = BacktestResultRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "INSERT INTO backtest_results" in sql,
+        exc=OperationalError("database is locked"),
+    )
+    match repo.archive(
+        _result(),
+        strategy_id=StrategyId("alpha"),
+        git_sha="sha1",
+        config_hash="cfg1",
+        seed=7,
+    ):
+        case Err(reason):
+            assert reason.startswith("persistence:locked:backtest_results:")
+        case Ok(_):
+            raise AssertionError("expected Err on operational")
+
+
+def test_archive_generic_database_error_surfaces_corrupt_category(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import DatabaseError
+
+    conn = _migrated_conn(tmp_path)
+    repo = BacktestResultRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "INSERT INTO backtest_results" in sql,
+        exc=DatabaseError("disk image corrupt"),
+    )
+    match repo.archive(
+        _result(),
+        strategy_id=StrategyId("alpha"),
+        git_sha="sha1",
+        config_hash="cfg1",
+        seed=7,
+    ):
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:backtest_results:")
+        case Ok(_):
+            raise AssertionError("expected Err on generic DB")
+
+
+def test_lookup_database_error_surfaces_categorised_err(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import DatabaseError
+
+    conn = _migrated_conn(tmp_path)
+    repo = BacktestResultRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: sql.lstrip().upper().startswith("SELECT"),
+        exc=DatabaseError("read failed"),
+    )
+    match repo.lookup(StrategyId("alpha"), "sha1", "cfg1", 7):
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:backtest_results:read:")
+        case Ok(_):
+            raise AssertionError("expected Err on read failure")
+
+
+def test_safe_rollback_swallows_secondary_error(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import (
+        DatabaseError,
+        IntegrityError,
+    )
+
+    conn = _migrated_conn(tmp_path)
+    repo = BacktestResultRepository(conn=conn)
+    real = conn._raw
+
+    class _DualFault:
+        def execute(self, sql, *args, **kwargs):
+            if "INSERT INTO backtest_results" in sql:
+                raise IntegrityError("simulated integrity")
+            if sql.lstrip().upper().startswith("ROLLBACK"):
+                raise DatabaseError("rollback also failed")
+            return real.execute(sql, *args, **kwargs)
+
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+    monkeypatch.setattr(conn, "_raw", _DualFault())
+    match repo.archive(
+        _result(),
+        strategy_id=StrategyId("alpha"),
+        git_sha="sha1",
+        config_hash="cfg1",
+        seed=7,
+    ):
+        case Err(reason):
+            assert reason.startswith("persistence:integrity:backtest_results:")
+        case Ok(_):
+            raise AssertionError("expected Err")
