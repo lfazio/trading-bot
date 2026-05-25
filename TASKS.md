@@ -232,6 +232,51 @@ Cross-cutting (build alongside):
 
 ---
 
+## Phase 8 — Operator Hardening Sprint
+
+Post-Phase-7 hardening sprint targeting operator-grade production
+readiness. Sprint board lives in
+`Documentations/Feature-Gap-Analysis-2026-05-23.md` Part C
+(14 open hardening items). Tracked separately from the lifecycle
+because each item is operationally driven, not gated by an SRS
+amendment.
+
+The per-strike rows for C2 / C5 / C6 / C7-static / C8 / C1 (4
+strikes) are kept inline under the Phase-5 entries (search for
+"Phase-8 operator hardening sprint" in this file).
+
+Sprint scoreboard at session close (2026-05-25):
+
+- [x] **C2 — Structured logging + correlation IDs** ✅ Done.
+- [x] **C5 — Persistence migration drill** ✅ Done (16 tests).
+- [x] **C6 — Operations.md v1.0 finalisation** ✅ Done.
+- [x] **C7 — Docker container hardening (static)** ✅ Done (15
+      tests). Dynamic portion deferred (needs Docker daemon).
+- [x] **C8 — Multi-account drill** ✅ Done (21 tests).
+- [x] **C1 — Coverage cleanup** ✅ Done across 4 strikes:
+      validators (1st), universes + jobs + cac40 fix (2nd),
+      persistence repos batch 1 (3rd), persistence repos batch 2
+      (4th). 10 financial-logic files lifted to ≥ 96–100%;
+      125 new tests.
+- [ ] **C4 — Operator-token rotation** ⏳ Filed as **CR-024**
+      (Proposed; awaiting SRS / SDS / SDD / TP cascade). Surface:
+      token-id (jti) + revocation list + multi-secret roll +
+      `seconds_until_expiry` + structured audit + `trading-bot
+      issue-token` CLI.
+- [ ] **C7 dynamic — CVE scan + runtime smoke** ⏳ Needs Docker
+      daemon in CI.
+- [ ] **C3 / C9..C14** — remaining hardening items in the
+      gap-analysis (deferred; re-triaged next session).
+
+**Session result (2026-05-25):** 2 519 → 2 684 tests (+165;
+includes the +30 from CR-021 / CR-022 cascade work earlier in
+the same session). 4 CRs filed (CR-021 / CR-022 Accepted with
+full cascade; CR-023 / CR-024 Proposed). 14 commits pushed across
+wiki + main repo. Operations.md to v1.0. Persistence-layer
+coverage rises ~83% → ~98% on the 5 in-scope repos.
+
+---
+
 ## Standing Constraints (apply to every phase)
 
 - Optimize **net after-tax** return — never gross.

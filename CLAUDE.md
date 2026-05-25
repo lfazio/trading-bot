@@ -165,6 +165,16 @@ trading_system/
 ├── backtesting/  portfolio/  execution/  phase_engine/  turbo_selector/
 ├── dashboard/  safety/  strategy_lab/  milestone_controller/
 ├── structured_products/  capital_flow/  analytics/
+├── accounts/             ← CR-006 multi-account (L7)
+├── notifications/        ← CR-001 fanout + channels + approval gate
+├── persistence/          ← CR-008 SQLite + WAL + migrations + repositories
+├── observability/        ← Phase-8 C2 structured JSON-line logging
+├── regime/  wealth_ops/  ← CR-013 detector + CR-010/011 sector + FX
+├── institutional/        ← CR-012 hedge overlay (Phase 6)
+├── portfolio_manager/    ← CR-005 rebalancer + tax-harvester facade
+├── webui/                ← CR-004 stdlib HTTP fallback
+├── webapp/               ← CR-017 FastAPI + uvicorn + HTMX dashboard;
+│                            CR-019 operator-grade UX layer
 └── main.py
 ```
 
@@ -172,6 +182,19 @@ trading_system/
 `anomaly_detector.py`, `state_manager.py`, `alert_system.py`). `strategy_lab/` is the
 bounded research engine (generator → backtester → evaluator → risk_guard → optimizer
 → registry → loop_controller).
+
+`webapp/` is the operator-grade FastAPI surface. `webapp/runtimes/`
+is the documented composition layer (carve-out to import from
+`execution.*` / `backtesting.*` / `data.*` / `portfolio.*` /
+`tax.*` / `strategies.*`); the rest of `webapp/` SHALL NOT reach
+those modules (structural test enforces). `webapp/middleware.py`
+hosts the Phase-8 C2 `CorrelationMiddleware` that binds the
+per-request `LogContext` for the structured-log envelope.
+
+`observability/` ships the JSON-line logger + `LogCategory` enum
++ `LogContext` ContextVar + `structured_log(...)` helper. Engine
+modules import from it like any other layer (allow-listed by the
+structural audit since it carries no engine state).
 
 ## Implementation order (mandatory)
 
@@ -216,6 +239,58 @@ registry; experimental ones are flagged.
 - Avoid overtrading, especially in early phases — fee minimization matters.
 - Reject marginal trades automatically.
 - Survival > return. Stopping incorrectly > trading incorrectly.
+
+## Structured logging (Phase-8 C2)
+
+Every webapp request carries a correlation id (per-request UUID
+or operator-supplied `X-Request-ID`). The `LogContext` is bound
+via a ContextVar in `trading_system/observability/logger.py` and
+the `CorrelationMiddleware` at `trading_system/webapp/
+middleware.py` wires it through the FastAPI surface. The
+account_id claim is extracted from `/api/accounts/<aid>/...` and
+`/paper-sessions/<aid>/...` path patterns.
+
+Engine-side callers emit log lines via
+`structured_log(logger, level, category, message, /, **payload)`.
+Each call writes one JSON object per line on stderr:
+
+```json
+{"ts": "...", "level": "INFO", "category": "...",
+ "corr_id": "...", "account_id": "...", "module": "...",
+ "message": "...", "payload": {...}}
+```
+
+Env vars:
+- `TRADING_BOT_LOG_LEVEL` — standard logging level (default `INFO`).
+- `TRADING_BOT_LOG_HUMAN` — set to `1` for the human-readable
+  format (local tailing). Production / Docker leaves it unset so
+  the JSON-line stream feeds ingestion pipelines directly.
+
+REQ refs: `REQ_NF_LOG_001`, `REQ_SDS_CRS_001`.
+
+## Disk-cache reach contract (CR-021 + CR-022)
+
+`YFinanceCache.get_bars(key)` is two-pass (CR-021): exact-key match
+first; on miss, envelope scan over `<root>/<symbol>/<timeframe>/
+*_bars.jsonl` returns the sliced bars from any cached file whose
+stored window contains the requested range. The sliced output is
+byte-equal to what an exact-key recorder run would have produced.
+
+The backtest engine SHALL keep calling `provider.bars(...)` so
+REQ_NF_DAT_001 replay determinism is preserved.
+
+`YFinanceMarketDataProvider.fetch_live_bars(...)` (CR-022) is the
+paper-trading-only bypass-cache fetch. The paper bar source routes
+its post-backfill poll through this method when the wrapped
+provider exposes it (duck-typed via `getattr`); falls back to
+`provider.bars(...)` for test fakes / simulated sources. Network
+failure falls back to the CR-021 envelope cache so
+REQ_F_PAP_002 graceful degradation holds.
+
+REQ refs: `REQ_F_DAT_005` (envelope hit), `REQ_SDD_DAT_014`
+(two-pass lookup), `REQ_NF_DAT_004` (byte-equal slice),
+`REQ_F_PAP_010` (live bypass), `REQ_SDD_DAT_015`
+(fetch_live_bars contract).
 
 ## Repository workflow (GitHub)
 
