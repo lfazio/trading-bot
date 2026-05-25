@@ -150,3 +150,237 @@ def test_wal_lets_reader_see_committed_write(tmp_path: Path) -> None:
 
     writer_conn.close()
     reader_conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Phase-8 C1 — Err-branch coverage (DB exception paths)
+# ---------------------------------------------------------------------------
+
+
+class _RaisingExecProxy:
+    """Proxy raising ``exc`` on a matching SQL; otherwise delegates."""
+
+    def __init__(self, real, when, exc):
+        self._real = real
+        self._when = when
+        self._exc = exc
+
+    def execute(self, sql, *args, **kwargs):
+        if self._when(sql):
+            raise self._exc
+        return self._real.execute(sql, *args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
+def _install(conn, monkeypatch, *, when, exc) -> None:
+    monkeypatch.setattr(conn, "_raw", _RaisingExecProxy(conn._raw, when, exc))
+
+
+def test_append_operational_error_surfaces_locked_category(
+    tmp_path, monkeypatch
+) -> None:
+    import sqlite3
+    from datetime import UTC, datetime
+    from decimal import Decimal
+
+    from trading_system.models.flow import EquityPoint
+    from trading_system.models.money import Currency, Money
+
+    conn = _migrated_conn(tmp_path)
+    repo = PortfolioRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "INSERT INTO equity_points" in sql,
+        exc=sqlite3.OperationalError("database is locked"),
+    )
+    point = EquityPoint(
+        at=datetime(2026, 5, 25, tzinfo=UTC),
+        equity_gross=Money(Decimal("100"), Currency.EUR),
+        equity_after_tax=Money(Decimal("100"), Currency.EUR),
+        drawdown_pct=Decimal("0"),
+    )
+    match repo.append_equity_point(point):
+        case Err(reason):
+            assert reason.startswith("persistence:locked:equity_points:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_append_generic_database_error_surfaces_corrupt_category(
+    tmp_path, monkeypatch
+) -> None:
+    import sqlite3
+    from datetime import UTC, datetime
+    from decimal import Decimal
+
+    from trading_system.models.flow import EquityPoint
+    from trading_system.models.money import Currency, Money
+
+    conn = _migrated_conn(tmp_path)
+    repo = PortfolioRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "INSERT INTO equity_points" in sql,
+        exc=sqlite3.Error("disk corrupt"),
+    )
+    point = EquityPoint(
+        at=datetime(2026, 5, 25, tzinfo=UTC),
+        equity_gross=Money(Decimal("100"), Currency.EUR),
+        equity_after_tax=Money(Decimal("100"), Currency.EUR),
+        drawdown_pct=Decimal("0"),
+    )
+    match repo.append_equity_point(point):
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:equity_points:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_equity_curve_database_error_surfaces_categorised_err(
+    tmp_path, monkeypatch
+) -> None:
+    import sqlite3
+
+    conn = _migrated_conn(tmp_path)
+    repo = PortfolioRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "SELECT * FROM equity_points" in sql,
+        exc=sqlite3.Error("read failed"),
+    )
+    match repo.equity_curve():
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:equity_points:read:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_equity_curve_parse_error_surfaces_categorised_err(
+    tmp_path, monkeypatch
+) -> None:
+    """A corrupt row that trips ``row_to_equity_point`` SHALL
+    surface as ``persistence:corrupt:equity_points:parse:<reason>``
+    rather than bubbling up the raw ValueError."""
+    conn = _migrated_conn(tmp_path)
+    repo = PortfolioRepository(conn=conn)
+    # Tamper with a row directly so the read path returns it but
+    # the mapper rejects it (negative drawdown_pct trips Decimal
+    # range invariant on EquityPoint).
+    conn.execute(
+        "INSERT INTO equity_points (account_id, at, "
+        "equity_gross_amount, equity_gross_currency, "
+        "equity_after_tax_amount, equity_after_tax_currency, "
+        "drawdown_pct) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("default", "2026-05-25T00:00:00+00:00", "100", "EUR", "100", "EUR", "1.5"),
+    )
+    match repo.equity_curve():
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:equity_points:parse:")
+        case _:
+            raise AssertionError("expected Err on parse failure")
+
+
+def test_list_account_ids_with_prefix_happy_path(tmp_path) -> None:
+    """REQ_F_PAP_003 — the paper runtime registry calls this with
+    ``"paper-"`` to enumerate resumable sessions."""
+    from datetime import UTC, datetime
+    from decimal import Decimal
+
+    from trading_system.models.flow import EquityPoint
+    from trading_system.models.identifiers import AccountId
+    from trading_system.models.money import Currency, Money
+
+    conn = _migrated_conn(tmp_path)
+    repo = PortfolioRepository(conn=conn)
+    for aid in ("paper-2026-05-25T00:00:00", "paper-2026-05-26T00:00:00", "live-1"):
+        repo.append_equity_point(
+            EquityPoint(
+                at=datetime(2026, 5, 25, tzinfo=UTC),
+                equity_gross=Money(Decimal("100"), Currency.EUR),
+                equity_after_tax=Money(Decimal("100"), Currency.EUR),
+                drawdown_pct=Decimal("0"),
+            ),
+            account_id=AccountId(aid),
+        )
+    match repo.list_account_ids_with_prefix("paper-"):
+        case Ok(ids):
+            assert [str(i) for i in ids] == [
+                "paper-2026-05-25T00:00:00",
+                "paper-2026-05-26T00:00:00",
+            ]
+        case _:
+            raise AssertionError("expected Ok")
+
+
+def test_list_account_ids_empty_prefix_rejected(tmp_path) -> None:
+    conn = _migrated_conn(tmp_path)
+    repo = PortfolioRepository(conn=conn)
+    match repo.list_account_ids_with_prefix(""):
+        case Err(reason):
+            assert reason == "persistence:bad_prefix:empty"
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_list_account_ids_database_error_surfaces_err(
+    tmp_path, monkeypatch
+) -> None:
+    import sqlite3
+
+    conn = _migrated_conn(tmp_path)
+    repo = PortfolioRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "SELECT DISTINCT account_id" in sql,
+        exc=sqlite3.Error("list failed"),
+    )
+    match repo.list_account_ids_with_prefix("paper-"):
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:equity_points:list:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_safe_rollback_swallows_secondary_error(
+    tmp_path, monkeypatch
+) -> None:
+    import sqlite3
+    from datetime import UTC, datetime
+    from decimal import Decimal
+
+    from trading_system.models.flow import EquityPoint
+    from trading_system.models.money import Currency, Money
+
+    conn = _migrated_conn(tmp_path)
+    repo = PortfolioRepository(conn=conn)
+    real = conn._raw
+
+    class _DualFault:
+        def execute(self, sql, *args, **kwargs):
+            if "INSERT INTO equity_points" in sql:
+                raise sqlite3.IntegrityError("simulated")
+            if sql.lstrip().upper().startswith("ROLLBACK"):
+                raise sqlite3.Error("rollback also failed")
+            return real.execute(sql, *args, **kwargs)
+
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+    monkeypatch.setattr(conn, "_raw", _DualFault())
+    point = EquityPoint(
+        at=datetime(2026, 5, 25, tzinfo=UTC),
+        equity_gross=Money(Decimal("100"), Currency.EUR),
+        equity_after_tax=Money(Decimal("100"), Currency.EUR),
+        drawdown_pct=Decimal("0"),
+    )
+    match repo.append_equity_point(point):
+        case Err(reason):
+            assert reason.startswith("persistence:integrity:equity_points:")
+        case _:
+            raise AssertionError("expected Err")

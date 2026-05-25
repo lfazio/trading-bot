@@ -261,3 +261,184 @@ def test_persistence_round_trip_with_subsequent_append(tmp_path: Path) -> None:
             assert e == new_event
         case _:
             raise AssertionError
+
+
+# ---------------------------------------------------------------------------
+# Phase-8 C1 — Err-branch coverage (DB exception paths)
+# ---------------------------------------------------------------------------
+
+
+class _RaisingExecProxy:
+    """Proxy raising ``exc`` on a matching SQL; otherwise delegates."""
+
+    def __init__(self, real, when, exc):
+        self._real = real
+        self._when = when
+        self._exc = exc
+
+    def execute(self, sql, *args, **kwargs):
+        if self._when(sql):
+            raise self._exc
+        return self._real.execute(sql, *args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
+def _install(conn, monkeypatch, *, when, exc) -> None:
+    monkeypatch.setattr(conn, "_raw", _RaisingExecProxy(conn._raw, when, exc))
+
+
+def test_append_operational_error_surfaces_locked_category(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import sqlite3
+
+    conn = _migrated_conn(tmp_path)
+    repo = TransitionRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "INSERT INTO transitions" in sql,
+        exc=sqlite3.OperationalError("database is locked"),
+    )
+    match repo.append(
+        _event(1, frm=MarketRegime.SIDEWAYS, to=MarketRegime.BULL),
+        snapshot_id=SnapshotId("snap-1"),
+    ):
+        case Err(reason):
+            assert reason.startswith("persistence:locked:transitions:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_append_generic_database_error_surfaces_corrupt_category(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import sqlite3
+
+    conn = _migrated_conn(tmp_path)
+    repo = TransitionRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "INSERT INTO transitions" in sql,
+        exc=sqlite3.Error("disk corrupt"),
+    )
+    match repo.append(
+        _event(1, frm=MarketRegime.SIDEWAYS, to=MarketRegime.BULL),
+        snapshot_id=SnapshotId("snap-1"),
+    ):
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:transitions:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_latest_database_error_surfaces_categorised_err(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import sqlite3
+
+    conn = _migrated_conn(tmp_path)
+    repo = TransitionRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "FROM transitions" in sql,
+        exc=sqlite3.Error("read failed"),
+    )
+    match repo.latest():
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:transitions:read:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_latest_parse_error_surfaces_categorised_err(
+    tmp_path: Path,
+) -> None:
+    """A corrupted row that trips ``row_to_transition_event`` SHALL
+    surface as ``persistence:corrupt:transitions:parse:<reason>``
+    rather than bubbling up the raw ValueError."""
+    conn = _migrated_conn(tmp_path)
+    repo = TransitionRepository(conn=conn)
+    # Insert a tampered row with an invalid regime string.
+    conn.execute(
+        "INSERT INTO transitions (account_id, at, from_regime, to_regime, "
+        "confirmation_periods, snapshot_id) VALUES (?, ?, ?, ?, ?, ?)",
+        ("default", "2026-05-25T00:00:00+00:00", "BOGUS_REGIME", "BULL", 2, "snap-x"),
+    )
+    match repo.latest():
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:transitions:parse:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_history_database_error_surfaces_categorised_err(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import sqlite3
+
+    conn = _migrated_conn(tmp_path)
+    repo = TransitionRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "ORDER BY at ASC" in sql,
+        exc=sqlite3.Error("read failed"),
+    )
+    match repo.history():
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:transitions:read:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_history_parse_error_surfaces_categorised_err(tmp_path: Path) -> None:
+    """A row that fails the mapper invariant SHALL surface as
+    `persistence:corrupt:transitions:parse:<reason>`."""
+    conn = _migrated_conn(tmp_path)
+    repo = TransitionRepository(conn=conn)
+    conn.execute(
+        "INSERT INTO transitions (account_id, at, from_regime, to_regime, "
+        "confirmation_periods, snapshot_id) VALUES (?, ?, ?, ?, ?, ?)",
+        ("default", "2026-05-25T00:00:00+00:00", "BOGUS", "BULL", 2, "snap-x"),
+    )
+    match repo.history():
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:transitions:parse:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_safe_rollback_swallows_secondary_error(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import sqlite3
+
+    conn = _migrated_conn(tmp_path)
+    repo = TransitionRepository(conn=conn)
+    real = conn._raw
+
+    class _DualFault:
+        def execute(self, sql, *args, **kwargs):
+            if "INSERT INTO transitions" in sql:
+                raise sqlite3.IntegrityError("simulated")
+            if sql.lstrip().upper().startswith("ROLLBACK"):
+                raise sqlite3.Error("rollback also failed")
+            return real.execute(sql, *args, **kwargs)
+
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+    monkeypatch.setattr(conn, "_raw", _DualFault())
+    match repo.append(
+        _event(1, frm=MarketRegime.SIDEWAYS, to=MarketRegime.BULL),
+        snapshot_id=SnapshotId("snap-1"),
+    ):
+        case Err(reason):
+            assert reason.startswith("persistence:integrity:transitions:")
+        case _:
+            raise AssertionError("expected Err")

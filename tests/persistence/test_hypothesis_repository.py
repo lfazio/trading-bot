@@ -229,3 +229,237 @@ def test_account_id_isolates_rows(conn: Connection) -> None:
     # The same id can live under each account without collision.
     assert str(alpha_rows[0].id) == "h-shared"
     assert str(beta_rows[0].id) == "h-shared"
+
+
+# ---------------------------------------------------------------------------
+# Phase-8 C1 — Err-branch coverage (DB exception paths)
+# ---------------------------------------------------------------------------
+
+
+class _RaisingExecProxy:
+    """Proxy raising ``exc`` on a matching SQL; otherwise delegates."""
+
+    def __init__(self, real, when, exc):
+        self._real = real
+        self._when = when
+        self._exc = exc
+
+    def execute(self, sql, *args, **kwargs):
+        if self._when(sql):
+            raise self._exc
+        return self._real.execute(sql, *args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
+def _install(conn, monkeypatch, *, when, exc) -> None:
+    monkeypatch.setattr(conn, "_raw", _RaisingExecProxy(conn._raw, when, exc))
+
+
+def test_append_generic_database_error_surfaces_corrupt_category(
+    conn: Connection, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import DatabaseError
+
+    repo = HypothesisRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "INSERT INTO hypotheses" in sql,
+        exc=DatabaseError("disk corrupt"),
+    )
+    match repo.append(_hypothesis()):
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:hypotheses:write:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_record_transition_propagates_read_err_from_get(
+    conn: Connection, monkeypatch
+) -> None:
+    """`record_transition` reads the row first to surface a clean
+    `hypothesis:not_found` Err. A DatabaseError on that read SHALL
+    propagate as the categorised read Err."""
+    from trading_system.persistence.connection import DatabaseError
+
+    repo = HypothesisRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "FROM hypotheses" in sql,
+        exc=DatabaseError("read failed"),
+    )
+    match repo.record_transition(
+        HypothesisId("h-001"),
+        HypothesisState.VALIDATED,
+        reason="passed",
+        at=datetime(2026, 5, 18, tzinfo=UTC),
+    ):
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:hypotheses:read:")
+        case _:
+            raise AssertionError("expected Err propagation")
+
+
+def test_record_transition_integrity_error_during_insert(
+    conn: Connection, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import IntegrityError
+
+    repo = HypothesisRepository(conn=conn)
+    repo.append(_hypothesis())  # so get() returns Some()
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "INSERT INTO hypothesis_transitions" in sql,
+        exc=IntegrityError("duplicate transition"),
+    )
+    match repo.record_transition(
+        HypothesisId("h-001"),
+        HypothesisState.VALIDATED,
+        reason="passed",
+        at=datetime(2026, 5, 18, tzinfo=UTC),
+    ):
+        case Err(reason):
+            assert reason.startswith(
+                "persistence:integrity:hypothesis_transitions:duplicate:"
+            )
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_record_transition_generic_database_error_during_insert(
+    conn: Connection, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import DatabaseError
+
+    repo = HypothesisRepository(conn=conn)
+    repo.append(_hypothesis())
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "INSERT INTO hypothesis_transitions" in sql,
+        exc=DatabaseError("disk corrupt"),
+    )
+    match repo.record_transition(
+        HypothesisId("h-001"),
+        HypothesisState.VALIDATED,
+        reason="passed",
+        at=datetime(2026, 5, 18, tzinfo=UTC),
+    ):
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:hypothesis_transitions:write:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_get_database_error_surfaces_categorised_err(
+    conn: Connection, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import DatabaseError
+
+    repo = HypothesisRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "FROM hypotheses" in sql,
+        exc=DatabaseError("read failed"),
+    )
+    match repo.get(HypothesisId("h-001")):
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:hypotheses:read:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_list_all_database_error_surfaces_categorised_err(
+    conn: Connection, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import DatabaseError
+
+    repo = HypothesisRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "FROM hypotheses" in sql,
+        exc=DatabaseError("read failed"),
+    )
+    match repo.list_all():
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:hypotheses:read:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_current_state_propagates_read_err_from_get(
+    conn: Connection, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import DatabaseError
+
+    repo = HypothesisRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "FROM hypotheses" in sql,
+        exc=DatabaseError("read failed"),
+    )
+    match repo.current_state(HypothesisId("h-001")):
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:hypotheses:read:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_current_state_missing_hypothesis_returns_nothing(
+    conn: Connection,
+) -> None:
+    repo = HypothesisRepository(conn=conn)
+    match repo.current_state(HypothesisId("ghost")):
+        case Ok(Nothing()):
+            pass
+        case _:
+            raise AssertionError("expected Ok(Nothing()) for missing hypothesis")
+
+
+def test_current_state_transitions_database_error_surfaces_err(
+    conn: Connection, monkeypatch
+) -> None:
+    """A DatabaseError on the transitions SELECT (after the
+    hypothesis row read succeeds) SHALL surface as
+    `persistence:corrupt:hypothesis_transitions:read:<reason>`."""
+    from trading_system.persistence.connection import DatabaseError
+
+    repo = HypothesisRepository(conn=conn)
+    repo.append(_hypothesis())
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "FROM hypothesis_transitions" in sql,
+        exc=DatabaseError("read failed"),
+    )
+    match repo.current_state(HypothesisId("h-001")):
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:hypothesis_transitions:read:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_transitions_for_database_error_surfaces_err(
+    conn: Connection, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import DatabaseError
+
+    repo = HypothesisRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "FROM hypothesis_transitions" in sql,
+        exc=DatabaseError("read failed"),
+    )
+    match repo.transitions_for(HypothesisId("h-001")):
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:hypothesis_transitions:read:")
+        case _:
+            raise AssertionError("expected Err")

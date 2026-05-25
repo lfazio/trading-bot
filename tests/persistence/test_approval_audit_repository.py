@@ -209,3 +209,158 @@ def test_account_id_isolates_request_rows(conn: Connection) -> None:
             assert row["account_id"] == "beta"
         case _:
             raise AssertionError("beta request missing")
+
+
+# ---------------------------------------------------------------------------
+# Phase-8 C1 — Err-branch coverage (DB exception paths)
+# ---------------------------------------------------------------------------
+
+
+class _RaisingExecProxy:
+    """Proxy raising ``exc`` on a matching SQL; otherwise delegates."""
+
+    def __init__(self, real, when, exc):
+        self._real = real
+        self._when = when
+        self._exc = exc
+
+    def execute(self, sql, *args, **kwargs):
+        if self._when(sql):
+            raise self._exc
+        return self._real.execute(sql, *args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
+def _install(conn, monkeypatch, *, when, exc) -> None:
+    monkeypatch.setattr(conn, "_raw", _RaisingExecProxy(conn._raw, when, exc))
+
+
+def test_record_request_generic_database_error_surfaces_err(
+    conn: Connection, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import DatabaseError
+
+    repo = TradeApprovalAuditRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "INSERT INTO approval_requests" in sql,
+        exc=DatabaseError("disk corrupt"),
+    )
+    match repo.record_request(_request()):
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:approval_requests:write:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_record_response_integrity_error_surfaces_categorised_err(
+    conn: Connection, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import IntegrityError
+
+    repo = TradeApprovalAuditRepository(conn=conn)
+    repo.record_request(_request())  # so the FK target exists
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "INSERT INTO approval_responses" in sql,
+        exc=IntegrityError("simulated"),
+    )
+    match repo.record_response(_response(), operator_id="op"):
+        case Err(reason):
+            assert reason.startswith(
+                "persistence:integrity:approval_responses:duplicate_or_missing:"
+            )
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_record_response_generic_database_error_surfaces_err(
+    conn: Connection, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import DatabaseError
+
+    repo = TradeApprovalAuditRepository(conn=conn)
+    repo.record_request(_request())
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "INSERT INTO approval_responses" in sql,
+        exc=DatabaseError("disk corrupt"),
+    )
+    match repo.record_response(_response(), operator_id="op"):
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:approval_responses:write:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_get_request_database_error_surfaces_err(
+    conn: Connection, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import DatabaseError
+
+    repo = TradeApprovalAuditRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "FROM approval_requests" in sql,
+        exc=DatabaseError("read failed"),
+    )
+    match repo.get_request("req-001"):
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:approval_requests:read:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_get_response_missing_returns_nothing(conn: Connection) -> None:
+    repo = TradeApprovalAuditRepository(conn=conn)
+    match repo.get_response("ghost"):
+        case Ok(Nothing()):
+            pass
+        case _:
+            raise AssertionError("expected Ok(Nothing())")
+
+
+def test_get_response_database_error_surfaces_err(
+    conn: Connection, monkeypatch
+) -> None:
+    from trading_system.persistence.connection import DatabaseError
+
+    repo = TradeApprovalAuditRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "FROM approval_responses" in sql,
+        exc=DatabaseError("read failed"),
+    )
+    match repo.get_response("req-001"):
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:approval_responses:read:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_verify_token_propagates_read_err_from_get_response(
+    conn: Connection, monkeypatch
+) -> None:
+    """`verify_token` calls `get_response` internally; an Err there
+    SHALL propagate so the caller sees the persistence failure."""
+    from trading_system.persistence.connection import DatabaseError
+
+    repo = TradeApprovalAuditRepository(conn=conn)
+    _install(
+        conn,
+        monkeypatch,
+        when=lambda sql: "FROM approval_responses" in sql,
+        exc=DatabaseError("read failed"),
+    )
+    match repo.verify_token("req-001", "any-token"):
+        case Err(reason):
+            assert reason.startswith("persistence:corrupt:approval_responses:read:")
+        case _:
+            raise AssertionError("expected Err propagation")
