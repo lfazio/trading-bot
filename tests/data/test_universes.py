@@ -72,11 +72,13 @@ def test_load_eu_dividend_starter() -> None:
 def test_load_cac40_returns_expected_subset() -> None:
     uni = load_universe("cac40").unwrap()
     assert uni.name == "cac40"
-    # Subset includes the three starter stocks + AI / DG / MC etc.
+    # The cac40 universe was rewritten to ship the actual CAC 40
+    # constituents (Paris-listed; ASML belongs to AEX not CAC, so
+    # the legacy assertion was wrong). The probe checks a handful
+    # of household-name index constituents.
     ids = {str(s.id) for s in uni.stocks}
-    assert {"ASML.AS", "BNP.PA", "SAN.PA"}.issubset(ids)
-    assert "MC.PA" in ids
-    assert "TTE.PA" in ids
+    for required in ("AIR.PA", "BNP.PA", "MC.PA", "TTE.PA", "SAN.PA"):
+        assert required in ids, f"cac40 SHALL contain {required}"
     # Alphabetical-by-id order is enforced.
     sorted_ids = sorted(ids)
     assert [str(s.id) for s in uni.stocks] == sorted_ids
@@ -253,3 +255,110 @@ stocks:
     )
     uni = load_universe("x", universe_root=tmp_path).unwrap()
     assert [str(s.id) for s in uni.stocks] == ["AAA.AS", "ZZZ.AS"]
+
+
+# ---------------------------------------------------------------------------
+# Phase-8 C1 — remaining Err-branch coverage for universes.py
+# ---------------------------------------------------------------------------
+
+
+def test_load_non_string_description_returns_schema_err(tmp_path: Path) -> None:
+    """REQ_F_DAT_005 — invariant validators reject malformed
+    descriptions (e.g., an integer where a string is expected)."""
+    _write(
+        tmp_path,
+        "x",
+        "name: x\ndescription: 12345\nstocks:\n  - {id: a, symbol: a, exchange: A, currency: EUR, isin: x, sector: x, country: x}\n",
+    )
+    match load_universe("x", universe_root=tmp_path):
+        case Err(reason):
+            assert reason.startswith("config:schema:") and "description" in reason
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_load_stocks_not_a_list_returns_schema_err(tmp_path: Path) -> None:
+    _write(tmp_path, "x", "name: x\nstocks: a-string-not-a-list\n")
+    match load_universe("x", universe_root=tmp_path):
+        case Err(reason):
+            assert reason.startswith("config:schema:") and "stocks" in reason
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_load_stock_entry_not_a_mapping_returns_schema_err(tmp_path: Path) -> None:
+    _write(tmp_path, "x", "name: x\nstocks:\n  - just-a-string\n")
+    match load_universe("x", universe_root=tmp_path):
+        case Err(reason):
+            assert reason.startswith("config:schema:") and "must be a mapping" in reason
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_load_non_string_id_returns_schema_err(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "x",
+        "name: x\nstocks:\n  - {id: 42, symbol: a, exchange: A, currency: EUR, isin: x, sector: x, country: x}\n",
+    )
+    match load_universe("x", universe_root=tmp_path):
+        case Err(reason):
+            assert reason.startswith("config:schema:") and ".id" in reason
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_load_non_string_currency_returns_schema_err(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "x",
+        "name: x\nstocks:\n  - {id: a, symbol: a, exchange: A, currency: 999, isin: x, sector: x, country: x}\n",
+    )
+    match load_universe("x", universe_root=tmp_path):
+        case Err(reason):
+            assert reason.startswith("config:schema:") and "currency" in reason
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_load_non_string_symbol_returns_schema_err(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "x",
+        "name: x\nstocks:\n  - {id: a, symbol: 99, exchange: A, currency: EUR, isin: x, sector: x, country: x}\n",
+    )
+    match load_universe("x", universe_root=tmp_path):
+        case Err(reason):
+            assert reason.startswith("config:schema:") and "symbol" in reason
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_load_invariant_err_when_stock_construction_fails(tmp_path: Path) -> None:
+    """An empty-string symbol crosses Stock's __post_init__ invariant
+    and surfaces as `config:invariant:` from the loader."""
+    _write(
+        tmp_path,
+        "x",
+        "name: x\nstocks:\n  - {id: a, symbol: '', exchange: A, currency: EUR, isin: x, sector: x, country: x}\n",
+    )
+    match load_universe("x", universe_root=tmp_path):
+        case Err(reason):
+            assert reason.startswith("config:invariant:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_list_bundled_universes_returns_err_when_root_missing(tmp_path: Path) -> None:
+    """`list_bundled_universes` SHALL surface a categorised
+    `config:io:` Err when the requested root doesn't exist."""
+    missing = tmp_path / "does_not_exist"
+    match list_bundled_universes(universe_root=missing):
+        case Err(reason):
+            assert reason.startswith("config:io:")
+        case _:
+            raise AssertionError("expected Err")
+
+
+# Universe-constructor invariants already covered above
+# (`test_universe_rejects_*`); no need to duplicate here.
