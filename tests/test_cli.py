@@ -328,3 +328,78 @@ def test_issue_token_rejects_non_positive_ttl(
     assert exit_code == 1
     captured = capsys.readouterr()
     assert "--ttl" in captured.err
+
+
+# ---------------------------------------------------------------------------
+# CR-019 step 2 / TC_OPS_LIV_001 — live-preflight subcommand smoke
+# ---------------------------------------------------------------------------
+
+
+def test_live_preflight_subcommand_registered() -> None:
+    """REQ_F_LIV_005 — the `live-preflight` subcommand SHALL be
+    registered with the documented argument shape."""
+    parser = _build_parser()
+    subparsers_action = next(
+        a for a in parser._subparsers._group_actions  # type: ignore[attr-defined]
+        if hasattr(a, "choices")
+    )
+    assert "live-preflight" in subparsers_action.choices
+    lp_parser = subparsers_action.choices["live-preflight"]
+    option_strings: list[str] = []
+    for action in lp_parser._actions:
+        option_strings.extend(action.option_strings)
+    assert "--out" in option_strings
+    assert "--config-dir" in option_strings
+
+
+def test_live_preflight_against_local_broker_fails_first_gate(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """When `config/system.yaml` declares `broker.adapter: local`
+    (the default in this repo), the preflight SHALL fail the
+    broker_selector gate FIRST with exit code 1."""
+    import json as _json
+
+    monkeypatch.setenv("TRADING_BOT_OPERATOR_SECRET", "smoke-secret" * 4)
+    monkeypatch.chdir(tmp_path)
+    repo_root = Path(__file__).resolve().parent.parent
+    src_config = repo_root / "config"
+    test_config = tmp_path / "config"
+    test_config.mkdir()
+    for yaml_path in src_config.glob("*.yaml"):
+        (test_config / yaml_path.name).write_text(
+            yaml_path.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+    # Force broker.adapter to 'local' so the first gate fails.
+    sys_yaml = test_config / "system.yaml"
+    sys_yaml.write_text(
+        """system:
+  starting_capital:
+    amount: 1000
+    currency: EUR
+  log_level: INFO
+  seed: 0xCAFE
+  mode: backtest
+broker:
+  adapter: local
+""",
+        encoding="utf-8",
+    )
+    out = tmp_path / "var" / "preflight.json"
+    exit_code = main(
+        [
+            "live-preflight",
+            "--config-dir",
+            str(test_config),
+            "--out",
+            str(out),
+        ]
+    )
+    assert exit_code == 1
+    assert out.is_file()
+    payload = _json.loads(out.read_text(encoding="utf-8"))
+    assert payload["outcome"] == "failed"
+    assert payload["gates"][0]["name"] == "broker_selector"
+    assert payload["gates"][0]["outcome"] == "failed"

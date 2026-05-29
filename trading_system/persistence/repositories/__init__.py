@@ -21,6 +21,11 @@ from trading_system.persistence.repositories.backtest_jobs import (
 from trading_system.persistence.repositories.idempotency import (
     SqliteIdempotencyStore,
 )
+from trading_system.persistence.repositories.live_orders import (
+    LiveOrderRepository,
+    LiveOrderRow,
+    LiveOrderStatus,
+)
 from trading_system.persistence.repositories.portfolio import PortfolioRepository
 from trading_system.persistence.repositories.quant import HypothesisRepository
 from trading_system.persistence.repositories.registry import RegistryRepository
@@ -37,6 +42,9 @@ __all__ = [
     "BacktestResultRepository",
     "HypothesisRepository",
     "KillSwitchSnapshotRepository",
+    "LiveOrderRepository",
+    "LiveOrderRow",
+    "LiveOrderStatus",
     "OperatorTokenRevocationRepository",
     "PortfolioRepository",
     "RegistryRepository",

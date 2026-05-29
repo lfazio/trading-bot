@@ -312,35 +312,56 @@ has its own CR cascade or operator-driven decision (broker
 selection, secret-store choice, etc.). Items are ordered by
 expected effort + dependency.
 
-### 1. Live-trading mode (CR-019 step 2) — largest slice
+### 1. Live-trading mode (CR-019 step 2) — broker-agnostic surface ✅ landed
 
-- [ ] **Broker selection (operator decision)** — pick a concrete
-      broker (XTB / Saxo / IBKR / DEGIRO / ...). The lifecycle
-      ships `LocalBrokerAdapter` as the conformance baseline;
-      every live adapter MUST pass the existing
+- [x] **CR-019 step 2 SRS + SDS + SDD + TP — broker-agnostic** ✅ DONE
+      2026-05-26. Full cascade landed adding 17 new REQs
+      (REQ_F_LIV_001..008, REQ_NF_LIV_001, REQ_SDD_LIV_001..007,
+      REQ_SDS_WEB2_005). The concrete adapter is its own
+      separate cascade per REQ_F_BRK_003.
+- [x] **Live-runtime composition layer** at
+      `trading_system/webapp/runtimes/live_trading.py` ✅ DONE
+      2026-05-26. Ships `LiveTradingSession` + `LiveTradingRuntime`
+      + `LiveRuntimeRegistry`; same external Protocol surface as
+      `PaperTradingRuntime` (`tick_once` / `stop` / `is_alive` +
+      a new `submit_order` for the audited submit path). No
+      concrete-broker imports; broker semantics live entirely
+      behind the `BrokerAdapter` Protocol (REQ_SDD_LIV_002).
+      Per-account KS gate consulted before every submit
+      (REQ_F_LIV_006).
+- [x] **Live-order persistence** ✅ DONE 2026-05-26. New migration
+      `0008_live_orders.sql` + `LiveOrderRepository` with
+      `record_submit_intent` / `record_submitted` /
+      `record_rejected` / `list_pending` / `get`. Distinct
+      transactions for pre-submit + post-submit so the write
+      lock is not held across the broker call (REQ_SDD_LIV_006).
+      20 new tests at
+      `tests/persistence/test_live_orders_repository.py`.
+- [x] **Operator pre-flight CLI** ✅ DONE 2026-05-26.
+      `trading-bot live-preflight --config-dir <path> [--out
+      <path>]` runs the six documented gates in order
+      (broker_selector → broker_authenticate → operator_token →
+      kill_switch → persistence_integrity → market_data), writes
+      a canonical-JSON artefact to `var/live-preflight.json`,
+      short-circuits on first failure (subsequent gates land as
+      `"skipped"`). 9 preflight tests + 2 CLI smoke tests.
+- [ ] **Concrete `<Broker>BrokerAdapter` implementation** — gated
+      on the operator's broker selection (XTB / Saxo / IBKR / ...).
+      The lifecycle ships `LocalBrokerAdapter` as the conformance
+      baseline; every live adapter MUST pass the existing
       `tests/integration/test_broker_conformance_drill.py` suite
       before reaching production.
-- [ ] **CR-019 step 2 SRS amendment** — add `REQ_F_WEB2_011..N`
-      covering the live-mode toggle (flips from disabled-with-
-      tooltip to enabled), the live-tick fan-out, the live-broker
-      adapter wiring, and the per-account live-trading kill
-      switch.
-- [ ] **CR-019 step 2 SDS + SDD + TP** — full cascade with the
-      live-runtime composition layer (mirrors
-      `webapp/runtimes/paper_trading.py` but the broker adapter
-      is the concrete one, not `LocalBrokerAdapter`).
-- [ ] **Concrete `<Broker>BrokerAdapter` implementation** — the
-      lifecycle-grade adapter passing the conformance suite.
-- [ ] **Live-runtime composition layer** at
-      `trading_system/webapp/runtimes/live_trading.py`.
-- [ ] **Dashboard live-mode toggle** — flip the three-position
-      mode switch's `live` chip from disabled-with-tooltip to
-      enabled when a broker is configured.
-- [ ] **Operator pre-flight** — a `trading-bot live-preflight`
-      CLI subcommand verifying broker reachability, secret
-      provisioning, kill-switch invariants, and the conformance
-      suite passes against the configured adapter before the
-      operator flips the toggle.
+- [ ] **FastAPI live-mode routes** — four routes (`enable` /
+      `disable` / `emergency-stop` / `broker-reconnect`) gated by
+      per-account operator token; household claim rejected
+      (REQ_F_LIV_008 / REQ_SDD_LIV_005). Lifts REQ_F_LIV_003 +
+      REQ_F_LIV_008 + REQ_SDD_LIV_005 from TP to TEST.
+- [ ] **Dashboard live-mode panel + chip enablement** — the panel
+      surface for REQ_F_WEB2_003 extended to live mode (equity
+      curve + open positions + today's P&L + broker connectivity
+      + rejection counter + emergency-stop control). The `live`
+      chip enablement reads `var/live-preflight.json` per
+      REQ_SDD_LIV_004.
 
 ### 2. Notification adapters (CR-001 Phase B)
 
