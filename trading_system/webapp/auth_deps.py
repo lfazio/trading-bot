@@ -86,21 +86,24 @@ def verify_any_valid_claim(
     promotion) still require ``require_account_token(account_id)``
     so per-account scoping holds.
 
-    The token format is ``<timestamp>:<account_id>:<signature>``; we
+    The token format is the four-segment CR-024 form
+    ``<timestamp>:<account_id>:<jti>:<signature>`` or the legacy
+    three-segment ``<timestamp>:<account_id>:<signature>``. We
     parse the embedded claim and call ``verifier.verify`` with it.
     A tampered claim string makes the HMAC check fail, so this is
     safe — the operator cannot forge a token whose claim doesn't
     match its signature.
     """
-    # ISO timestamps contain ``:`` so rsplit from the right to
-    # isolate the two known-fixed segments (account_id + signature).
-    parts = token.rsplit(":", 2)
-    if len(parts) != 3:
+    # Reuse the shared parser so the three-vs-four segment handling
+    # stays in one place (REQ_SDD_TOK_001).
+    from trading_system.accounts.token_verifier import _parse_token
+
+    parsed = _parse_token(token)
+    if parsed is None:
         return False
-    _timestamp, claimed_account_id, _signature = parts
-    if not claimed_account_id:
+    if not parsed.account_id:
         return False
-    return verifier.verify(token, account_id=claimed_account_id)
+    return verifier.verify(token, account_id=parsed.account_id)
 
 
 def require_household(request: Request) -> Request:

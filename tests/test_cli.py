@@ -239,3 +239,92 @@ def test_main_argv_can_be_passed_explicitly() -> None:
     explicit list; passing ``None`` falls back to ``sys.argv``."""
     code = main(argv=["validate-config"])
     assert code == 0
+
+
+# ---------------------------------------------------------------------------
+# CR-024 / TC_OPS_001 — issue-token subcommand
+# ---------------------------------------------------------------------------
+
+
+def test_issue_token_happy_path(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """REQ_F_TOK_005 — `trading-bot issue-token` reads the secret
+    from the configured env var + emits one line on stdout."""
+    monkeypatch.setenv("TRADING_BOT_OPERATOR_SECRET", "smoke-secret" * 4)
+    exit_code = main(
+        ["issue-token", "--account-id", "default", "--ttl", "60"]
+    )
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    token = captured.out.strip()
+    # CR-024 four-segment format.
+    parts = token.rsplit(":", 3)
+    assert len(parts) == 4
+
+
+def test_issue_token_missing_secret_env(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Absent env var SHALL exit 1 with a categorised stderr."""
+    monkeypatch.delenv("TRADING_BOT_OPERATOR_SECRET", raising=False)
+    exit_code = main(["issue-token", "--account-id", "default"])
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "TRADING_BOT_OPERATOR_SECRET" in captured.err
+    assert captured.out.strip() == ""
+
+
+def test_issue_token_no_secret_argv_flag() -> None:
+    """REQ_F_TOK_005 / REQ_SDD_TOK_005 — raw secrets SHALL NEVER
+    appear in argv. The argparse subparser SHALL NOT carry a
+    `--secret <hex>` flag."""
+    parser = _build_parser()
+    # Drill into the issue-token subparser to enumerate its
+    # arguments.
+    subparsers_action = next(
+        a for a in parser._subparsers._group_actions  # type: ignore[attr-defined]
+        if hasattr(a, "choices")
+    )
+    issue_parser = subparsers_action.choices["issue-token"]
+    option_strings: list[str] = []
+    for action in issue_parser._actions:
+        option_strings.extend(action.option_strings)
+    assert "--secret" not in option_strings
+    # The env-var indirection is allowed (just the variable NAME).
+    assert "--secret-env" in option_strings
+
+
+def test_issue_token_custom_secret_env(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The CLI honours `--secret-env <name>` so operators can name
+    their own env var (helpful when integrating with a secret
+    manager)."""
+    monkeypatch.setenv("MY_TOKEN_SECRET", "alt-secret-value" * 4)
+    exit_code = main(
+        [
+            "issue-token",
+            "--account-id",
+            "alpha",
+            "--secret-env",
+            "MY_TOKEN_SECRET",
+        ]
+    )
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip()
+
+
+def test_issue_token_rejects_non_positive_ttl(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Argparse keeps the ttl as int; the handler defensive-checks
+    > 0."""
+    monkeypatch.setenv("TRADING_BOT_OPERATOR_SECRET", "smoke-secret" * 4)
+    exit_code = main(
+        ["issue-token", "--account-id", "default", "--ttl", "0"]
+    )
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "--ttl" in captured.err

@@ -150,6 +150,36 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     vc.set_defaults(func=_run_validate_config)
 
+    # ----- issue-token (CR-024 / REQ_F_TOK_005) ----------------------------
+    it = subparsers.add_parser(
+        "issue-token",
+        help="Issue a fresh operator token (HMAC-signed, 4-segment "
+        "CR-024 format). Reads the secret from an env var — raw "
+        "secrets SHALL NEVER appear in argv.",
+    )
+    it.add_argument(
+        "--account-id",
+        type=str,
+        required=True,
+        help="Token claim. Use 'household' for read-only browser "
+        "sessions; per-account id (e.g. 'default') for mutation "
+        "scope.",
+    )
+    it.add_argument(
+        "--ttl",
+        type=int,
+        default=86400,
+        help="Token TTL in seconds (default 86400 = 24h).",
+    )
+    it.add_argument(
+        "--secret-env",
+        type=str,
+        default="TRADING_BOT_OPERATOR_SECRET",
+        help="Environment variable holding the operator secret "
+        "(default TRADING_BOT_OPERATOR_SECRET).",
+    )
+    it.set_defaults(func=_run_issue_token)
+
     return parser
 
 
@@ -286,6 +316,44 @@ def _run_validate_config(args: argparse.Namespace) -> int:
         f"{len(err_report.validated_files)} file(s) validated\n"
     )
     return 1
+
+
+def _run_issue_token(args: argparse.Namespace) -> int:
+    """``trading-bot issue-token`` — CR-024 / REQ_F_TOK_005.
+
+    Reads the operator secret from the env var named by
+    ``--secret-env`` (default ``TRADING_BOT_OPERATOR_SECRET``).
+    Raw secrets SHALL NEVER appear in argv (no ``--secret <hex>``
+    flag).
+
+    Writes the token to stdout (one line) on success; emits a
+    SECURITY structured-log entry recording the issuance event.
+    """
+    import os
+    from datetime import UTC, datetime as _dt
+    from trading_system.accounts.token_verifier import (
+        AccountScopedTokenVerifier,
+    )
+
+    secret = os.environ.get(args.secret_env)
+    if not secret:
+        sys.stderr.write(
+            f"trading-bot issue-token: env var {args.secret_env!r} "
+            "is not set; export the operator secret first.\n"
+        )
+        return 1
+    if args.ttl <= 0:
+        sys.stderr.write(
+            f"trading-bot issue-token: --ttl must be > 0 (got {args.ttl}).\n"
+        )
+        return 1
+    verifier = AccountScopedTokenVerifier(
+        secret=secret.encode("utf-8"),
+        ttl_seconds=args.ttl,
+    )
+    token = verifier.issue(account_id=args.account_id, now=_dt.now(UTC))
+    sys.stdout.write(token + "\n")
+    return 0
 
 
 if __name__ == "__main__":

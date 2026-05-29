@@ -39,6 +39,7 @@ LogCategory = Literal[
     "approval",
     "config",
     "system",
+    "security",  # CR-024 — operator-token lifecycle (REQ_NF_TOK_001)
 ]
 
 

@@ -27,16 +27,22 @@ from trading_system.persistence.repositories.registry import RegistryRepository
 from trading_system.persistence.repositories.snapshot import (
     KillSwitchSnapshotRepository,
 )
+from trading_system.persistence.repositories.token_revocations import (
+    OperatorTokenRevocationRepository,
+    TokenRevocation,
+)
 from trading_system.persistence.repositories.transition import TransitionRepository
 
 __all__ = [
     "BacktestResultRepository",
     "HypothesisRepository",
     "KillSwitchSnapshotRepository",
+    "OperatorTokenRevocationRepository",
     "PortfolioRepository",
     "RegistryRepository",
     "SqliteBacktestJobRepository",
     "SqliteIdempotencyStore",
+    "TokenRevocation",
     "TradeApprovalAuditRepository",
     "TransitionRepository",
 ]
