@@ -252,6 +252,14 @@ account_id claim is extracted from `/api/accounts/<aid>/...` and
 
 Engine-side callers emit log lines via
 `structured_log(logger, level, category, message, /, **payload)`.
+The closed `LogCategory` set is `{trade, decision, ks_event,
+phase_change, improvement_report, error, regime_transition,
+notification, approval, config, system, security}`. The
+`"security"` category is reserved for the CR-024 operator-token
+lifecycle audit entries; callers SHALL NOT emit raw secrets or
+raw tokens in payloads — only `jti` + `token_hash =
+sha256(token)` for cross-reference.
+
 Each call writes one JSON object per line on stderr:
 
 ```json
@@ -291,6 +299,33 @@ REQ refs: `REQ_F_DAT_005` (envelope hit), `REQ_SDD_DAT_014`
 (two-pass lookup), `REQ_NF_DAT_004` (byte-equal slice),
 `REQ_F_PAP_010` (live bypass), `REQ_SDD_DAT_015`
 (fetch_live_bars contract).
+
+## Operator-token format (CR-024)
+
+Newly issued tokens use the four-segment format
+`<iso_timestamp>:<account_id>:<jti>:<hex_signature>` where
+`jti = uuid4().hex` is a stable 32-char id for revocation.
+Legacy three-segment tokens
+`<iso_timestamp>:<account_id>:<hex_signature>` continue to
+verify and are disambiguated by the third-segment shape (jti is
+32 chars; signature is 64 chars).
+
+Parser of record: `trading_system.accounts.token_verifier.
+_parse_token`. Every caller that needs to inspect the embedded
+`account_id` claim SHALL use this helper rather than reimplementing
+`rsplit(":", 2)` — the legacy three-segment parse on a four-segment
+token returns the wrong field.
+
+Issue new tokens via `trading-bot issue-token --account-id <id>
+[--ttl <s>]` — env-var-only secret discipline (no `--secret <hex>`
+argv flag). Rotate via `verifier.rotate_secret(new_secret)` (in
+process; the previous secret is kept as a grace-window slot for
+one rotation generation). Revoke via
+`OperatorTokenRevocationRepository.revoke(account_id, jti,
+reason)`.
+
+REQ refs: `REQ_F_TOK_001..005`, `REQ_NF_TOK_001`,
+`REQ_SDD_TOK_001..005`.
 
 ## Repository workflow (GitHub)
 

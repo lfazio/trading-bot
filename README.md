@@ -95,17 +95,31 @@ Post-Phase-7 wave delivering the operator-grade surface:
   cache on network failure for graceful degradation. Backtest
   replay determinism stays untouched.
 
-### Phase-8 — Operator Hardening Sprint (2026-05-23 → 2026-05-25)
+### Phase-8 — Operator Hardening Sprint (2026-05-23 → 2026-05-26) ✅ Closed
 
 Post-Phase-7 hardening targeting operator-grade production
-readiness. Tracked in
+readiness. **All concrete items closed.** Tracked in
 `Documentations/Feature-Gap-Analysis-2026-05-23.md` Part C.
 
+- **C1 — Coverage cleanup** — ✅ Done across 4 strikes. 15
+  financial-logic files lifted from below-90% to ≥96–100%;
+  165 new tests. Reusable `_RaisingExecProxy` injection pattern
+  for repository Err-branch coverage.
 - **C2 — Structured logging + correlation IDs** — ✅ Done.
   `CorrelationMiddleware` binds `LogContext` per request;
   `X-Request-ID` round-trip; account_id extracted from path
   patterns; `configure_logging` wired into `default_app()`.
   Anchors REQ_NF_LOG_001 + REQ_SDS_CRS_001.
+- **C4 — Operator-token rotation + lifecycle (CR-024)** — ✅ Done.
+  Full lifecycle cascade landed: SRS / SDS / SDD / TP stamped
+  2026-05-26 + implementation. Four-segment token format
+  (`<iso>:<aid>:<jti>:<sig>`) with legacy three-segment
+  back-compat; `OperatorTokenRevocationRepository` + migration
+  `0007_token_revocations.sql`; `previous_secret` slot +
+  `rotate_secret()` atomic flip (in-process rotation, no
+  restart); `seconds_until_expiry` for dashboard banner;
+  `LogCategory.SECURITY` audit; `trading-bot issue-token` CLI.
+  Operations.md §6 rewritten. 11 new REQs at TEST.
 - **C5 — Persistence migration drill** — ✅ Done. WAL recovery
   from simulated crash; SHA-locked migration audit across the
   full pipeline; forward-only invariant guard; sqlite3-import
@@ -113,31 +127,47 @@ readiness. Tracked in
   REQ_NF_PER_001, REQ_SDS_PER_003/004, REQ_SDD_PER_001/004.
 - **C6 — Operations.md v1.0** — ✅ Done. Operator runbook
   finalised from v0.1 draft. New §14 (structured logging +
-  correlation IDs) + §15 (paper-trading lifecycle); WhatsApp →
-  Slack swap; corrected yfinance recorder commands; regression-
-  guardrail callouts at §7 + §8 pointing at the C5 + C8 drills.
-- **C7 — Docker container hardening (static)** — ✅ Done.
-  `STOPSIGNAL SIGTERM` + `init: true` + read-only root fs +
-  tmpfs + `cap_drop: [ALL]` + `no-new-privileges:true` +
+  correlation IDs) + §15 (paper-trading lifecycle); §6 rewritten
+  for the CR-024 four-segment format + `trading-bot issue-token`
+  CLI + `rotate_secret` rolling rotation + §6.4 token-revocation
+  workflow.
+- **C7 — Docker container hardening (static + dynamic)** — ✅ Done.
+  Static: `STOPSIGNAL SIGTERM` + `init: true` + read-only root
+  fs + tmpfs + `cap_drop: [ALL]` + `no-new-privileges:true` +
   `mem_limit` + `pids_limit`; no-hardcoded-secrets audit;
-  `.dockerignore` belt-and-suspenders for `config/` / `*.sqlite*`
-  / `.env*` / `*.secret` / `*.key`. Dynamic portion (trivy/grype
-  CVE scan + container runtime smoke) deferred.
+  `.dockerignore` belt-and-suspenders. Dynamic: 10 runtime-smoke
+  tests boot the image under the full Phase-8 C7 flag set + 1
+  CVE-scan scaffold (opt-in, skips when no scanner installed).
 - **C8 — Multi-account drill** — ✅ Done. Three-account household
   integration test for cross-account concentration gate +
   household drawdown trigger; DEGRADE / KILL pre-emption;
   max-across-accounts aggregation; FX-missing categorised Err.
   Strengthens REQ_F_ACC_001..010.
-- **C1 — Coverage cleanup** — ✅ Done across 4 strikes. 10
-  financial-logic files lifted from below-90% to ≥96–100%;
-  125 new tests. Reusable `_RaisingExecProxy` injection pattern
-  for repository Err-branch coverage.
-- **C4 — Operator-token rotation + lifecycle** — ⏳ Filed as
-  CR-024 (Proposed). Token revocation list + multi-secret roll
-  + expiry warnings + structured audit + `trading-bot
-  issue-token` CLI. Awaiting cascade acceptance.
-- **C7 — Docker hardening (dynamic)** — ⏳ Deferred; needs the
-  Docker daemon in CI for the CVE-scan + runtime-smoke portion.
+
+---
+
+## Roadmap to full webapp version
+
+The operator-grade webapp (CR-019 step 1) is feature-complete
+for paper trading + backtest workflow. The remaining work to
+reach the **full webapp version** is tracked under
+`TASKS.md` "Roadmap to full webapp version".
+
+| Slice | Track |
+|---|---|
+| **CR-019 step 2 — Live trading mode** (the largest single chunk) | Gated on `REQ_F_BRK_003` broker-adapter selection. Needs: a concrete broker adapter passing the `tests/integration/test_broker_conformance_drill.py` suite; SRS / SDS / SDD / TP cascade for the live-trading amendment; live-runtime composition layer (mirrors `webapp/runtimes/paper_trading.py`); the "live mode" dashboard toggle flipped from disabled-with-tooltip to enabled. |
+| **CR-001 Phase B — Concrete notification adapters** | `SlackNotificationChannel` (Slack incoming webhook from `TRADING_BOT_SLACK_WEBHOOK_URL`) + `EmailNotificationChannel` (SMTP). `notifications/loader.py` selector. `config/notifications.yaml` sample. Wires through the existing `NotificationFanOut`. Design complete. |
+| **CR-002 Phase B — Operator hypothesis surface** | Webapp panel to browse VALIDATED hypotheses, file new ones, view `ImprovementReport.hypothesis_ids`. CR-008 `HypothesisRepository` already shipped. |
+| **CR-004 Phase B — Remaining stdlib webui routes** | The FastAPI surface (CR-017) covers most of these; the stdlib fallback still has placeholders for summary / registry-list / backtests-archive / improvement-reports-history. |
+| **CR-023 — Overlap-tolerant cache fallback** (⚪ Proposed) | `get_bars_overlap` helper so a paper poll under network outage with `file_end < now()` still surfaces the cached prefix. Small slice. |
+| **Paper-trading session metadata persistence** (CR-019 follow-up) | `RuntimeRegistry.resume_from_persistence` is discovery-only today. Full resume needs (universe / strategy_id / instrument) persisted alongside `paper-*` equity rows. |
+| **Webapp rotate-secret endpoint** (CR-024 follow-up) | `POST /api/operator/rotate-secret` gated on a household-claim token so operators rotate without touching the deployment supervisor. |
+| **Multi-process revocation propagation** (CR-024 follow-up) | v1 revocation cache is process-local. Multi-process deployments need an SSE / database-notify channel. Not blocking single-container deployments. |
+| **CI CVE scanner provisioning** | The CR-024 / Phase-8 C7 CVE-scan test (`tests/webapp/test_container_cve_scan.py`) is opt-in; CI environment needs `trivy` / `grype` / `docker scout` installed. |
+| **Phase-5+ multi-year mock-data drill** (`Validation.md` §5) | Backtest replay across the full 7-year regime-crossing window; bundled fixture is one year. |
+| **Multi-account live-runtime drill** (`Validation.md` §5) | Phase-8 C8 covers the gate semantics; the runtime fan-out under a 3-account live tick is desk-pinned. |
+| **Hard-floor MC gate per phase / regime** (`Validation.md` §5) | Single global drawdown floor today; per-phase / per-regime tuning is a future CR. |
+| **CR-003 — News-feed secondary signal** (🔴 Deferred) | Re-triage after the live-trading slice lands. |
 
 ---
 

@@ -232,7 +232,7 @@ Cross-cutting (build alongside):
 
 ---
 
-## Phase 8 — Operator Hardening Sprint
+## Phase 8 — Operator Hardening Sprint ✅ Closed (2026-05-26)
 
 Post-Phase-7 hardening sprint targeting operator-grade production
 readiness. Sprint board lives in
@@ -245,7 +245,7 @@ The per-strike rows for C2 / C5 / C6 / C7-static / C8 / C1 (4
 strikes) are kept inline under the Phase-5 entries (search for
 "Phase-8 operator hardening sprint" in this file).
 
-Sprint scoreboard at session close (2026-05-25):
+Sprint scoreboard at session close (2026-05-26):
 
 - [x] **C2 — Structured logging + correlation IDs** ✅ Done.
 - [x] **C5 — Persistence migration drill** ✅ Done (16 tests).
@@ -285,14 +285,164 @@ Sprint scoreboard at session close (2026-05-25):
       2 694 (10 new); 1 skipped (CVE scan, no scanner on dev box).
 - [x] **C4 — Operator-token rotation + lifecycle (CR-024)** ✅ DONE 2026-05-26 @ `<this commit>`. Full lifecycle cascade landed in two commits: design (SRS / SDS / SDD / TP all stamped 2026-05-26) + implementation. SRS adds REQ_F_TOK_001..005 + REQ_NF_TOK_001 to §3.18 as a new "Operator-token lifecycle" sub-section. SDD adds REQ_SDD_TOK_001..005 to §13.17. Test Plan adds TC_TOK_001..010 + TC_OPS_001 to §3.15c. Implementation: (1) `trading_system/persistence/migrations/0007_token_revocations.sql` adds the `operator_token_revocations` table keyed on `(account_id, jti)`; (2) `trading_system/persistence/repositories/token_revocations.py` ships `OperatorTokenRevocationRepository` + `TokenRevocation` dataclass — write-once-append + idempotent re-revoke + `is_revoked` lookup + `list_all` deterministic iteration; (3) `trading_system/accounts/token_verifier.py` rewritten to support four-segment tokens `<iso>:<aid>:<jti>:<sig>` (legacy three-segment continues to verify, grandfathered — disambiguated by jti's 32-char hex shape vs signature's 64-char), `previous_secret` slot + `rotate_secret(new)` atomic flip, `revocation_lookup` field (duck-typed Protocol accepting either `bool` or `Result[bool, str]` returns), `seconds_until_expiry(token) -> Option[int]` read-only accessor that does NOT emit a SECURITY log, `_audit(...)` helper emitting structured-log entries under the new `LogCategory.SECURITY` value carrying `event`/`account_id`/`outcome`/`jti`/`token_hash` (sha256, never the raw token); (4) `trading_system/observability/logger.py` adds `"security"` to the `LogCategory` Literal; (5) `trading_system/cli.py` adds `trading-bot issue-token --account-id <id> [--ttl <s>] [--secret-env <name>]` subcommand — env-var-only secret discipline (no `--secret <hex>` argv flag); (6) `trading_system/webapp/auth_deps.py::verify_any_valid_claim` fixed to call the shared `_parse_token` helper (the legacy `rsplit(':', 2)` was mis-parsing four-segment tokens; the fix preserves browser-VIEW endpoint auth for both formats); (7) `Documentations/Operations.md` §6 fully rewritten — new CR-024 token format + `trading-bot issue-token` CLI + in-process `rotate_secret` rolling rotation (no restart needed) + new §6.4 "Token revocation" workflow + §6.5 "Token loss". 42 new tests across `tests/accounts/test_token_verifier_cr024.py` (27 tests covering format + back-compat + revocation precedence + multi-secret + seconds_until_expiry + structured audit + replay determinism + household-claim round-trip), `tests/persistence/test_token_revocations_repository.py` (10 tests — migration schema audit + round-trip + idempotent re-revoke + cross-account isolation + cross-restart durability + sorted-list-all + scoped-list + empty-jti rejection), `tests/test_cli.py::test_issue_token_*` (5 tests — happy path + missing env var exit-1 + no `--secret` argv flag introspection + custom env var + non-positive TTL rejection). All 11 new REQs (REQ_F_TOK_001..005, REQ_NF_TOK_001, REQ_SDD_TOK_001..005) at TEST. Full suite 2 694 → 2 724.
 - [ ] **C3 / C9..C14** — remaining hardening items in the
-      gap-analysis (deferred; re-triaged next session).
+      gap-analysis (deferred; re-triaged in the next sprint).
 
-**Session result (2026-05-25):** 2 519 → 2 684 tests (+165;
-includes the +30 from CR-021 / CR-022 cascade work earlier in
-the same session). 4 CRs filed (CR-021 / CR-022 Accepted with
-full cascade; CR-023 / CR-024 Proposed). 14 commits pushed across
-wiki + main repo. Operations.md to v1.0. Persistence-layer
+**Session result (2026-05-26):** 2 519 → 2 724 tests (+205;
+includes the +30 from CR-021 / CR-022 cascade work + the +30 from
+CR-024 cascade earlier in the same session). 5 CRs filed (CR-021 /
+CR-022 / CR-024 Accepted with full cascade; CR-023 Proposed).
+21 commits pushed across wiki + main repo. Operations.md to v1.0
++ §6 rewritten for CR-024. Persistence-layer
 coverage rises ~83% → ~98% on the 5 in-scope repos.
+
+---
+
+## Roadmap to full webapp version
+
+The operator-grade webapp (CR-019 step 1) is feature-complete for
+paper trading + backtest workflow + report archive + strategy
+registry + recovery wizard + multi-account switcher +
+accessibility audits. **Phase 8 closed the hardening gate.**
+Reaching the **full webapp version** (operator can run live
+trading + every feature has a clean operator workflow) requires
+the open work below.
+
+Tracked separately from the lifecycle phases because each slice
+has its own CR cascade or operator-driven decision (broker
+selection, secret-store choice, etc.). Items are ordered by
+expected effort + dependency.
+
+### 1. Live-trading mode (CR-019 step 2) — largest slice
+
+- [ ] **Broker selection (operator decision)** — pick a concrete
+      broker (XTB / Saxo / IBKR / DEGIRO / ...). The lifecycle
+      ships `LocalBrokerAdapter` as the conformance baseline;
+      every live adapter MUST pass the existing
+      `tests/integration/test_broker_conformance_drill.py` suite
+      before reaching production.
+- [ ] **CR-019 step 2 SRS amendment** — add `REQ_F_WEB2_011..N`
+      covering the live-mode toggle (flips from disabled-with-
+      tooltip to enabled), the live-tick fan-out, the live-broker
+      adapter wiring, and the per-account live-trading kill
+      switch.
+- [ ] **CR-019 step 2 SDS + SDD + TP** — full cascade with the
+      live-runtime composition layer (mirrors
+      `webapp/runtimes/paper_trading.py` but the broker adapter
+      is the concrete one, not `LocalBrokerAdapter`).
+- [ ] **Concrete `<Broker>BrokerAdapter` implementation** — the
+      lifecycle-grade adapter passing the conformance suite.
+- [ ] **Live-runtime composition layer** at
+      `trading_system/webapp/runtimes/live_trading.py`.
+- [ ] **Dashboard live-mode toggle** — flip the three-position
+      mode switch's `live` chip from disabled-with-tooltip to
+      enabled when a broker is configured.
+- [ ] **Operator pre-flight** — a `trading-bot live-preflight`
+      CLI subcommand verifying broker reachability, secret
+      provisioning, kill-switch invariants, and the conformance
+      suite passes against the configured adapter before the
+      operator flips the toggle.
+
+### 2. Notification adapters (CR-001 Phase B)
+
+- [ ] **`SlackNotificationChannel`** — Slack incoming-webhook
+      adapter reading from `TRADING_BOT_SLACK_WEBHOOK_URL` env
+      var per REQ_F_NOT_002 (CR-018 amendment).
+- [ ] **`EmailNotificationChannel`** — SMTP adapter reading
+      credentials from env vars (REQ_SDD_NOT_007 / REQ_NF_NOT_003
+      privacy discipline).
+- [ ] **`notifications/loader.py` selector** — load
+      `config/notifications.yaml`, instantiate the configured
+      channels.
+- [ ] **`config/notifications.yaml` sample** — 9th YAML file
+      (REQ_SDS_CFG_001 amendment).
+- [ ] **Webapp inbox panel wire-up** — the FastAPI `webapp/inbox`
+      panel already exists; wire the Slack + email channels in
+      so the operator sees alerts in the inbox AND on their
+      configured channels simultaneously.
+
+### 3. Operator hypothesis surface (CR-002 Phase B)
+
+- [ ] **Webapp `strategies/hypotheses` panel** — browse
+      VALIDATED hypotheses, file new ones via a small form,
+      view `ImprovementReport.hypothesis_ids` per shipped
+      strategy. CR-008 `HypothesisRepository` already shipped.
+- [ ] **`POST /api/hypotheses` endpoint** — operator-token-gated
+      submission, runs the 5-gate validator, returns 201 +
+      hypothesis_id on success.
+
+### 4. Stdlib webui Phase B (CR-004 Phase B)
+
+The FastAPI surface (CR-017) covers most operator paths; the
+stdlib `webui/` fallback still has placeholders.
+
+- [ ] Concrete `routes/summary.py` body.
+- [ ] Concrete `routes/registry_list.py` body.
+- [ ] Concrete `routes/backtests_archive.py` body.
+- [ ] Concrete `routes/improvement_reports_history.py` body.
+
+### 5. CR-023 — Overlap-tolerant cache fallback
+
+- [ ] **CR-023 SRS / SDS / SDD / TP cascade** (status: ⚪
+      Proposed).
+- [ ] **`YFinanceCache.get_bars_overlap` helper** for the
+      fallback-only path so a paper poll under network outage
+      with `file_end < now()` still surfaces the cached prefix.
+- [ ] **`fetch_live_bars` fallback wired through the overlap
+      path** on network failure.
+
+### 6. Paper-trading session metadata persistence (CR-019 follow-up)
+
+- [ ] **`paper_sessions` persistence table** — migration
+      `0008_paper_sessions.sql` adding
+      `(account_id, universe, strategy_id, instrument_symbol,
+       starting_capital, currency, created_at)`.
+- [ ] **`PaperSessionRepository`** — write on `PaperTradingRuntime`
+      construction; read on `RuntimeRegistry.resume_from_persistence`.
+- [ ] **Recovery-wizard auto-revival** — the wizard already
+      shows resumable sessions; with metadata persisted, the
+      operator can resume with a single click instead of
+      re-supplying the inputs.
+
+### 7. CR-024 follow-ups
+
+- [ ] **Webapp `POST /api/operator/rotate-secret` endpoint** —
+      household-token-gated; calls
+      `verifier.rotate_secret(new_secret)`; operators rotate
+      without touching the deployment supervisor.
+- [ ] **Multi-process revocation propagation** — v1 cache is
+      process-local + re-loaded on every persistence write.
+      Multi-process deployments need an SSE / database-notify
+      channel; not blocking single-container deployments.
+- [ ] **Operator UI for revocation** — a dashboard form that
+      lists active jti's per account + a "revoke" button.
+
+### 8. Known-limitation drills (Validation.md §5)
+
+- [ ] **Phase-5+ multi-year mock-data drill** — backtest replay
+      across the full 7-year regime-crossing window; bundled
+      fixture is one year.
+- [ ] **Multi-account live-runtime drill** — Phase-8 C8 covers
+      the gate semantics; the runtime fan-out under a 3-account
+      live tick is desk-pinned.
+- [ ] **Hard-floor MC gate per phase / regime** — single global
+      drawdown floor today; per-phase / per-regime tuning is a
+      future CR.
+
+### 9. CI / infrastructure
+
+- [ ] **GitHub Actions workflow** — wire `pytest` + `pytest -m
+      docker` + traceability `--check` + coverage upload into
+      CI. The repo has the structural primitives; only the
+      `.github/workflows/*.yaml` files are missing.
+- [ ] **CVE scanner provisioning** — install `trivy` (or `grype`
+      / `docker scout`) in CI so the
+      `tests/webapp/test_container_cve_scan.py` test runs the
+      Phase-8 C7 gate against the built image.
+
+### 10. Deferred (re-triage after live trading lands)
+
+- [ ] **CR-003 — News-feed secondary signal** (🔴 Deferred
+      2026-05-16).
 
 ---
 
