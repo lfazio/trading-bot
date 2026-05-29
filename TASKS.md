@@ -258,13 +258,36 @@ Sprint scoreboard at session close (2026-05-25):
       persistence repos batch 1 (3rd), persistence repos batch 2
       (4th). 10 financial-logic files lifted to ≥ 96–100%;
       125 new tests.
+- [x] **C7 dynamic — Container runtime smoke + CVE scan**
+      ✅ Done (smoke); CVE scan opt-in (gated on scanner availability).
+      Runtime smoke at `tests/webapp/test_container_runtime_smoke.py`
+      — 10 tests boot the image under the full Phase-8 C7 flag set
+      (`--read-only` + tmpfs + `--cap-drop ALL` +
+      `--security-opt no-new-privileges:true` + `--memory 1g` +
+      `--pids-limit 256` + `--init` + `--stop-signal SIGTERM`) and
+      assert: container boots cleanly + `/health` returns 200 with
+      `{"status":"ok",...}`; runtime uid is 10001 (non-root); root
+      fs write attempt fails with EROFS; tmpfs `/tmp` is writable;
+      `HostConfig.SecurityOpt` carries `no-new-privileges:true`;
+      `HostConfig.CapDrop` carries `ALL`; `X-Request-ID`
+      round-trips through the live CorrelationMiddleware
+      (Phase-8 C2); container emits JSON-line structured logs
+      with `category` + `corr_id` keys; only port 8000/tcp is
+      EXPOSEd; SIGTERM grace exits the container in < 30 s. CVE
+      scan at `tests/webapp/test_container_cve_scan.py` — single
+      test driving whichever scanner is available (`trivy` /
+      `grype` / `docker scout`) against the built image; asserts
+      no fixable CRITICAL/HIGH CVEs with an empty allow-list.
+      Both files gated behind `@pytest.mark.docker`; the CVE
+      scan additionally `@pytest.mark.cve_scan` so CI opts in
+      explicitly. Default `pytest` skips both. New `cve_scan`
+      marker registered in `pyproject.toml`. Full suite: 2 684 →
+      2 694 (10 new); 1 skipped (CVE scan, no scanner on dev box).
 - [ ] **C4 — Operator-token rotation** ⏳ Filed as **CR-024**
       (Proposed; awaiting SRS / SDS / SDD / TP cascade). Surface:
       token-id (jti) + revocation list + multi-secret roll +
       `seconds_until_expiry` + structured audit + `trading-bot
       issue-token` CLI.
-- [ ] **C7 dynamic — CVE scan + runtime smoke** ⏳ Needs Docker
-      daemon in CI.
 - [ ] **C3 / C9..C14** — remaining hardening items in the
       gap-analysis (deferred; re-triaged next session).
 

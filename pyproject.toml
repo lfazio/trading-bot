@@ -142,6 +142,7 @@ markers = [
     "wallclock: tests that use real wall-clock time (excluded from default CI run)",
     "perf: performance benchmark tests",
     "docker: tests that shell out to the docker daemon (opt-in via -m docker)",
+    "cve_scan: tests that shell out to a CVE scanner (trivy / grype / docker scout); skipped when no scanner is available",
 ]
 
 # ---------- coverage ----------
