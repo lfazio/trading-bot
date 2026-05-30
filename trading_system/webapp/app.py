@@ -338,6 +338,12 @@ def default_app() -> FastAPI:
                         account_id=str(aid),
                     )
                 )
+    # CR-029 — open the per-symbol bar repository so the runtime's
+    # tick fan-out + the GET /api/accounts/{aid}/bars route both
+    # land their writes / reads in the same SQLite file. ``None``
+    # ⇒ persistence unconfigured (TRADING_BOT_PERSISTENCE_DB unset)
+    # and the runtime keeps ticking without the fan-out.
+    instrument_bar_repository = _instrument_bar_repo_for_default_app()
     return create_app(
         WebappState(
             token_verifier=verifier,
@@ -347,6 +353,7 @@ def default_app() -> FastAPI:
             notification_inbox=inbox,
             strategy_registry_reader=strategy_registry,
             job_queue=queue,
+            instrument_bar_repository=instrument_bar_repository,
         )
     )
 
@@ -403,6 +410,47 @@ def _default_paper_state_reader(*, registry=None):  # type: ignore[no-untyped-de
     return RuntimePaperStateReader(registry=registry or RuntimeRegistry())
 
 
+def _persistence_connection():  # type: ignore[no-untyped-def]
+    """Open a Connection against ``TRADING_BOT_PERSISTENCE_DB``
+    and run pending migrations.
+
+    Returns ``None`` when the env var is unset OR the DB file
+    can't be opened. Migrations run **on every call** so a fresh
+    or new-schema DB picks up the CR-029 0009 migration without
+    operator intervention.
+    """
+    import os
+    from pathlib import Path
+
+    from trading_system.persistence.connection import Connection
+    from trading_system.persistence.migrations.runner import MigrationRunner
+
+    db_path_raw = os.environ.get("TRADING_BOT_PERSISTENCE_DB", "")
+    if not db_path_raw:
+        return None
+    db_path = Path(db_path_raw)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    result = Connection.open(db_path)
+    if not hasattr(result, "is_ok") or not result.is_ok():
+        return None
+    conn = result.unwrap()
+    migrations_dir = (
+        Path(__file__).resolve().parent.parent / "persistence" / "migrations"
+    )
+    runner_result = MigrationRunner(
+        conn=conn, migrations_dir=migrations_dir
+    ).run()
+    if not hasattr(runner_result, "is_ok") or not runner_result.is_ok():
+        # Migration failure ⇒ close the connection + skip persistence.
+        # The webapp continues without persistence rather than crashing.
+        try:
+            conn.close()
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+    return conn
+
+
 def _portfolio_repo_for_resume():  # type: ignore[no-untyped-def]
     """Open the operator-configured ``PortfolioRepository`` so
     ``RuntimeRegistry.resume_from_persistence`` can discover
@@ -412,23 +460,29 @@ def _portfolio_repo_for_resume():  # type: ignore[no-untyped-def]
     or the SQLite file doesn't exist — boot proceeds without
     resume rather than aborting on a misconfiguration.
     """
-    import os
-    from pathlib import Path
-
-    from trading_system.persistence.connection import Connection
     from trading_system.persistence.repositories.portfolio import (
         PortfolioRepository,
     )
 
-    db_path_raw = os.environ.get("TRADING_BOT_PERSISTENCE_DB", "")
-    if not db_path_raw:
+    conn = _persistence_connection()
+    if conn is None:
         return None
-    db_path = Path(db_path_raw)
-    if not db_path.exists():
+    return PortfolioRepository(conn=conn)
+
+
+def _instrument_bar_repo_for_default_app():  # type: ignore[no-untyped-def]
+    """CR-029 (REQ_F_PER_011..014) — open the
+    ``InstrumentBarRepository`` for ``default_app()``. Returns
+    ``None`` when persistence is unconfigured; the runtime
+    fan-out + the GET /api/accounts/{aid}/bars route both
+    surface their "saving disabled" path in that case."""
+    from trading_system.persistence.repositories.instrument_bars import (
+        InstrumentBarRepository,
+    )
+
+    conn = _persistence_connection()
+    if conn is None:
         return None
-    result = Connection.open(db_path)
-    if not hasattr(result, "is_ok") or not result.is_ok():
-        return None
-    return PortfolioRepository(conn=result.unwrap())
+    return InstrumentBarRepository(conn=conn)
 
 

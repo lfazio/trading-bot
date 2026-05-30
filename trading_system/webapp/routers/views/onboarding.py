@@ -438,6 +438,17 @@ async def post_finish(request: Request) -> RedirectResponse:
             sorted(universe_stocks, key=lambda s: s.symbol)
         )
 
+    # CR-029 (REQ_F_PER_012) — attach the per-symbol bar repository
+    # so the runtime's tick fan-out persists every universe symbol's
+    # polled bar. ``None`` ⇒ persistence unconfigured (boot env var
+    # unset); the runtime keeps ticking without persisting + the
+    # dashboard's "saving disabled" banner becomes operator-visible.
+    instrument_bar_repo = getattr(
+        request.app.state, "instrument_bar_repository", None
+    )
+    if instrument_bar_repo is not None:
+        runtime.instrument_bar_repo = instrument_bar_repo
+
     # Register against the shared registry so the dashboard
     # panel + tick driver both see the new session.
     registry = getattr(request.app.state, "runtime_registry", None)
