@@ -22,6 +22,7 @@ REQ refs:
 from trading_system.execution.adapter import BrokerAdapter, Subscription
 from trading_system.execution.fees import FeeModel, FlatFeeModel
 from trading_system.execution.local import LocalBrokerAdapter
+from trading_system.execution.paper import PaperBrokerAdapter
 from trading_system.execution.slippage import GaussianSlippageModel, SlippageModel
 from trading_system.execution.types import Account, Tick
 
@@ -32,6 +33,7 @@ __all__ = [
     "FlatFeeModel",
     "GaussianSlippageModel",
     "LocalBrokerAdapter",
+    "PaperBrokerAdapter",
     "SlippageModel",
     "Subscription",
     "Tick",

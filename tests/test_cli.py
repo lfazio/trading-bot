@@ -352,6 +352,64 @@ def test_live_preflight_subcommand_registered() -> None:
     assert "--config-dir" in option_strings
 
 
+def test_live_preflight_paper_selector_accepted_at_first_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """REQ_F_PAP_013 / REQ_F_PAP_014 / REQ_SDD_PAP_004 /
+    REQ_SDD_PAP_005 / TC_PAP_BRK_005 / TC_PAP_BRK_006 —
+    ``broker.adapter: paper`` SHALL load cleanly from
+    ``system.yaml`` (config loader accepts the selector) AND pass
+    the ``broker_selector`` gate AND the ``broker_authenticate``
+    gate (PaperBrokerAdapter has no auth surface). Subsequent gates
+    may still fail in a dev-box environment without preflight
+    artefacts; the test asserts the first two gates pass."""
+    import json as _json
+
+    monkeypatch.setenv("TRADING_BOT_OPERATOR_SECRET", "smoke-secret" * 4)
+    monkeypatch.chdir(tmp_path)
+    repo_root = Path(__file__).resolve().parent.parent
+    src_config = repo_root / "config"
+    test_config = tmp_path / "config"
+    test_config.mkdir()
+    for yaml_path in src_config.glob("*.yaml"):
+        (test_config / yaml_path.name).write_text(
+            yaml_path.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+    (test_config / "system.yaml").write_text(
+        """system:
+  starting_capital:
+    amount: 10000
+    currency: EUR
+  log_level: INFO
+  seed: 0xCAFE
+  mode: paper
+broker:
+  adapter: paper
+""",
+        encoding="utf-8",
+    )
+    out = tmp_path / "var" / "preflight.json"
+    main(
+        [
+            "live-preflight",
+            "--config-dir",
+            str(test_config),
+            "--out",
+            str(out),
+        ]
+    )
+    # The artefact lands regardless of overall outcome.
+    assert out.is_file()
+    payload = _json.loads(out.read_text(encoding="utf-8"))
+    # Gate 0 (broker_selector) accepts "paper".
+    assert payload["gates"][0]["name"] == "broker_selector"
+    assert payload["gates"][0]["outcome"] == "ok"
+    # Gate 1 (broker_authenticate) passes since paper has no auth.
+    assert payload["gates"][1]["name"] == "broker_authenticate"
+    assert payload["gates"][1]["outcome"] == "ok"
+
+
 def test_live_preflight_against_local_broker_fails_first_gate(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,

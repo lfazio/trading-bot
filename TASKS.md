@@ -443,6 +443,33 @@ stdlib `webui/` fallback still has placeholders.
 - [ ] Concrete `routes/backtests_archive.py` body.
 - [ ] Concrete `routes/improvement_reports_history.py` body.
 
+### 4b. CR-025 — `PaperBrokerAdapter` (paper trading as a broker adapter)
+
+- [x] **CR-025 SRS / SDS / SDD / TP cascade** ✅ DONE 2026-05-30 @
+      `<this commit>`. Wiki cascade stamped 2026-05-30 — SRS §3.33
+      adds REQ_F_PAP_011..014; SDS §3.4 documents
+      `PaperBrokerAdapter` + selector table extended to
+      `{"local", "paper"}`; SDD §13.32 adds REQ_SDD_PAP_001..005;
+      Test Plan adds TC_PAP_BRK_001..006.
+- [x] **`PaperBrokerAdapter` implementation** ✅ DONE 2026-05-30 @
+      `<this commit>`. `trading_system/execution/paper.py` —
+      `@dataclass(slots=True)` wrapping `LocalBrokerAdapter`,
+      `submit()` calls `market_data.latest(instrument)` and
+      synthesises a `Tick` from the bar close ± `spread_bps/2`;
+      no credential surface (REQ_F_PAP_011); passes the existing
+      broker conformance suite via a stubbed `MarketDataProvider`
+      (REQ_F_PAP_012); `config/system.yaml`'s `broker.adapter`
+      accepts `"paper"` and the preflight CLI's
+      `broker_selector` gate accepts it as well (REQ_F_PAP_013 /
+      REQ_F_PAP_014). Factory at
+      `trading_system/webapp/runtimes/preflight_broker.py`
+      (under the documented `webapp/runtimes/` carve-out so
+      REQ_SDS_CLI_001 + REQ_SDD_FAS_001 both hold). 14 new tests
+      at `tests/execution/test_paper_broker.py` + 1 new test at
+      `tests/test_cli.py::test_live_preflight_paper_selector_accepted_at_first_gate`.
+      All 9 new REQs (REQ_F_PAP_011..014, REQ_SDD_PAP_001..005)
+      at TEST. Full suite 2 816 → 2 831.
+
 ### 5. CR-023 — Overlap-tolerant cache fallback
 
 - [ ] **CR-023 SRS / SDS / SDD / TP cascade** (status: ⚪

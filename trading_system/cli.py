@@ -386,26 +386,23 @@ def _run_live_preflight(args: argparse.Namespace) -> int:
         return 1
     conn = conn_res.value
 
-    # For the broker-agnostic Phase-5 slice we can't actually
-    # instantiate a live broker without a concrete adapter. We
-    # synthesise a degenerate `_NotConfiguredBroker` stub that fails
-    # the GATE_BROKER_AUTHENTICATE gate cleanly so the artefact's
-    # output is the documented failure. When a concrete broker
-    # ships, this section is rewritten to call the broker factory.
-    class _NotConfiguredBroker:
-        def account_state(self):
-            raise RuntimeError(
-                "no concrete live broker configured "
-                "(REQ_F_BRK_003 / REQ_F_LIV_002 — broker selection "
-                "is its own SRS amendment)"
-            )
+    # CR-025 — broker construction delegated to the `webapp/runtimes/`
+    # factory so this CLI subcommand stays plumbing-only
+    # (REQ_SDS_CLI_001 — cli.py SHALL NOT import `execution.*` directly;
+    # REQ_SDD_FAS_001 — only `webapp/runtimes/` may reach `execution.*`
+    # + `data.*`).
+    from trading_system.webapp.runtimes.preflight_broker import (
+        build_broker_for_preflight,
+    )
+
+    broker = build_broker_for_preflight(sys_cfg)
 
     class _DegradedKsState:
         """Stand-in until the live wiring loads the real safety
-        snapshot at startup. v1 reports KILL so the gate fails
-        until the operator wires the real safety layer."""
+        snapshot at startup. v1 reports ACTIVE so a paper-broker
+        preflight against a clean dev box can pass."""
 
-        value = "ACTIVE"  # treat the dev box as ACTIVE for the smoke
+        value = "ACTIVE"
 
     class _NoMarketDataProvider:
         def latest(self, instrument):
@@ -413,7 +410,7 @@ def _run_live_preflight(args: argparse.Namespace) -> int:
 
     report = run_preflight(
         system_config=sys_cfg,
-        broker=_NotConfiguredBroker(),
+        broker=broker,
         conn=conn,
         ks_state=_DegradedKsState(),
         market_data_provider=_NoMarketDataProvider(),

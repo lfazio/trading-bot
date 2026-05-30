@@ -90,7 +90,12 @@ class PreflightReport:
 
 
 def gate_broker_selector(*, system_config) -> GateOutcome:
-    """REQ_F_LIV_005 (a) — broker.adapter SHALL NOT be 'local'."""
+    """REQ_F_LIV_005 (a) — broker.adapter SHALL NOT be 'local'.
+
+    CR-025 (REQ_F_PAP_014): ``"paper"`` is accepted alongside any
+    concrete live-broker selector (REQ_F_BRK_003 family). Only
+    ``"local"`` is rejected — that's the deterministic in-process
+    backtest baseline, never live."""
     selector = getattr(system_config.broker_adapter, "lower", lambda: "")()
     if not selector or selector == "local":
         return GateOutcome(
@@ -98,7 +103,8 @@ def gate_broker_selector(*, system_config) -> GateOutcome:
             outcome="failed",
             message=(
                 f"broker.adapter is {selector!r}; live mode requires a "
-                "concrete live adapter (REQ_F_BRK_003)."
+                "concrete live adapter (REQ_F_BRK_003) or 'paper' "
+                "(REQ_F_PAP_013)."
             ),
         )
     return GateOutcome(
@@ -268,6 +274,13 @@ def run_preflight(
             failed_at = i
             report.outcome = "failed"
     return report
+
+
+# The `build_broker_for_preflight` factory lives in
+# `trading_system/webapp/runtimes/preflight_broker.py` — under the
+# documented `webapp/runtimes/` structural carve-out that's
+# permitted to reach `execution.*` + `data.*`. The CLI imports it
+# from there.
 
 
 def write_report(report: PreflightReport, out_path: Path) -> None:
