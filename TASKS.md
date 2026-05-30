@@ -530,22 +530,36 @@ stdlib `webui/` fallback still has placeholders.
 
 ### 4d. CR-028 — Technical-indicator library for the quant layer
 
-- [ ] **CR-028 SRS / SDS / SDD / TP cascade** (status: ⚪
-      Proposed 2026-05-30). Closed indicator set: SMA-N, RSI,
-      ATR, OBV, ADX + VIX volatility-index provider Protocol.
-      Pure-Python Decimal (no numpy/pandas) so REQ_NF_DET_001
-      byte-equality holds.
-- [ ] **`trading_system/quant/indicators/`** — pure-function
-      package (SMA / RSI / ATR / OBV / ADX). Each returns a
-      parallel series aligned to the input bars; warmup
-      positions hold `None`.
-- [ ] **`trading_system/data/volatility_index.py`** —
-      `VolatilityIndexProvider` Protocol + yfinance-backed
-      concrete reading `^VIX` / `^VSTOXX` through the existing
-      CR-009 cache (REQ_NF_DAT_001 replay determinism preserved).
+- [x] **CR-028 SRS / SDS / SDD / TP cascade** ✅ DONE 2026-05-30 @
+      `<this commit>`. Wiki cascade stamped 2026-05-30 — SRS §3.34
+      adds REQ_F_IND_001..006 + REQ_NF_IND_001; SDS §3.43;
+      SDD §13.34 adds REQ_SDD_IND_001..005; Test Plan
+      TC_IND_001..010.
+- [x] **`trading_system/quant/indicators/`** ✅ DONE 2026-05-30 @
+      `<this commit>`. New `quant/` top-level package with the
+      `indicators/` sub-package shipping five pure-function
+      helpers — `sma(closes, n)`, `rsi(closes, n=14)`,
+      `atr(bars, n=14)`, `obv(bars)`, `adx(bars, n=14)`. Each
+      returns a parallel `tuple[Decimal | None, ...]` (or
+      `tuple[Decimal, ...]` for OBV) the same length as the
+      input; warm-up positions hold `None`. Wilder smoothing for
+      RSI/ATR/ADX (canonical TA literature). Decimal-only — float
+      operands surface as `TypeError` at the boundary.
+- [x] **`trading_system/data/volatility_index.py`** ✅ DONE
+      2026-05-30 @ `<this commit>`.
+      `VolatilityIndexProvider` runtime-checkable Protocol +
+      `YFinanceVolatilityIndexProvider` concrete; closed symbol
+      registry (`^VIX` USD, `^VSTOXX` EUR); unknown symbols Err
+      with `volatility_index:unknown_symbol:<symbol>` per
+      REQ_SDD_IND_004. 21 new tests at
+      `tests/quant/test_indicators.py` covering golden values,
+      Wilder smoothing, Decimal boundary, determinism (within
+      process + across subprocesses), Protocol conformance, and
+      runtime-safe import. All 11 new REQs at TEST.
+      Full suite 2 841 → 2 862.
 - [ ] **`StrategyMetrics` extension** — optional `*_signal`
       fields so trade rationales (CR-015) carry the indicator
-      reading at the decision moment.
+      reading at the decision moment. Tracked as follow-up.
 
 ### 5. CR-023 — Overlap-tolerant cache fallback
 
