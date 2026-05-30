@@ -42,7 +42,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Literal, Protocol, TYPE_CHECKING, runtime_checkable
+from typing import Any, Literal, Protocol, TYPE_CHECKING, runtime_checkable
 
 from trading_system.backtesting.broker import BacktestBroker
 from trading_system.backtesting.market_replay import _bar_to_tick
@@ -275,6 +275,18 @@ class PaperTradingRuntime:
     # Non-empty ⇒ the strategy sees every stock per tick + the
     # runtime fans out submission across instruments.
     universe: tuple[Stock, ...] = ()
+    # CR-029 (REQ_F_PER_012 / REQ_SDD_PER_012) — per-symbol bar
+    # persistence slot. When wired AND ``universe`` carries > 1
+    # symbol, the runtime fans out the polled bar set to
+    # ``instrument_bar_repo.append_bars(...)`` on every tick so
+    # the operator can later query "what was the universe doing at
+    # time T?". ``None`` ⇒ no persistence; the dashboard's
+    # "saving disabled" banner appears when the slot is missing.
+    # Duck-typed Protocol — anything with
+    # ``append_bars(rows, *, account_id)`` returning Result satisfies
+    # the slot. The concrete CR-029
+    # ``InstrumentBarRepository`` is the production wiring.
+    instrument_bar_repo: object | None = None
 
     _alive: bool = field(default=True, init=False)
     _degraded_since: datetime | None = field(default=None, init=False)
@@ -378,6 +390,43 @@ class PaperTradingRuntime:
             )
             for stock in self.universe
         )
+
+    def _persist_universe_bars(self, at: datetime) -> str | None:
+        """CR-029 (REQ_F_PER_012 / REQ_SDD_PER_012) — poll the
+        wrapped MarketDataProvider once per universe symbol and
+        persist the rows through ``self.instrument_bar_repo``.
+
+        Returns ``None`` on success; a categorised
+        ``"paper:persist_bars:<reason>"`` string when the
+        repository surfaced an Err. NEVER raises — defensive at
+        every layer so the tick still completes.
+        """
+        if self.market_data_provider is None or self.instrument_bar_repo is None:
+            return None
+        rows: list[tuple[Any, Bar]] = []
+        for stock in self.universe:
+            try:
+                result = self.market_data_provider.latest(stock)
+            except Exception:  # noqa: BLE001 — defensive
+                continue
+            if hasattr(result, "value") and not hasattr(result, "error"):
+                bar = result.value
+                if isinstance(bar, Bar):
+                    rows.append((stock.id, bar))
+        if not rows:
+            del at  # unused on the empty path
+            return None
+        del at
+        account_id = self.session.account_id
+        try:
+            persist_result = self.instrument_bar_repo.append_bars(  # type: ignore[attr-defined]
+                rows, account_id=account_id
+            )
+        except Exception as e:  # noqa: BLE001 — defensive
+            return f"paper:persist_bars:exception:{e!s}"
+        if hasattr(persist_result, "error"):
+            return f"paper:persist_bars:{persist_result.error}"
+        return None
 
     def _submit_proposal(
         self, proposal: TradeProposal, tick: Tick
@@ -549,6 +598,24 @@ class PaperTradingRuntime:
 
         # 2. Mark portfolio at the latest price.
         self.portfolio.mark({self.instrument.id: tick.last})
+
+        # 2b. CR-029 (REQ_F_PER_012 / REQ_SDD_PER_012) — persist
+        # every universe symbol's bar this tick into the
+        # ``instrument_bars`` table when the repository slot is
+        # wired. Fan-out runs BEFORE strategy evaluation so a
+        # strategy that consults the persisted history sees the
+        # just-polled row. Persistence failures DO NOT abort the
+        # tick — the rest of the engine runs + the Err surfaces
+        # as the tick's outcome so the dashboard's banner can
+        # report "saving disabled".
+        persist_err: str | None = None
+        if (
+            self.instrument_bar_repo is not None
+            and self.universe
+            and len(self.universe) > 1
+            and self.market_data_provider is not None
+        ):
+            persist_err = self._persist_universe_bars(tick.at)
 
         # 3. Evaluate the strategy (only when a MarketDataProvider
         # is wired — strategies that consult historical bars need

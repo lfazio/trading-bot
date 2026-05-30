@@ -700,6 +700,216 @@ def test_dashboard_template_includes_per_instrument_grid_and_pin_handler():
     assert "url.searchParams.set('pin'" in template
 
 
+# ---------------------------------------------------------------------------
+# TC_PER_BAR_005 — runtime fan-out wiring
+# ---------------------------------------------------------------------------
+
+
+def test_runtime_fans_out_polled_bars_to_instrument_bar_repo():
+    """CR-029 / REQ_F_PER_012 / REQ_SDD_PER_012 — when the runtime
+    has > 1 universe symbol + the instrument_bar_repo slot wired,
+    _apply_bar SHALL persist every universe symbol's polled bar
+    through the repository BEFORE the strategy step."""
+    from dataclasses import dataclass, field
+    from datetime import datetime, UTC
+
+    from trading_system.models.identifiers import AccountId, StrategyId
+    from trading_system.models.money import Money
+    from trading_system.models.phase import (
+        AllocationBucket,
+        MarketRegime,
+        PhaseConstraints,
+    )
+    from trading_system.webapp.runtimes.paper_trading import (
+        PAPER_ACCOUNT_PREFIX,
+        PaperTradingRuntime,
+        PaperTradingSession,
+        build_runtime,
+    )
+
+    @dataclass
+    class _SpyRepo:
+        calls: list = field(default_factory=list)
+
+        def append_bars(self, rows, *, account_id):
+            self.calls.append((str(account_id), list(rows)))
+            return Ok(None)
+
+    # Provider returns a pinned bar for each symbol.
+    provider = _StubProvider(
+        payload={
+            "AAA": Ok(_bar("10.00")),
+            "BBB": Ok(_bar("20.00")),
+            "CCC": Ok(_bar("30.00")),
+        }
+    )
+
+    cap = Money(amount=Decimal("10000"), currency=Currency.EUR)
+    session = PaperTradingSession(
+        account_id=AccountId(f"{PAPER_ACCOUNT_PREFIX}2026-05-30T12:00:00+00:00"),
+        universe="multi-test",
+        strategy_id=StrategyId("noop"),
+        starting_capital=cap,
+        started_at=datetime(2026, 5, 30, 12, tzinfo=UTC),
+    )
+    constraints = PhaseConstraints(
+        max_positions=3,
+        max_trades_per_month=4,
+        allocation_targets={
+            AllocationBucket.STOCK: Decimal("0.90"),
+            AllocationBucket.TACTICAL: Decimal("0.10"),
+        },
+        turbo_exposure_max=Decimal("0"),
+        risk_per_trade_band=(Decimal("0.01"), Decimal("0.02")),
+        max_drawdown=Decimal("0.15"),
+    )
+
+    class _Strat:
+        id = StrategyId("noop")
+
+        def evaluate(self, _state):
+            return []
+
+    @dataclass(slots=True)
+    class _SrcStub:
+        # Mimics _StubBarSource: emits one Ok(Bar) per call.
+        _emitted: bool = False
+
+        def next_bar(self):
+            from trading_system.result import Nothing, Some
+            if self._emitted:
+                return Ok(Nothing())
+            self._emitted = True
+            return Ok(Some(_bar("10.00")))
+
+        def latest_cached(self):
+            from trading_system.result import Some
+            return Ok(Some(_bar("10.00")))
+
+    res = build_runtime(
+        session=session,
+        instrument=_stock("AAA"),
+        strategy=_Strat(),
+        bar_source=_SrcStub(),
+        phase_constraints=constraints,
+        regime=MarketRegime.SIDEWAYS,
+    )
+    assert isinstance(res, Ok)
+    runtime = res.value
+    runtime.universe = (_stock("AAA"), _stock("BBB"), _stock("CCC"))
+    runtime.market_data_provider = provider
+    spy = _SpyRepo()
+    runtime.instrument_bar_repo = spy
+
+    # Drive one tick.
+    tick_result = runtime.tick_once()
+    assert isinstance(tick_result, Ok)
+    # The repository was called once with one row per universe symbol.
+    assert len(spy.calls) == 1
+    aid, rows = spy.calls[0]
+    assert aid == str(session.account_id)
+    assert {str(iid) for iid, _bar_ in rows} == {
+        "AAA.AS", "BBB.AS", "CCC.AS"
+    }
+
+
+def test_runtime_skips_fan_out_when_repo_unwired():
+    """CR-029 — None slot ⇒ no repository calls. Defensive: a
+    runtime without the slot SHALL operate exactly like the
+    pre-CR-029 single-instrument session."""
+    from dataclasses import dataclass, field
+    from datetime import datetime, UTC
+
+    from trading_system.models.identifiers import AccountId, StrategyId
+    from trading_system.models.money import Money
+    from trading_system.models.phase import (
+        AllocationBucket,
+        MarketRegime,
+        PhaseConstraints,
+    )
+    from trading_system.webapp.runtimes.paper_trading import (
+        PAPER_ACCOUNT_PREFIX,
+        PaperTradingSession,
+        build_runtime,
+    )
+
+    @dataclass
+    class _SpyRepo:
+        calls: list = field(default_factory=list)
+
+        def append_bars(self, rows, *, account_id):
+            self.calls.append((str(account_id), list(rows)))
+            return Ok(None)
+
+    provider = _StubProvider(
+        payload={
+            "AAA": Ok(_bar("10.00")),
+            "BBB": Ok(_bar("20.00")),
+        }
+    )
+
+    cap = Money(amount=Decimal("10000"), currency=Currency.EUR)
+    session = PaperTradingSession(
+        account_id=AccountId(f"{PAPER_ACCOUNT_PREFIX}2026-05-30T12:00:00+00:00"),
+        universe="multi-test",
+        strategy_id=StrategyId("noop"),
+        starting_capital=cap,
+        started_at=datetime(2026, 5, 30, 12, tzinfo=UTC),
+    )
+    constraints = PhaseConstraints(
+        max_positions=3,
+        max_trades_per_month=4,
+        allocation_targets={
+            AllocationBucket.STOCK: Decimal("0.90"),
+            AllocationBucket.TACTICAL: Decimal("0.10"),
+        },
+        turbo_exposure_max=Decimal("0"),
+        risk_per_trade_band=(Decimal("0.01"), Decimal("0.02")),
+        max_drawdown=Decimal("0.15"),
+    )
+
+    class _Strat:
+        id = StrategyId("noop")
+
+        def evaluate(self, _state):
+            return []
+
+    @dataclass(slots=True)
+    class _SrcStub:
+        _emitted: bool = False
+
+        def next_bar(self):
+            from trading_system.result import Nothing, Some
+            if self._emitted:
+                return Ok(Nothing())
+            self._emitted = True
+            return Ok(Some(_bar("10.00")))
+
+        def latest_cached(self):
+            from trading_system.result import Some
+            return Ok(Some(_bar("10.00")))
+
+    res = build_runtime(
+        session=session,
+        instrument=_stock("AAA"),
+        strategy=_Strat(),
+        bar_source=_SrcStub(),
+        phase_constraints=constraints,
+        regime=MarketRegime.SIDEWAYS,
+    )
+    assert isinstance(res, Ok)
+    runtime = res.value
+    runtime.universe = (_stock("AAA"), _stock("BBB"))
+    runtime.market_data_provider = provider
+    # Slot intentionally left None.
+    assert runtime.instrument_bar_repo is None
+
+    spy = _SpyRepo()  # never called
+    tick_result = runtime.tick_once()
+    assert isinstance(tick_result, Ok)
+    assert spy.calls == []
+
+
 def test_instrument_row_canonical_dataclass_fields():
     """REQ_SDD_PAP_009 — ``InstrumentRow`` carries exactly the
     documented fields. Defensive: any future field addition is a

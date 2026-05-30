@@ -401,6 +401,69 @@
         "summary": "Dashboard"
       }
     },
+    "/api/accounts/{account_id}/bars": {
+      "get": {
+        "description": "REQ_F_PER_013 / REQ_SDD_PER_013 \u2014 operator-token-gated\nper-account-scoped read of the per-symbol bar window.",
+        "operationId": "get_bars_api_accounts__account_id__bars_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "instrument",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Instrument",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Start",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "End",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Per-symbol bar window (CR-029 / REQ_F_PER_013)"
+      }
+    },
     "/api/accounts/{account_id}/broker-reconnect": {
       "post": {
         "description": "REQ_F_LIV_006 case (b) \u2014 re-attempt broker authentication\nafter a ``broker:not_authenticated`` error tripped the KS.",

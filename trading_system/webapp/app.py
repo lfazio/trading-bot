@@ -44,6 +44,7 @@ from trading_system.observability import (
 )
 from trading_system.webapp.health import router as health_router
 from trading_system.webapp.job_queue import InProcessJobQueue, JobQueue
+from trading_system.webapp.routers.api.bars import router as bars_api_router
 from trading_system.webapp.routers.api.backtests import router as backtests_router
 from trading_system.webapp.routers.api.hypotheses import (
     router as hypotheses_api_router,
@@ -115,6 +116,11 @@ class WebappState:
     hypothesis_filer: Any | None = None
     hypothesis_lister: Any | None = None
     improvement_report_lookup: Any | None = None
+    # CR-029 — multi-instrument bar persistence slot
+    # (REQ_F_PER_011..014). When wired, the paper-trading runtime's
+    # tick fans out polled bars to the repository + the GET
+    # /api/accounts/{aid}/bars route reads them back.
+    instrument_bar_repository: Any | None = None
     templates: Jinja2Templates = field(init=False)
 
     def __post_init__(self) -> None:
@@ -203,6 +209,8 @@ def create_app(state: WebappState) -> FastAPI:
     app.state.hypothesis_filer = state.hypothesis_filer
     app.state.hypothesis_lister = state.hypothesis_lister
     app.state.improvement_report_lookup = state.improvement_report_lookup
+    # CR-029 — instrument-bar repository slot.
+    app.state.instrument_bar_repository = state.instrument_bar_repository
 
     # Routers.
     app.include_router(health_router)
@@ -211,6 +219,7 @@ def create_app(state: WebappState) -> FastAPI:
     app.include_router(paper_state_router)
     app.include_router(inbox_api_router)
     app.include_router(hypotheses_api_router)
+    app.include_router(bars_api_router)
     app.include_router(registry_router)
     app.include_router(backtests_router)
     app.include_router(session_router)

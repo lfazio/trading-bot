@@ -562,6 +562,32 @@ stdlib `webui/` fallback still has placeholders.
       fields so trade rationales (CR-015) carry the indicator
       reading at the decision moment. Tracked as follow-up.
 
+### 4e. CR-029 — Multi-instrument bar persistence
+
+- [x] **CR-029 SRS / SDS / SDD / TP cascade** ✅ DONE 2026-05-30 @
+      `<this commit>`. Wiki cascade stamped 2026-05-30 — SRS §3.17
+      adds REQ_F_PER_011..014; SDS §3.22 + §3.22b amendments; SDD
+      §13.35 adds REQ_SDD_PER_010..014; Test Plan TC_PER_BAR_001..007.
+- [x] **Implementation slice** ✅ DONE 2026-05-30 @ `<this commit>`.
+      `persistence/migrations/0009_instrument_bars.sql` schema +
+      cross-symbol index; `persistence/repositories/instrument_bars.py`
+      `InstrumentBarRepository` with `append_bar` / `append_bars`
+      (single COMMIT for 40-symbol fan-out, idempotent via
+      `INSERT OR IGNORE`) / `bars_for` (per-symbol range query
+      ordered by `bar_at ASC`) / `bars_at` (cross-symbol slice
+      "what was the universe doing at time T"); paper-trading
+      runtime gains `instrument_bar_repo` slot + the `_apply_bar`
+      fan-out persists every universe symbol's polled bar BEFORE
+      the strategy step; webapp gains `GET /api/accounts/{aid}/bars`
+      route at `webapp/routers/api/bars.py` (operator-token-gated,
+      household-claim REJECTED, canonical-JSON byte-determinism,
+      categorised `webapp:missing_query_param:*` /
+      `webapp:bad_iso_datetime:*` /
+      `webapp:instrument_bar_repository_missing` Errs). 8
+      repository tests + 9 route tests + 2 runtime fan-out tests.
+      All 9 CR-029 REQs (REQ_F_PER_011..014 + REQ_SDD_PER_010..014)
+      at TEST. Full suite 2 884 → 2 903 (+19 new).
+
 ### 5. CR-023 — Overlap-tolerant cache fallback
 
 - [ ] **CR-023 SRS / SDS / SDD / TP cascade** (status: ⚪
