@@ -133,9 +133,14 @@ class RuntimePaperStateReader:
         # etc. bars over the same lookback. Empty when the
         # universe declares no index OR the provider can't reach
         # the upstream.
-        index_symbol, index_closes, index_timestamps = (
+        index_symbol, index_closes, index_timestamps, index_volumes = (
             _index_bars_for_runtime(runtime)
         )
+        # CR-026 follow-up — VIX overlay. Currency-driven default:
+        # USD ⇒ ^VIX; everything else ⇒ ^VSTOXX (most of our
+        # universes are EU). Empty when the provider can't reach
+        # the upstream; dashboard hides the overlay then.
+        vix_symbol, vix_closes, vix_timestamps = _vix_bars_for_runtime(runtime)
         # Session metadata + live price — best-effort. The Protocol
         # surface (PaperRuntimeView) doesn't pin these so tests with
         # minimal stubs still work; we duck-type via getattr.
@@ -311,6 +316,14 @@ class RuntimePaperStateReader:
             index_close_timestamps=(
                 tuple(index_timestamps[-60:]) if index_timestamps else ()
             ),
+            index_volume_series=(
+                tuple(index_volumes[-60:]) if index_volumes else ()
+            ),
+            vix_symbol=vix_symbol,
+            vix_close_series=tuple(vix_closes[-60:]) if vix_closes else (),
+            vix_close_timestamps=(
+                tuple(vix_timestamps[-60:]) if vix_timestamps else ()
+            ),
             per_instrument=per_instrument_rows,
             pinned_symbol=resolved_pin,
             **_indicator_kwargs(runtime, history, bar_closes, bar_timestamps),
@@ -433,32 +446,64 @@ def _per_instrument_rows(  # type: ignore[no-untyped-def]
 
 def _index_bars_for_runtime(  # type: ignore[no-untyped-def]
     runtime,
-) -> tuple[str, list, list]:
+) -> tuple[str, list, list, list]:
     """Fetch the runtime's reference-index bar window.
 
-    Returns ``(symbol, closes, timestamps)``. Empty when the
-    runtime carries no ``reference_index`` OR the provider can't
-    reach the upstream. The window matches the primary
+    Returns ``(symbol, closes, timestamps, volumes)``. Empty when
+    the runtime carries no ``reference_index`` OR the provider
+    can't reach the upstream. The window matches the primary
     instrument's lookback so both charts share the same axis.
     """
     index = getattr(runtime, "reference_index", None)
     if index is None:
-        return "", [], []
+        return "", [], [], []
     symbol = getattr(index, "symbol", "") or getattr(index, "id", "")
     provider = getattr(runtime, "market_data_provider", None)
     if provider is None:
-        return str(symbol), [], []
+        return str(symbol), [], [], []
     try:
         from trading_system.webapp.runtimes.provider_bar_window import (
-            fetch_recent_close_window,
+            fetch_recent_bar_window,
         )
 
-        closes, timestamps = fetch_recent_close_window(
+        closes, timestamps, volumes = fetch_recent_bar_window(
             provider, index, days=120
         )
     except Exception:  # noqa: BLE001 — defensive
-        return str(symbol), [], []
-    return str(symbol), closes, timestamps
+        return str(symbol), [], [], []
+    return str(symbol), closes, timestamps, volumes
+
+
+def _vix_bars_for_runtime(  # type: ignore[no-untyped-def]
+    runtime,
+) -> tuple[str, list, list]:
+    """CR-026 follow-up — fetch the universe's implied-vol
+    benchmark (``^VIX`` for USD, ``^VSTOXX`` for EUR) so the
+    dashboard's reference-index chart can overlay the vol-regime
+    line.
+
+    Returns ``(symbol, closes, timestamps)``. Empty when the
+    universe currency isn't recognised or the provider can't
+    reach the upstream. The benchmark choice is currency-driven
+    so EU universes get ^VSTOXX automatically.
+    """
+    provider = getattr(runtime, "market_data_provider", None)
+    if provider is None:
+        return "", [], []
+    # Pick the VIX series matching the reference-index currency.
+    # Falls back to ^VSTOXX for EU sessions (most of our
+    # universes) so the panel populates without manual config.
+    index = getattr(runtime, "reference_index", None)
+    currency = getattr(getattr(index, "currency", None), "value", "") if index else ""
+    symbol = "^VSTOXX" if currency.lower() != "usd" else "^VIX"
+    try:
+        from trading_system.webapp.runtimes.provider_bar_window import (
+            fetch_volatility_index_window,
+        )
+
+        return fetch_volatility_index_window(provider, symbol=symbol, days=120)
+    except Exception:  # noqa: BLE001 — defensive
+        return symbol, [], []
 
 
 def _rolling_sma(values: list, window: int) -> list:
@@ -532,6 +577,25 @@ def _bar_history_for_runtime(  # type: ignore[no-untyped-def]
     bar_source = getattr(runtime, "bar_source", None)
     if bar_source is None:
         return [], []
+    # CR-026 follow-up — when a pin is set + the bar source wraps
+    # a MarketDataProvider, route through the provider so the
+    # series belongs to the PINNED symbol. Otherwise the
+    # simulated source's single-symbol history would override the
+    # pin (operator-visible bug: "graphic is the same and not
+    # depending of the pinned instrument").
+    if pinned_instrument is not None:
+        provider = (
+            getattr(runtime, "market_data_provider", None)
+            or getattr(bar_source, "_provider", None)
+        )
+        if provider is not None:
+            from trading_system.webapp.runtimes.provider_bar_window import (
+                fetch_recent_close_window,
+            )
+
+            return fetch_recent_close_window(
+                provider, pinned_instrument, days=120
+            )
     if hasattr(bar_source, "history"):
         try:
             bar_history = bar_source.history()
@@ -543,7 +607,7 @@ def _bar_history_for_runtime(  # type: ignore[no-untyped-def]
             fetch_recent_close_window,
         )
 
-        instrument = pinned_instrument or getattr(runtime, "instrument", None)
+        instrument = getattr(runtime, "instrument", None)
         if instrument is not None:
             return fetch_recent_close_window(
                 bar_source._provider,  # noqa: SLF001

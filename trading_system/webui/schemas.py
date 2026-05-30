@@ -277,6 +277,14 @@ class PaperStateResponse:
     index_symbol: str = ""
     index_close_series: tuple[Decimal, ...] = ()
     index_close_timestamps: tuple[datetime, ...] = ()
+    # CR-026 follow-up — reference-index volume strip + VIX overlay.
+    # The dashboard renders the volume strip below the index price
+    # line and overlays the VIX series so the operator sees the
+    # vol-regime context alongside the broader market.
+    index_volume_series: tuple[Decimal, ...] = ()
+    vix_symbol: str = ""
+    vix_close_series: tuple[Decimal, ...] = ()
+    vix_close_timestamps: tuple[datetime, ...] = ()
     # CR-026 (REQ_F_PAP_017 / REQ_SDD_PAP_009) — per-instrument
     # grid. One ``InstrumentRow`` per stock in the runtime's
     # configured universe, sorted by ``symbol`` lex-order so the

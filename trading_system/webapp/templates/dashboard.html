@@ -695,17 +695,25 @@ function renderPaperState(raw) {
       tr.setAttribute('role', 'button');
       tr.setAttribute('tabindex', '0');
       tr.setAttribute('aria-label', 'Pin ' + (r.symbol || '?') + ' as detail chart');
-      tr.addEventListener('click', () => {
-        const url = new URL(window.location.href);
-        url.searchParams.set('pin', r.symbol);
-        window.location.href = url.toString();
-      });
+      // CR-026 follow-up — swap pin in place (no full page
+      // reload, no 120-day yfinance refetch round-trip). Updates
+      // the URL via history.pushState, then re-subscribes the SSE
+      // stream to the new ``?pin=`` so the next snapshot already
+      // carries the pinned instrument's series. Resolves the
+      // operator's "switch is very long (almost 10 seconds)" bug.
+      const swapPin = () => {
+        const next = new URL(window.location.href);
+        next.searchParams.set('pin', r.symbol);
+        history.replaceState(null, '', next.toString());
+        if (typeof window.__resubscribePaperSSE === 'function') {
+          window.__resubscribePaperSSE(r.symbol);
+        }
+      };
+      tr.addEventListener('click', swapPin);
       tr.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          const url = new URL(window.location.href);
-          url.searchParams.set('pin', r.symbol);
-          window.location.href = url.toString();
+          swapPin();
         }
       });
       const dayPct = r.day_change_pct;
@@ -897,17 +905,28 @@ function renderPaperState(raw) {
     }
   );
 
-  // Reference-index chart — REQ_F_WEB2_010. Empty when the
-  // universe declares no ``indices:`` key.
+  // Reference-index chart — REQ_F_WEB2_010 + CR-026 follow-up
+  // (volume strip + VIX overlay).
   const indexHeading = document.querySelector('[data-field="paper_index_heading"]');
   const indexSlot = document.querySelector('[data-field="paper_index_chart"]');
   if (data.index_symbol) {
-    if (indexHeading) indexHeading.textContent = 'Reference index — ' + data.index_symbol;
+    const heading = data.vix_symbol
+      ? `Reference index — ${data.index_symbol} (vol overlay: ${data.vix_symbol})`
+      : `Reference index — ${data.index_symbol}`;
+    if (indexHeading) indexHeading.textContent = heading;
+    // Pass the VIX series as the "sma20" overlay slot (the
+    // chart renderer already supports a parallel line overlay);
+    // pass the index volume series as the volume strip.
     renderLineChart(
       indexSlot,
       data.index_close_series,
       data.index_close_timestamps,
-      { unit: '', aria: data.index_symbol + ' index evolution' }
+      {
+        unit: '',
+        aria: data.index_symbol + ' index evolution with volume + VIX overlay',
+        sma20: data.vix_close_series,
+        volume: data.index_volume_series,
+      }
     );
   } else {
     if (indexHeading) indexHeading.textContent = 'Reference index';
@@ -985,17 +1004,22 @@ function renderPaperState(raw) {
 // connection. EventSource is on every modern browser; we use
 // it directly so the panel works without any external JS dep.
 (function() {
-  document.addEventListener('DOMContentLoaded', () => {
-    const card = document.querySelector('[data-paper-sse-url]');
-    if (!card) return;
-    const url = card.getAttribute('data-paper-sse-url');
-    if (!url) return;
+  let currentEs = null;
+  // CR-026 follow-up — open / close / re-open the paper-state
+  // EventSource against an arbitrary ``?pin=`` query without a
+  // full page reload. The grid-row click handler calls
+  // ``window.__resubscribePaperSSE(symbol)`` to flip the pin in
+  // place — the next snapshot already carries the new
+  // ``pinned_symbol`` field so the Price-Evolution chart swaps.
+  const openSse = (url) => {
+    if (currentEs) {
+      try { currentEs.close(); } catch (e) { /* noop */ }
+    }
     try {
       const es = new EventSource(url, { withCredentials: true });
       es.addEventListener('paper-state', (event) => {
         renderPaperState(event.data);
       });
-      // Surface a transport error in the banner so it's not silent.
       es.addEventListener('error', () => {
         const status = document.querySelector('[data-field="paper_status"]');
         if (status && status.textContent === 'No session') {
@@ -1003,11 +1027,34 @@ function renderPaperState(raw) {
           status.classList.add('error');
         }
       });
-      // Render the initial placeholder so the dashes show.
-      renderPaperState('{}');
+      currentEs = es;
     } catch (e) {
       console.warn('paper-state SSE wiring failed:', e);
     }
+  };
+  window.__resubscribePaperSSE = (symbol) => {
+    const card = document.querySelector('[data-paper-sse-url]');
+    if (!card) return;
+    const baseUrl = card.getAttribute('data-paper-sse-url') || '';
+    if (!baseUrl) return;
+    const url = new URL(baseUrl, window.location.origin);
+    if (symbol) {
+      url.searchParams.set('pin', symbol);
+    } else {
+      url.searchParams.delete('pin');
+    }
+    // Persist the resolved URL on the card so subsequent reads
+    // see the latest pin.
+    card.setAttribute('data-paper-sse-url', url.pathname + url.search);
+    openSse(url.toString());
+  };
+  document.addEventListener('DOMContentLoaded', () => {
+    const card = document.querySelector('[data-paper-sse-url]');
+    if (!card) return;
+    const url = card.getAttribute('data-paper-sse-url');
+    if (!url) return;
+    openSse(url);
+    renderPaperState('{}');
   });
 })();
 </script>
