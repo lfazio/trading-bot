@@ -42,6 +42,7 @@ WIZARD_COOKIE_NAME = "wizard-state"
 ALLOWED_UNIVERSES: tuple[str, ...] = (
     "eu-dividend-starter",
     "cac40",
+    "sbf120",
 )
 ALLOWED_STRATEGIES: tuple[str, ...] = (
     "CoreStrategy",

@@ -443,6 +443,77 @@ def test_build_screener_ranking_emits_one_scored_stock_per_universe_member():
 # ---------------------------------------------------------------------------
 
 
+def test_paper_state_reader_honors_pinned_symbol_query_override():
+    """REQ_F_PAP_018 / REQ_SDD_PAP_010 — ``?pin=<symbol>`` query
+    parameter overrides the default lex-first pin. Unknown symbols
+    fall back to the default."""
+    from dataclasses import dataclass, field
+    from datetime import datetime, UTC
+
+    from trading_system.models.identifiers import AccountId
+    from trading_system.result import Nothing, Some
+    from trading_system.webapp.paper_state_reader import RuntimePaperStateReader
+
+    @dataclass
+    class _Registry:
+        runtimes: dict = field(default_factory=dict)
+
+        def status(self, aid):
+            r = self.runtimes.get(aid)
+            return Some(r) if r is not None else Nothing()
+
+    class _Runtime:
+        universe = (_stock("AAA"), _stock("BBB"), _stock("CCC"))
+        market_data_provider = _StubProvider(
+            payload={
+                "AAA": Ok(_bar("10.00")),
+                "BBB": Ok(_bar("20.00")),
+                "CCC": Ok(_bar("30.00")),
+            }
+        )
+
+        def is_alive(self):
+            return True
+
+        def is_degraded(self):
+            return False
+
+        def degraded_since(self):
+            return None
+
+        def last_tick_at(self):
+            return datetime(2026, 5, 30, 12, tzinfo=UTC)
+
+        def equity_history(self):
+            return ()
+
+    runtime = _Runtime()
+    aid = AccountId("paper-2026-05-30T12:00:00+00:00")
+    reader = RuntimePaperStateReader(registry=_Registry(runtimes={aid: runtime}))
+
+    # Default pin = first lex symbol.
+    default_snap = reader.paper_state(
+        account_id=aid, as_of=datetime(2026, 5, 30, 12, tzinfo=UTC)
+    )
+    assert default_snap.pinned_symbol == "AAA"
+
+    # ``pinned_symbol`` override wins when the symbol exists.
+    pinned_snap = reader.paper_state(
+        account_id=aid,
+        as_of=datetime(2026, 5, 30, 12, tzinfo=UTC),
+        pinned_symbol="BBB",
+    )
+    assert pinned_snap.pinned_symbol == "BBB"
+
+    # Unknown symbol ⇒ falls back to the default.
+    fallback_snap = reader.paper_state(
+        account_id=aid,
+        as_of=datetime(2026, 5, 30, 12, tzinfo=UTC),
+        pinned_symbol="ZZZ",
+    )
+    assert fallback_snap.pinned_symbol == "AAA"
+
+
 def test_paper_state_reader_populates_per_instrument_from_universe():
     """REQ_F_PAP_017 / REQ_SDD_PAP_009 — the
     ``RuntimePaperStateReader.paper_state`` snapshot SHALL carry
@@ -501,6 +572,36 @@ def test_paper_state_reader_populates_per_instrument_from_universe():
     assert snap.pinned_symbol == "AAA"
     assert all(r.last_close is not None for r in snap.per_instrument)
     assert all(not r.has_open_position for r in snap.per_instrument)
+
+
+# ---------------------------------------------------------------------------
+# TC_PAP_MULTI_006 — Dashboard grid renders + pin handler wires up
+# ---------------------------------------------------------------------------
+
+
+def test_dashboard_template_includes_per_instrument_grid_and_pin_handler():
+    """REQ_F_PAP_018 / REQ_SDD_PAP_010 — the dashboard template
+    SHALL ship the per-instrument grid section + the JS click
+    handler that updates ``?pin=<symbol>``. Smoke test against the
+    template file — no HTTP round-trip needed."""
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[2]
+    template = (
+        repo_root
+        / "trading_system"
+        / "webapp"
+        / "templates"
+        / "dashboard.html"
+    ).read_text(encoding="utf-8")
+    # Section header present.
+    assert "Universe — per-instrument grid (CR-026)" in template
+    # Table data-field hook the JS targets.
+    assert 'data-field="paper_per_instrument_table"' in template
+    # JS reads ``data.per_instrument`` and updates ``?pin=<symbol>``
+    # — both literals appear in the renderer.
+    assert "data.per_instrument" in template
+    assert "url.searchParams.set('pin'" in template
 
 
 def test_instrument_row_canonical_dataclass_fields():

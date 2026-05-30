@@ -41,6 +41,28 @@ def first_instrument_or_fallback(
     return fallback
 
 
+def stocks_for_universe(
+    universe: str,
+    *,
+    fallback: tuple[Stock, ...] = (),
+) -> tuple[Stock, ...]:
+    """CR-026 (REQ_F_PAP_015) — return the full lex-sorted list of
+    stocks the universe YAML declares.
+
+    Falls back to ``fallback`` (default empty tuple) when the
+    loader fails — the runtime's ``__post_init__`` then degenerates
+    to a single-symbol universe seeded from ``self.instrument``."""
+    try:
+        result = load_universe(universe)
+    except Exception:  # noqa: BLE001 — defensive
+        return fallback
+    if hasattr(result, "is_ok") and result.is_ok():
+        uni = result.unwrap()
+        if uni.stocks:
+            return tuple(sorted(uni.stocks, key=lambda s: s.symbol))
+    return fallback
+
+
 def index_for_universe(
     universe: str,
     *,

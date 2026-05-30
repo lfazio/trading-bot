@@ -142,9 +142,14 @@ async def stream_paper_state(
     account_id = AccountId(
         request.query_params.get("account_id", "").strip() or "default"
     )
+    # CR-026 / REQ_SDD_PAP_010 — optional pin overrides which
+    # symbol the reader marks as ``pinned_symbol`` on every snapshot.
+    pinned_symbol = request.query_params.get("pin", "").strip() or None
 
     async def event_generator() -> AsyncIterator[dict]:
-        async for snapshot in reader.subscribe(account_id=account_id):
+        async for snapshot in reader.subscribe(
+            account_id=account_id, pinned_symbol=pinned_symbol
+        ):
             if await request.is_disconnected():
                 return
             yield {

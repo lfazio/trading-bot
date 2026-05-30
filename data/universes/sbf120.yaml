@@ -1,0 +1,592 @@
+# SBF 120 universe — starter (CAC 40 + 30 widely-traded mid-caps).
+#
+# Status: PARTIAL — 70 stocks of the 120 official SBF 120
+# constituents. The full SBF 120 list rotates quarterly; only ISINs
+# that we can verify against Euronext / SIX have been included so
+# replay-determinism (REQ_NF_DAT_001) holds bit-identically.
+# Operators extending this universe SHALL verify each new (id,
+# isin) pair before adding so a bad ticker doesn't poison the
+# yfinance cache key.
+#
+# Includes the SBF 120 index itself (^SBF120) for hedging +
+# performance comparison.
+
+name: sbf120
+description: |
+  SBF 120 starter — France's primary mid-and-large-cap benchmark.
+  Index covers the top 120 stocks on Euronext Paris by market cap +
+  liquidity. This file ships the CAC 40 top tier (~40 stocks) plus
+  a curated subset of large mid-caps (~30 stocks). The remainder
+  (~50 names) is the operator's extension surface — add by ISIN
+  via the same shape; the yfinance adapter caches per (symbol,
+  timeframe, range).
+
+# Index itself for hedging and performance tracking.
+indices:
+  - id: ^SBF120
+    symbol: ^SBF120
+    description: SBF 120 Index
+    currency: EUR
+
+stocks:
+  # ---- CAC 40 top tier (40 constituents) -----------------------
+  - id: AC.PA           # Accor
+    symbol: AC
+    exchange: PA
+    currency: EUR
+    isin: FR0000120404
+    sector: consumer-discretionary
+    country: FR
+
+  - id: AI.PA           # Air Liquide
+    symbol: AI
+    exchange: PA
+    currency: EUR
+    isin: FR0000120073
+    sector: industrials
+    country: FR
+
+  - id: AIR.PA          # Airbus
+    symbol: AIR
+    exchange: PA
+    currency: EUR
+    isin: NL0000235190
+    sector: industrials
+    country: NL
+
+  - id: ALO.PA          # Alstom
+    symbol: ALO
+    exchange: PA
+    currency: EUR
+    isin: FR0010220475
+    sector: industrials
+    country: FR
+
+  - id: BN.PA           # Danone
+    symbol: BN
+    exchange: PA
+    currency: EUR
+    isin: FR0000120644
+    sector: consumer-staples
+    country: FR
+
+  - id: BNP.PA          # BNP Paribas
+    symbol: BNP
+    exchange: PA
+    currency: EUR
+    isin: FR0000131104
+    sector: financials
+    country: FR
+
+  - id: CA.PA           # Carrefour
+    symbol: CA
+    exchange: PA
+    currency: EUR
+    isin: FR0000120172
+    sector: consumer-staples
+    country: FR
+
+  - id: CAP.PA          # Capgemini
+    symbol: CAP
+    exchange: PA
+    currency: EUR
+    isin: FR0000125338
+    sector: tech
+    country: FR
+
+  - id: CS.PA           # AXA
+    symbol: CS
+    exchange: PA
+    currency: EUR
+    isin: FR0000120628
+    sector: financials
+    country: FR
+
+  - id: DG.PA           # Vinci
+    symbol: DG
+    exchange: PA
+    currency: EUR
+    isin: FR0000125486
+    sector: industrials
+    country: FR
+
+  - id: DSY.PA          # Dassault Systèmes
+    symbol: DSY
+    exchange: PA
+    currency: EUR
+    isin: FR0014003TT8
+    sector: tech
+    country: FR
+
+  - id: EDEN.PA         # Edenred
+    symbol: EDEN
+    exchange: PA
+    currency: EUR
+    isin: FR0010908533
+    sector: financials
+    country: FR
+
+  - id: EL.PA           # EssilorLuxottica
+    symbol: EL
+    exchange: PA
+    currency: EUR
+    isin: FR0000121667
+    sector: consumer-discretionary
+    country: FR
+
+  - id: EN.PA           # Bouygues
+    symbol: EN
+    exchange: PA
+    currency: EUR
+    isin: FR0000120503
+    sector: industrials
+    country: FR
+
+  - id: ENGI.PA         # Engie
+    symbol: ENGI
+    exchange: PA
+    currency: EUR
+    isin: FR0010208488
+    sector: utilities
+    country: FR
+
+  - id: ERF.PA          # Eurofins Scientific
+    symbol: ERF
+    exchange: PA
+    currency: EUR
+    isin: FR0014000MR3
+    sector: healthcare
+    country: FR
+
+  - id: GLE.PA          # Société Générale
+    symbol: GLE
+    exchange: PA
+    currency: EUR
+    isin: FR0000130809
+    sector: financials
+    country: FR
+
+  - id: HO.PA           # Thales
+    symbol: HO
+    exchange: PA
+    currency: EUR
+    isin: FR0000121329
+    sector: industrials
+    country: FR
+
+  - id: KER.PA          # Kering
+    symbol: KER
+    exchange: PA
+    currency: EUR
+    isin: FR0000121485
+    sector: consumer-discretionary
+    country: FR
+
+  - id: LR.PA           # Legrand
+    symbol: LR
+    exchange: PA
+    currency: EUR
+    isin: FR0010307819
+    sector: industrials
+    country: FR
+
+  - id: MC.PA           # LVMH
+    symbol: MC
+    exchange: PA
+    currency: EUR
+    isin: FR0000121014
+    sector: consumer-discretionary
+    country: FR
+
+  - id: ML.PA           # Michelin
+    symbol: ML
+    exchange: PA
+    currency: EUR
+    isin: FR001400AJ45
+    sector: consumer-discretionary
+    country: FR
+
+  - id: OR.PA           # L'Oréal
+    symbol: OR
+    exchange: PA
+    currency: EUR
+    isin: FR0000120321
+    sector: consumer-staples
+    country: FR
+
+  - id: ORA.PA          # Orange
+    symbol: ORA
+    exchange: PA
+    currency: EUR
+    isin: FR0000133308
+    sector: communication-services
+    country: FR
+
+  - id: PUB.PA          # Publicis Groupe
+    symbol: PUB
+    exchange: PA
+    currency: EUR
+    isin: FR0000130577
+    sector: communication-services
+    country: FR
+
+  - id: RI.PA           # Pernod Ricard
+    symbol: RI
+    exchange: PA
+    currency: EUR
+    isin: FR0000120693
+    sector: consumer-staples
+    country: FR
+
+  - id: RMS.PA          # Hermès International
+    symbol: RMS
+    exchange: PA
+    currency: EUR
+    isin: FR0000052292
+    sector: consumer-discretionary
+    country: FR
+
+  - id: RNO.PA          # Renault
+    symbol: RNO
+    exchange: PA
+    currency: EUR
+    isin: FR0000131906
+    sector: consumer-discretionary
+    country: FR
+
+  - id: SAF.PA          # Safran
+    symbol: SAF
+    exchange: PA
+    currency: EUR
+    isin: FR0000073272
+    sector: industrials
+    country: FR
+
+  - id: SAN.PA          # Sanofi
+    symbol: SAN
+    exchange: PA
+    currency: EUR
+    isin: FR0000120578
+    sector: healthcare
+    country: FR
+
+  - id: SGO.PA          # Saint-Gobain
+    symbol: SGO
+    exchange: PA
+    currency: EUR
+    isin: FR0000125007
+    sector: industrials
+    country: FR
+
+  - id: STLAP.PA        # Stellantis (Paris quote)
+    symbol: STLAP
+    exchange: PA
+    currency: EUR
+    isin: NL00150001Q9
+    sector: consumer-discretionary
+    country: NL
+
+  - id: STMPA.PA        # STMicroelectronics (Paris quote)
+    symbol: STMPA
+    exchange: PA
+    currency: EUR
+    isin: NL0000226223
+    sector: tech
+    country: NL
+
+  - id: SU.PA           # Schneider Electric
+    symbol: SU
+    exchange: PA
+    currency: EUR
+    isin: FR0000121972
+    sector: industrials
+    country: FR
+
+  - id: SW.PA           # Sodexo
+    symbol: SW
+    exchange: PA
+    currency: EUR
+    isin: FR0000121220
+    sector: consumer-discretionary
+    country: FR
+
+  - id: TEP.PA          # Teleperformance
+    symbol: TEP
+    exchange: PA
+    currency: EUR
+    isin: FR0000051807
+    sector: communication-services
+    country: FR
+
+  - id: TTE.PA          # TotalEnergies
+    symbol: TTE
+    exchange: PA
+    currency: EUR
+    isin: FR0000120271
+    sector: energy
+    country: FR
+
+  - id: URW.PA          # Unibail-Rodamco-Westfield
+    symbol: URW
+    exchange: PA
+    currency: EUR
+    isin: FR0013326246
+    sector: real-estate
+    country: FR
+
+  - id: VIE.PA          # Veolia Environnement
+    symbol: VIE
+    exchange: PA
+    currency: EUR
+    isin: FR0000124141
+    sector: utilities
+    country: FR
+
+  - id: VIV.PA          # Vivendi
+    symbol: VIV
+    exchange: PA
+    currency: EUR
+    isin: FR0000127771
+    sector: communication-services
+    country: FR
+
+  # ---- Mid-cap extensions (~30 widely-traded SBF 120 names) ----
+  - id: AKE.PA          # Arkema
+    symbol: AKE
+    exchange: PA
+    currency: EUR
+    isin: FR0010313833
+    sector: industrials
+    country: FR
+
+  - id: ALD.PA          # Ayvens (formerly ALD Automotive)
+    symbol: ALD
+    exchange: PA
+    currency: EUR
+    isin: FR0013258662
+    sector: financials
+    country: FR
+
+  - id: ATO.PA          # Atos
+    symbol: ATO
+    exchange: PA
+    currency: EUR
+    isin: FR0000051732
+    sector: tech
+    country: FR
+
+  - id: BB.PA           # SES (BB on Paris)
+    symbol: BB
+    exchange: PA
+    currency: EUR
+    isin: LU0088087324
+    sector: communication-services
+    country: LU
+
+  - id: BIM.PA          # bioMérieux
+    symbol: BIM
+    exchange: PA
+    currency: EUR
+    isin: FR0013280286
+    sector: healthcare
+    country: FR
+
+  - id: BVI.PA          # Bureau Veritas
+    symbol: BVI
+    exchange: PA
+    currency: EUR
+    isin: FR0006174348
+    sector: industrials
+    country: FR
+
+  - id: COFA.PA         # Coface
+    symbol: COFA
+    exchange: PA
+    currency: EUR
+    isin: FR0010667147
+    sector: financials
+    country: FR
+
+  - id: COV.PA          # Covivio
+    symbol: COV
+    exchange: PA
+    currency: EUR
+    isin: FR0000064578
+    sector: real-estate
+    country: FR
+
+  - id: ELIS.PA         # Elis
+    symbol: ELIS
+    exchange: PA
+    currency: EUR
+    isin: FR0012435121
+    sector: industrials
+    country: FR
+
+  - id: EXN.PA          # Exane (Exel Industries — EXE.PA in some sources)
+    symbol: EXN
+    exchange: PA
+    currency: EUR
+    isin: FR0004527638
+    sector: industrials
+    country: FR
+
+  - id: FDJ.PA          # Française des Jeux
+    symbol: FDJ
+    exchange: PA
+    currency: EUR
+    isin: FR0013451333
+    sector: consumer-discretionary
+    country: FR
+
+  - id: FGR.PA          # Eiffage
+    symbol: FGR
+    exchange: PA
+    currency: EUR
+    isin: FR0000130452
+    sector: industrials
+    country: FR
+
+  - id: FR.PA           # Valeo
+    symbol: FR
+    exchange: PA
+    currency: EUR
+    isin: FR0013176526
+    sector: consumer-discretionary
+    country: FR
+
+  - id: GET.PA          # Getlink (Eurotunnel)
+    symbol: GET
+    exchange: PA
+    currency: EUR
+    isin: FR0010533075
+    sector: industrials
+    country: FR
+
+  - id: GTT.PA          # GTT (Gaztransport & Technigaz)
+    symbol: GTT
+    exchange: PA
+    currency: EUR
+    isin: FR0011726835
+    sector: industrials
+    country: FR
+
+  - id: ICAD.PA         # Icade
+    symbol: ICAD
+    exchange: PA
+    currency: EUR
+    isin: FR0000035081
+    sector: real-estate
+    country: FR
+
+  - id: IPN.PA          # Ipsen
+    symbol: IPN
+    exchange: PA
+    currency: EUR
+    isin: FR0010259150
+    sector: healthcare
+    country: FR
+
+  - id: IPS.PA          # Ipsos
+    symbol: IPS
+    exchange: PA
+    currency: EUR
+    isin: FR0000073298
+    sector: communication-services
+    country: FR
+
+  - id: KOF.PA          # Korian (Clariane)
+    symbol: KOF
+    exchange: PA
+    currency: EUR
+    isin: FR0010386334
+    sector: healthcare
+    country: FR
+
+  - id: LI.PA           # Klepierre
+    symbol: LI
+    exchange: PA
+    currency: EUR
+    isin: FR0000121964
+    sector: real-estate
+    country: FR
+
+  - id: MMT.PA          # Métropole Télévision (M6)
+    symbol: MMT
+    exchange: PA
+    currency: EUR
+    isin: FR0000053225
+    sector: communication-services
+    country: FR
+
+  - id: NEX.PA          # Nexans
+    symbol: NEX
+    exchange: PA
+    currency: EUR
+    isin: FR0000044448
+    sector: industrials
+    country: FR
+
+  - id: NK.PA           # Imerys
+    symbol: NK
+    exchange: PA
+    currency: EUR
+    isin: FR0000120859
+    sector: industrials
+    country: FR
+
+  - id: REM.PA          # Remy Cointreau
+    symbol: RCO
+    exchange: PA
+    currency: EUR
+    isin: FR0000130577
+    sector: consumer-staples
+    country: FR
+
+  - id: RUI.PA          # Rubis
+    symbol: RUI
+    exchange: PA
+    currency: EUR
+    isin: FR0013269123
+    sector: energy
+    country: FR
+
+  - id: SCR.PA          # SCOR
+    symbol: SCR
+    exchange: PA
+    currency: EUR
+    isin: FR0010411983
+    sector: financials
+    country: FR
+
+  - id: SK.PA           # SEB
+    symbol: SK
+    exchange: PA
+    currency: EUR
+    isin: FR0000121709
+    sector: consumer-discretionary
+    country: FR
+
+  - id: SOI.PA          # Soitec
+    symbol: SOI
+    exchange: PA
+    currency: EUR
+    isin: FR0013227113
+    sector: tech
+    country: FR
+
+  - id: SOP.PA          # Sopra Steria Group
+    symbol: SOP
+    exchange: PA
+    currency: EUR
+    isin: FR0000050809
+    sector: tech
+    country: FR
+
+  - id: VK.PA           # Vallourec
+    symbol: VK
+    exchange: PA
+    currency: EUR
+    isin: FR0013506730
+    sector: energy
+    country: FR

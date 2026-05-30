@@ -81,7 +81,11 @@ class RuntimePaperStateReader:
             )
 
     def paper_state(
-        self, *, account_id: AccountId, as_of: datetime
+        self,
+        *,
+        account_id: AccountId,
+        as_of: datetime,
+        pinned_symbol: str | None = None,
     ) -> PaperStateResponse:
         """Snapshot for one paper-trading session.
 
@@ -251,10 +255,17 @@ class RuntimePaperStateReader:
         per_instrument_rows = _per_instrument_rows(
             runtime, live_positions_by_symbol(portfolio)
         )
-        # Default pin = first symbol in lex order (REQ_F_PAP_018).
-        pinned_symbol = (
-            per_instrument_rows[0].symbol if per_instrument_rows else ""
-        )
+        # Pin resolution (REQ_F_PAP_018 / REQ_SDD_PAP_010):
+        #   - operator-supplied ``pinned_symbol`` wins iff it's in
+        #     the universe;
+        #   - otherwise default to the first symbol in lex order.
+        symbols_in_universe = {r.symbol for r in per_instrument_rows}
+        if pinned_symbol and pinned_symbol in symbols_in_universe:
+            resolved_pin = pinned_symbol
+        elif per_instrument_rows:
+            resolved_pin = per_instrument_rows[0].symbol
+        else:
+            resolved_pin = ""
 
         return PaperStateResponse(
             account_id=account_id,
@@ -280,22 +291,31 @@ class RuntimePaperStateReader:
                 tuple(index_timestamps[-60:]) if index_timestamps else ()
             ),
             per_instrument=per_instrument_rows,
-            pinned_symbol=pinned_symbol,
+            pinned_symbol=resolved_pin,
             **_indicator_kwargs(runtime, history, bar_closes, bar_timestamps),
         )
 
     async def subscribe(
-        self, *, account_id: AccountId
+        self,
+        *,
+        account_id: AccountId,
+        pinned_symbol: str | None = None,
     ) -> AsyncIterator[PaperStateResponse]:
         """Yield one snapshot every ``tick_seconds``.
 
         The handler exits the loop when the request disconnects
         (the SSE router checks ``request.is_disconnected()`` and
         breaks out of ``async for`` on the first ``True``).
+
+        ``pinned_symbol`` is threaded through to ``paper_state``
+        on every tick so the SSE stream's ``pinned_symbol`` field
+        reflects the operator's pin (REQ_SDD_PAP_010).
         """
         while True:
             yield self.paper_state(
-                account_id=account_id, as_of=datetime.now(tz=UTC)
+                account_id=account_id,
+                as_of=datetime.now(tz=UTC),
+                pinned_symbol=pinned_symbol,
             )
             await asyncio.sleep(self.tick_seconds)
 

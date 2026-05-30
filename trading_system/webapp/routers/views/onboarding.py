@@ -83,6 +83,20 @@ _DEFAULT_INSTRUMENTS: dict[str, Stock] = {
         sector="consumer-discretionary",
         country="FR",
     ),
+    # SBF 120 starter — first lex symbol is AC (Accor), shared
+    # with cac40. The full SBF 120 list lives at
+    # data/universes/sbf120.yaml; the runtime loader resolves
+    # the actual stocks at session-start time.
+    "sbf120": Stock(
+        id=InstrumentId("AC.PA"),
+        symbol="AC",
+        exchange="PA",
+        currency=Currency.EUR,
+        cls=InstrumentClass.STOCK,
+        isin="FR0000120404",
+        sector="consumer-discretionary",
+        country="FR",
+    ),
 }
 
 
@@ -405,6 +419,24 @@ async def post_finish(request: Request) -> RedirectResponse:
     # Stash the universe's reference index so the paper-state
     # reader can fetch its bars for the dashboard's main chart.
     runtime.reference_index = reference_index
+
+    # CR-026 (REQ_F_PAP_015) — load the full universe so the
+    # runtime's strategy ranking + the dashboard's per-instrument
+    # grid both span every symbol the operator selected. Empty
+    # tuple ⇒ the runtime keeps the degenerate single-instrument
+    # universe seeded by ``__post_init__`` from ``instrument``.
+    from trading_system.webapp.runtimes.universe_loader import (
+        stocks_for_universe,
+    )
+
+    universe_stocks = stocks_for_universe(state.universe)
+    if universe_stocks:
+        # Re-normalise in __post_init__'s lex-sorted shape by
+        # writing through the slot — the assignment is fine on a
+        # ``@dataclass(slots=True)`` since the field is not frozen.
+        runtime.universe = tuple(
+            sorted(universe_stocks, key=lambda s: s.symbol)
+        )
 
     # Register against the shared registry so the dashboard
     # panel + tick driver both see the new session.

@@ -253,7 +253,7 @@
 </section>
 
 <section class="card"
-         data-paper-sse-url="/events/paper-state?account_id={{ account_id | urlencode }}"
+         data-paper-sse-url="/events/paper-state?account_id={{ account_id | urlencode }}{% if pinned_symbol %}&pin={{ pinned_symbol | urlencode }}{% endif %}"
          aria-labelledby="paper-state-heading">
   <h2 id="paper-state-heading">Paper-trading session</h2>
   <p class="subhead">
@@ -354,13 +354,40 @@
 
   <h3 style="margin-top:1.2em">Price evolution — <span data-field="paper_instrument_caption">instrument</span></h3>
   <p class="muted" style="font-size:0.85rem; margin-top:-0.25em">
-    The runtime trades one instrument per paper session in v1 — the first stock from the universe YAML
-    (<span data-field="paper_universe_label">universe</span>). Multi-instrument support lands with the live-trading amendment;
-    until then, edit <code>data/universes/&lt;name&gt;.yaml</code> + restart to swap.
+    Pinned instrument's price evolution. Click any row in the
+    <strong>Universe</strong> grid below to pin a different symbol;
+    the runtime evaluates every stock in
+    <span data-field="paper_universe_label">the universe</span>
+    on every tick (REQ_F_PAP_015 / REQ_F_PAP_018).
   </p>
   <div data-field="paper_price_chart" style="width:100%; min-height:140px">
     <p class="muted">Waiting for bar history…</p>
   </div>
+
+  <h3 style="margin-top:1.2em">Universe — per-instrument grid (CR-026)</h3>
+  <p class="muted" style="font-size:0.85rem; margin-top:-0.25em">
+    One row per universe symbol. Click a row to pin it as the detail chart above.
+    Default pin: the first symbol in alphabetical order.
+  </p>
+  <table
+    class="data-table"
+    data-field="paper_per_instrument_table"
+    style="width:100%; margin-bottom:1em"
+  >
+    <thead>
+      <tr>
+        <th>Symbol</th>
+        <th class="numeric">Last close</th>
+        <th class="numeric">Day change</th>
+        <th>Position</th>
+        <th>Recent</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+    <tfoot>
+      <tr><td colspan="5" class="muted">Universe is loading or this is a legacy single-instrument session.</td></tr>
+    </tfoot>
+  </table>
 
   <h3 style="margin-top:1.2em">Open positions</h3>
   <table class="data-table" data-field="paper_positions_table" style="width:100%; margin-bottom:1em">
@@ -640,6 +667,69 @@ function renderPaperState(raw) {
   };
   renderPositions();
   renderTrades();
+
+  // CR-026 — per-instrument grid. One row per universe symbol;
+  // click pins the symbol as the detail chart's data source by
+  // appending ``?pin=<symbol>`` to the page URL + reloading (the
+  // server reads the query param at render time per
+  // REQ_SDD_PAP_010).
+  const renderPerInstrument = () => {
+    const table = document.querySelector('[data-field="paper_per_instrument_table"]');
+    if (!table) return;
+    const tbody = table.querySelector('tbody');
+    const tfoot = table.querySelector('tfoot');
+    if (!tbody || !tfoot) return;
+    tbody.innerHTML = '';
+    const rows = Array.isArray(data.per_instrument) ? data.per_instrument : [];
+    if (rows.length === 0) {
+      tfoot.style.display = '';
+      return;
+    }
+    tfoot.style.display = 'none';
+    const pinned = data.pinned_symbol || '';
+    for (const r of rows) {
+      const tr = document.createElement('tr');
+      const isPinned = r.symbol === pinned;
+      if (isPinned) tr.style.background = 'rgba(0,128,255,0.08)';
+      tr.style.cursor = 'pointer';
+      tr.setAttribute('role', 'button');
+      tr.setAttribute('tabindex', '0');
+      tr.setAttribute('aria-label', 'Pin ' + (r.symbol || '?') + ' as detail chart');
+      tr.addEventListener('click', () => {
+        const url = new URL(window.location.href);
+        url.searchParams.set('pin', r.symbol);
+        window.location.href = url.toString();
+      });
+      tr.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          const url = new URL(window.location.href);
+          url.searchParams.set('pin', r.symbol);
+          window.location.href = url.toString();
+        }
+      });
+      const dayPct = r.day_change_pct;
+      let dayCell = '<span class="muted">—</span>';
+      if (dayPct !== undefined && dayPct !== null && dayPct !== '') {
+        const n = Number(dayPct);
+        if (isFinite(n)) {
+          const tone = n >= 0 ? 'success' : 'error';
+          dayCell = `<span class="badge ${tone}" aria-label="Day change ${n.toFixed(2)} percent">${n >= 0 ? '+' : ''}${n.toFixed(2)} %</span>`;
+        }
+      }
+      const posCell = r.has_open_position
+        ? '<span class="badge success" aria-label="Has open position">●</span>'
+        : '<span class="muted">—</span>';
+      tr.innerHTML =
+        `<td><code>${r.symbol || '?'}${isPinned ? ' ◀' : ''}</code></td>` +
+        `<td class="numeric">${fmtMoney(r.last_close) || '—'}</td>` +
+        `<td class="numeric">${dayCell}</td>` +
+        `<td>${posCell}</td>` +
+        `<td>${sparkline(r.sparkline)}</td>`;
+      tbody.appendChild(tr);
+    }
+  };
+  renderPerInstrument();
 
   // Inline SVG chart with price line, optional SMA overlays,
   // volume strip, gridlines + axis labels. No external chart

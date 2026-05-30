@@ -63,6 +63,17 @@ def get_dashboard(request: Request):
         or request.cookies.get("active-paper-session", "").strip()
         or "default"
     )
+    # CR-026 (REQ_F_PAP_018 / REQ_SDD_PAP_010) — optional pin
+    # query parameter selecting the per-instrument detail chart.
+    # Persisted across reloads in the ``active-paper-pin`` cookie
+    # so the operator's choice survives a page refresh without
+    # the ``?pin=`` query param in the URL bar.
+    # Precedence: ``?pin=<symbol>`` > cookie > "" (reader picks
+    # the lex-first symbol as default).
+    pinned_symbol = (
+        request.query_params.get("pin", "").strip()
+        or request.cookies.get("active-paper-pin", "").strip()
+    )
     # Surface every currently-live paper session in a switcher
     # so the operator can hop between them without retyping the
     # query string. Defensive against an unwired registry.
@@ -106,7 +117,7 @@ def get_dashboard(request: Request):
         household = household_snapshot(
             registry, paper_reader, as_of=datetime.now(tz=UTC)
         )
-    return _templates(request).TemplateResponse(
+    response = _templates(request).TemplateResponse(
         request=request,
         name="dashboard.html",
         context={
@@ -115,9 +126,21 @@ def get_dashboard(request: Request):
             "active_mode": mode_raw,
             "household": household,
             "live_mode_status": live_mode_status,
+            "pinned_symbol": pinned_symbol,
             **fragment_context(request),
         },
     )
+    # Persist the pin so a refresh without ``?pin=`` keeps the
+    # selection (CR-026 / REQ_F_PAP_018). 30-day rolling window;
+    # clearing happens when the operator clicks a different row.
+    if request.query_params.get("pin", "").strip():
+        response.set_cookie(
+            "active-paper-pin",
+            request.query_params["pin"].strip(),
+            max_age=30 * 24 * 3600,
+            samesite="lax",
+        )
+    return response
 
 
 # Staleness window for the preflight artefact (REQ_SDD_LIV_004 default

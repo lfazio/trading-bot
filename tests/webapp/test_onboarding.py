@@ -388,5 +388,5 @@ def test_allowed_universes_and_strategies_are_closed_sets() -> None:
     """Adding a new universe / strategy SHALL be a deliberate
     code change here + a corresponding wiki amendment, not a
     cookie-driven side-effect."""
-    assert ALLOWED_UNIVERSES == ("eu-dividend-starter", "cac40")
+    assert ALLOWED_UNIVERSES == ("eu-dividend-starter", "cac40", "sbf120")
     assert ALLOWED_STRATEGIES == ("CoreStrategy", "TacticalStrategy")
