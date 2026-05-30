@@ -29,21 +29,105 @@
     {{ label }}
   </a>
   {% endfor %}
-  <!-- live: disabled-with-tooltip. role="tab" + aria-disabled
-       so assistive tech announces the disabled state -->
+  <!-- REQ_F_LIV_002 / REQ_SDD_LIV_004 — the `live` chip
+       enablement is a function of (a) preflight artefact ok +
+       within staleness window AND (b) broker.adapter != 'local'.
+       The disabled-with-tooltip state survives until BOTH hold. -->
+  {% if live_mode_status and live_mode_status.enabled %}
+  <a href="{{ '/?mode=live' + ('&account_id=' + (account_id|urlencode) if account_id else '') }}"
+     role="tab"
+     aria-selected="{{ 'true' if active_mode == 'live' else 'false' }}"
+     aria-label="Live trading mode"
+     title="Live trading enabled — broker {{ live_mode_status.broker_selector }} reached preflight ok at {{ live_mode_status.checked_at }}."
+     class="button {% if active_mode == 'live' %}{% else %}secondary{% endif %}"
+     data-live-mode="enabled">
+    Live trading
+    <span aria-hidden="true">🟢</span>
+  </a>
+  {% else %}
   <button type="button"
           role="tab"
           aria-selected="false"
           aria-disabled="true"
-          aria-label="Live trading mode — disabled until broker adapter is selected"
-          title="Live trading is gated on broker-adapter selection (REQ_F_BRK_003); a separate SRS amendment will enable this control."
+          aria-label="Live trading mode — disabled: {{ (live_mode_status.reason if live_mode_status else 'live:preflight_artefact_missing') }}"
+          title="Live trading disabled: {{ (live_mode_status.reason if live_mode_status else 'live:preflight_artefact_missing') }}. Run `trading-bot live-preflight` against a configured concrete broker adapter."
           disabled
           class="button secondary"
-          style="opacity:0.55; cursor:not-allowed">
+          style="opacity:0.55; cursor:not-allowed"
+          data-live-mode="disabled"
+          data-live-mode-reason="{{ (live_mode_status.reason if live_mode_status else 'live:preflight_artefact_missing') }}">
     Live trading
     <span aria-hidden="true">🔒</span>
   </button>
+  {% endif %}
 </nav>
+
+{% if active_mode == 'live' and live_mode_status and live_mode_status.enabled %}
+<!-- REQ_F_LIV_003 — live-trading panel surface. Mirrors the
+     paper-trading panel shape so the dashboard's mode switch can
+     swap runtimes without re-rendering chrome. -->
+<section class="card"
+         aria-labelledby="live-trading-panel-heading"
+         data-panel="live-trading">
+  <h2 id="live-trading-panel-heading">Live trading — {{ account_id }}</h2>
+  <p class="subhead">
+    Broker: <strong>{{ live_mode_status.broker_selector }}</strong>
+    · Preflight: <time datetime="{{ live_mode_status.checked_at }}">{{ live_mode_status.checked_at }}</time>
+  </p>
+
+  <div class="card-grid" style="margin-bottom:1em">
+    <div class="stat">
+      <span class="label">Equity (after tax)</span>
+      <span class="value numeric" data-field="live_equity_after_tax">—</span>
+    </div>
+    <div class="stat">
+      <span class="label">Open positions</span>
+      <span class="value numeric" data-field="live_open_positions">—</span>
+    </div>
+    <div class="stat">
+      <span class="label">Today's realised P&amp;L</span>
+      <span class="value numeric" data-field="live_realised_today">—</span>
+    </div>
+    <div class="stat">
+      <span class="label">Today's rejections</span>
+      <span class="value numeric" data-field="live_rejections_today">0</span>
+    </div>
+  </div>
+
+  <h3>Broker connectivity</h3>
+  <p class="subhead" data-field="live_broker_status">
+    Connected.
+    <button type="button"
+            class="button secondary"
+            data-action="broker-reconnect"
+            hx-post="/api/accounts/{{ account_id|urlencode }}/broker-reconnect"
+            hx-headers='{"Accept": "application/json"}'
+            aria-label="Re-authenticate broker adapter">
+      Reconnect
+    </button>
+  </p>
+
+  <h3>Emergency stop</h3>
+  <p class="subhead">
+    Trips the per-account kill switch to <strong>KILL</strong>; in-flight orders
+    are NOT automatically cancelled — review them on the broker-side audit
+    before resuming.
+  </p>
+  <form method="post"
+        action="/api/accounts/{{ account_id|urlencode }}/emergency-stop"
+        hx-post="/api/accounts/{{ account_id|urlencode }}/emergency-stop"
+        hx-confirm="Trip the per-account kill switch to KILL? In-flight orders are NOT cancelled."
+        hx-headers='{"Accept": "application/json"}'
+        data-form="emergency-stop">
+    <button type="submit"
+            class="button danger"
+            data-action="emergency-stop"
+            aria-label="Emergency stop — KILL the per-account kill switch">
+      🛑 Emergency stop
+    </button>
+  </form>
+</section>
+{% endif %}
 
 {% if live_paper_sessions %}
 <section class="card"

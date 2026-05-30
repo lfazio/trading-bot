@@ -46,6 +46,7 @@ from trading_system.webapp.health import router as health_router
 from trading_system.webapp.job_queue import InProcessJobQueue, JobQueue
 from trading_system.webapp.routers.api.backtests import router as backtests_router
 from trading_system.webapp.routers.api.inbox import router as inbox_api_router
+from trading_system.webapp.routers.api.live_mode import router as live_mode_router
 from trading_system.webapp.routers.api.live_state import router as live_state_router
 from trading_system.webapp.routers.api.paper_state import router as paper_state_router
 from trading_system.webapp.routers.api.registry import router as registry_router
@@ -94,6 +95,13 @@ class WebappState:
     registry_promoter: Any | None = None
     promotion_audit_notifier: Any | None = None
     job_queue: JobQueue | None = None
+    # CR-019 step 2 — live-mode operator action slots
+    # (REQ_F_LIV_008 / REQ_SDD_LIV_005). Each is a small Protocol
+    # the live-runtime composition layer wires in at boot; tests
+    # inject fakes.
+    live_mode_controller: Any | None = None
+    emergency_stop_controller: Any | None = None
+    broker_reconnect_controller: Any | None = None
     templates: Jinja2Templates = field(init=False)
 
     def __post_init__(self) -> None:
@@ -174,9 +182,14 @@ def create_app(state: WebappState) -> FastAPI:
     app.state.registry_promoter = state.registry_promoter
     app.state.promotion_audit_notifier = state.promotion_audit_notifier
     app.state.job_queue = state.job_queue
+    # CR-019 step 2 live-mode controller slots.
+    app.state.live_mode_controller = state.live_mode_controller
+    app.state.emergency_stop_controller = state.emergency_stop_controller
+    app.state.broker_reconnect_controller = state.broker_reconnect_controller
 
     # Routers.
     app.include_router(health_router)
+    app.include_router(live_mode_router)
     app.include_router(live_state_router)
     app.include_router(paper_state_router)
     app.include_router(inbox_api_router)

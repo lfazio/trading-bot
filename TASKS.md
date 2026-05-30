@@ -351,17 +351,59 @@ expected effort + dependency.
       baseline; every live adapter MUST pass the existing
       `tests/integration/test_broker_conformance_drill.py` suite
       before reaching production.
-- [ ] **FastAPI live-mode routes** — four routes (`enable` /
-      `disable` / `emergency-stop` / `broker-reconnect`) gated by
-      per-account operator token; household claim rejected
-      (REQ_F_LIV_008 / REQ_SDD_LIV_005). Lifts REQ_F_LIV_003 +
-      REQ_F_LIV_008 + REQ_SDD_LIV_005 from TP to TEST.
-- [ ] **Dashboard live-mode panel + chip enablement** — the panel
-      surface for REQ_F_WEB2_003 extended to live mode (equity
-      curve + open positions + today's P&L + broker connectivity
-      + rejection counter + emergency-stop control). The `live`
-      chip enablement reads `var/live-preflight.json` per
-      REQ_SDD_LIV_004.
+- [x] **FastAPI live-mode routes** ✅ DONE 2026-05-30. Four routes
+      under `/api/accounts/{account_id}/`: `live-mode/enable`,
+      `live-mode/disable`, `emergency-stop`, `broker-reconnect`.
+      All four per-account-token gated (REQ_F_LIV_008); household
+      claim REJECTED on all four with categorised
+      `live:household_claim_rejected` Err. Every authorised
+      action emits a `LogCategory.SECURITY` audit entry with
+      `event` + `account_id` + `outcome` + `token_hash` — raw
+      token never in the payload (REQ_NF_TOK_001). Domain
+      semantics delegate to three small Protocol slots on
+      `WebappState` (`live_mode_controller` /
+      `emergency_stop_controller` / `broker_reconnect_controller`)
+      so the routes test without the full live runtime. 31 new
+      tests at `tests/webapp/test_live_mode_routes.py` covering:
+      household claim rejected on all 4 routes (parameterised);
+      mismatched-account token rejected; matching token accepted;
+      enable/disable/emergency-stop/broker-reconnect happy paths
+      invoke their controllers; categorised HTTP responses on
+      controller Err (403 / 409 / 502); SECURITY audit emitted
+      on every authorised action with token_hash present + raw
+      token absent (parameterised over all four routes);
+      controller-missing 500. OpenAPI snapshot regenerated.
+- [x] **Dashboard live-mode panel + chip enablement** ✅ DONE
+      2026-05-30. `trading_system/webapp/routers/views/dashboard.py`
+      gains a `_live_mode_status(request)` helper computing the
+      `live` chip enablement state — reads `var/live-preflight.json`
+      (or the operator-overridden path on `app.state.
+      live_preflight_artefact`) + checks `app.state.broker_selector`
+      (set by the boot wiring; the views layer doesn't read
+      `trading_system.config.*` directly per the structural
+      audit). The template's three-position mode switch flips
+      the `live` chip from disabled-with-tooltip to enabled when
+      ALL of: artefact present + `outcome="ok"` + `checked_at`
+      within 30 s + selector != "local"; otherwise stays
+      disabled with the categorised reason in
+      `data-live-mode-reason` + a tooltip naming the unmet
+      precondition + the recovery hint (`trading-bot
+      live-preflight`). The live-trading panel renders when
+      `?mode=live` AND the chip is enabled — surface mirrors the
+      paper-trading panel (equity / open positions / today's P&L
+      / rejection counter / broker connectivity / emergency stop
+      / broker reconnect) per REQ_F_LIV_003. 9 new tests at
+      `tests/webapp/test_live_mode_dashboard.py` covering the
+      four chip-disable states (missing / failed / stale /
+      local-broker), the enable path, the panel rendering when
+      mode=live + chip enabled, the no-render when mode=paper or
+      chip disabled, and the broker_selector + checked_at
+      threading. Legacy `tests/webapp/test_mode_switch.py::
+      test_live_mode_is_disabled_with_documented_tooltip` updated
+      to assert the new tooltip shape (categorised `live:` reason
+      + recovery hint + `data-live-mode="disabled"` marker).
+      Lifts REQ_F_LIV_003 + REQ_F_LIV_008 + REQ_SDD_LIV_005 from
+      TP to TEST. All 17 CR-019 step 2 REQs now at TEST.
 
 ### 2. Notification adapters (CR-001 Phase B)
 

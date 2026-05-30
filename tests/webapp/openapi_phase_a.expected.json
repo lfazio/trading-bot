@@ -327,6 +327,138 @@
         "summary": "Dashboard"
       }
     },
+    "/api/accounts/{account_id}/broker-reconnect": {
+      "post": {
+        "description": "REQ_F_LIV_006 case (b) \u2014 re-attempt broker authentication\nafter a ``broker:not_authenticated`` error tripped the KS.",
+        "operationId": "post_broker_reconnect_api_accounts__account_id__broker_reconnect_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Re-authenticate the broker adapter"
+      }
+    },
+    "/api/accounts/{account_id}/emergency-stop": {
+      "post": {
+        "description": "REQ_F_LIV_003 / REQ_F_LIV_006 \u2014 KILL the per-account kill\nswitch via the existing ``safety/state_manager.py`` surface.",
+        "operationId": "post_emergency_stop_api_accounts__account_id__emergency_stop_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Emergency-stop the per-account kill switch"
+      }
+    },
+    "/api/accounts/{account_id}/live-mode/disable": {
+      "post": {
+        "description": "REQ_F_LIV_002 \u2014 flip the chip off. Existing in-flight live\nsession SHALL be stopped gracefully via the ``LiveRuntimeRegistry``.",
+        "operationId": "post_disable_api_accounts__account_id__live_mode_disable_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Disable live-trading mode for the account"
+      }
+    },
+    "/api/accounts/{account_id}/live-mode/enable": {
+      "post": {
+        "description": "REQ_F_LIV_002 \u2014 flip the dashboard's `live` chip on for the\ntargeted account. Re-runs the preflight inline via the\n``LiveModeController.enable`` Protocol slot.",
+        "operationId": "post_enable_api_accounts__account_id__live_mode_enable_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Enable live-trading mode for the account"
+      }
+    },
     "/api/accounts/{account_id}/live-state": {
       "get": {
         "description": "Returns the canonical live-state envelope for the named account. The body shape mirrors the stdlib webui's ``LiveStateResponse`` byte-for-byte.",

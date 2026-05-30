@@ -42,28 +42,32 @@ def test_mode_switch_renders_three_controls() -> None:
 
 
 def test_live_mode_is_disabled_with_documented_tooltip() -> None:
-    """REQ_F_WEB2_002 — `live` SHALL be disabled with a tooltip
-    that documents the broker-adapter gate."""
+    """REQ_F_WEB2_002 / REQ_F_LIV_002 — `live` SHALL be disabled
+    with a tooltip naming the unmet precondition. Without a fresh
+    preflight artefact + concrete broker, the chip SHALL render
+    disabled + the tooltip SHALL surface the categorised reason
+    (`live:preflight_artefact_missing` /
+    `live:preflight_failed` / `live:preflight_stale` /
+    `live:broker_local`) plus the recovery hint (`trading-bot
+    live-preflight`)."""
     client, verifier = _client()
     body = client.get(
         "/", headers={"Authorization": f"Bearer {_token(verifier)}"}
     ).text
     # The live button SHALL carry the disabled attribute + an
     # aria-disabled="true" annotation for assistive tech.
-    live_match = re.search(
-        r"<button[^>]+(?:Live trading|aria-label=\"Live trading[^\"]*)[^>]*>",
-        body,
-    )
-    # The disabled button can be anywhere; pin the markers more
-    # liberally to avoid order-sensitivity.
     assert 'aria-label="Live trading mode' in body
     assert 'aria-disabled="true"' in body
     assert "disabled" in body
-    # Tooltip mentions the broker-adapter gate.
-    assert "REQ_F_BRK_003" in body or "broker-adapter" in body
+    # Tooltip surfaces the categorised reason + recovery hint
+    # (REQ_F_LIV_002 / REQ_SDD_LIV_004).
+    assert "live:" in body  # categorised reason prefix
+    assert "trading-bot live-preflight" in body
+    # Disabled chip carries the data-live-mode marker for the C7
+    # dynamic dashboard tests.
+    assert 'data-live-mode="disabled"' in body
     # Should NOT have a route that activates live mode.
     assert "/?mode=live" not in body
-    del live_match  # unused; structural check is enough
 
 
 def _tab_block(body: str, *, label: str) -> str:

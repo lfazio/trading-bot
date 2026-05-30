@@ -80,6 +80,15 @@ def get_dashboard(request: Request):
     mode_raw = request.query_params.get("mode", "paper").strip().lower()
     if mode_raw not in ("paper", "backtest", "live"):
         mode_raw = "paper"
+    # CR-019 step 2 / REQ_F_LIV_002 / REQ_SDD_LIV_004 — the dashboard's
+    # `live` mode chip enablement is a function of:
+    #   (a) `var/live-preflight.json` exists AND outcome=="ok" AND
+    #       checked_at within the configured staleness window (30s);
+    #   (b) `config/system.yaml.broker.adapter != "local"`.
+    # The status is exposed to the template as `live_mode_status` —
+    # either {"enabled": True, "checked_at": ...} or
+    # {"enabled": False, "reason": "..."}.
+    live_mode_status = _live_mode_status(request)
     # REQ_F_WEB2_008 — household-drawdown indicator + per-account
     # equity roll-up. Computed only when ≥ 2 live sessions exist
     # so single-account dashboards stay byte-identical.
@@ -105,6 +114,98 @@ def get_dashboard(request: Request):
             "live_paper_sessions": live_paper_sessions,
             "active_mode": mode_raw,
             "household": household,
+            "live_mode_status": live_mode_status,
             **fragment_context(request),
         },
     )
+
+
+# Staleness window for the preflight artefact (REQ_SDD_LIV_004 default
+# 30 s). Exposed at module level so tests + future config tightens
+# the window without touching the handler.
+_PREFLIGHT_STALENESS_SECONDS = 30
+
+
+def _live_mode_status(request: Request) -> dict:
+    """Compute the dashboard's `live` chip enablement state.
+
+    Reads:
+    - ``var/live-preflight.json`` written by ``trading-bot
+      live-preflight`` (REQ_F_LIV_005).
+    - ``config/system.yaml``'s ``broker.adapter`` field; ``local``
+      is the lifecycle baseline + SHALL NOT enable live mode
+      (REQ_F_LIV_002 / REQ_SDD_LIV_004).
+
+    Returns a dict the template branches on. Never raises — every
+    failure surfaces as ``{"enabled": False, "reason": ...}`` so
+    a missing artefact / unreadable config keeps the chip disabled
+    with a clear tooltip.
+    """
+    import json
+    from datetime import UTC, datetime
+    from pathlib import Path
+
+    artefact_path = getattr(
+        request.app.state, "live_preflight_artefact", None
+    ) or Path("var/live-preflight.json")
+    artefact_path = Path(artefact_path)
+    if not artefact_path.is_file():
+        return {
+            "enabled": False,
+            "reason": "live:preflight_artefact_missing",
+        }
+    try:
+        payload = json.loads(artefact_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        return {
+            "enabled": False,
+            "reason": f"live:preflight_artefact_unreadable:{e}",
+        }
+    if payload.get("outcome") != "ok":
+        return {
+            "enabled": False,
+            "reason": "live:preflight_failed",
+        }
+    # Staleness check.
+    try:
+        checked_at = datetime.fromisoformat(payload["checked_at"])
+    except (KeyError, ValueError):
+        return {
+            "enabled": False,
+            "reason": "live:preflight_bad_timestamp",
+        }
+    now = datetime.now(tz=UTC)
+    if (now - checked_at).total_seconds() > _PREFLIGHT_STALENESS_SECONDS:
+        return {
+            "enabled": False,
+            "reason": "live:preflight_stale",
+        }
+    # Broker selector check.
+    broker_selector = _broker_selector(request)
+    if not broker_selector or broker_selector == "local":
+        return {
+            "enabled": False,
+            "reason": "live:broker_local",
+        }
+    return {
+        "enabled": True,
+        "checked_at": payload["checked_at"],
+        "broker_selector": broker_selector,
+    }
+
+
+def _broker_selector(request: Request) -> str:
+    """Read the broker selector stashed on `app.state.broker_selector`
+    by the boot wiring. The dashboard view is the wrong layer to
+    read `config/system.yaml` directly (structural audit forbids
+    `trading_system.config.*` reach from `webapp/routers/views/`);
+    operators wire the selector into `app.state` once at boot.
+
+    Defaults to `"local"` (the lifecycle baseline) so an
+    unwired deployment keeps the live chip disabled per
+    REQ_F_LIV_002 / REQ_SDD_LIV_004.
+    """
+    cached = getattr(request.app.state, "broker_selector", None)
+    if cached:
+        return str(cached).strip().lower()
+    return "local"
