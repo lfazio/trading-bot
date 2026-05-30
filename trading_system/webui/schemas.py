@@ -168,6 +168,36 @@ class OpenPositionView:
 
 
 @dataclass(frozen=True, slots=True)
+class InstrumentRow:
+    """CR-026 (REQ_F_PAP_017 / REQ_SDD_PAP_009) — per-instrument
+    state for the dashboard grid.
+
+    One row per stock in the runtime's configured universe. The
+    operator sees every symbol's state at a glance instead of just
+    the runtime's pinned instrument. The dashboard's per-instrument
+    grid renders one ``<tr>`` per row + a click handler that pins
+    the symbol as the detail chart's data source.
+
+    Fields:
+    - ``symbol`` — the stock's display symbol (e.g., "AC", "AIR").
+    - ``last_close`` — most recent close from the bar source;
+      ``None`` until a poll succeeds.
+    - ``day_change_pct`` — percentage change from the day's open;
+      ``None`` until the day's first close is available.
+    - ``has_open_position`` — true iff the portfolio carries a
+      non-zero position in this instrument.
+    - ``sparkline`` — last ≤16 closes, oldest-first; empty when no
+      history is available yet.
+    """
+
+    symbol: str
+    last_close: Decimal | None
+    day_change_pct: Decimal | None
+    has_open_position: bool
+    sparkline: tuple[Decimal, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class PaperStateResponse:
     """REQ_F_WEB2_003 — current-state read shape for a paper-trading
     session.
@@ -247,6 +277,19 @@ class PaperStateResponse:
     index_symbol: str = ""
     index_close_series: tuple[Decimal, ...] = ()
     index_close_timestamps: tuple[datetime, ...] = ()
+    # CR-026 (REQ_F_PAP_017 / REQ_SDD_PAP_009) — per-instrument
+    # grid. One ``InstrumentRow`` per stock in the runtime's
+    # configured universe, sorted by ``symbol`` lex-order so the
+    # dashboard render is order-stable across SSE pushes. Empty
+    # tuple ⇒ legacy single-instrument session (the existing
+    # ``instrument_symbol`` field remains the source of truth in
+    # that case).
+    per_instrument: tuple[InstrumentRow, ...] = ()
+    # CR-026 (REQ_F_PAP_018 / REQ_SDD_PAP_010) — which symbol the
+    # dashboard's detail chart is currently pinned to. The default
+    # is the first symbol in ``per_instrument`` (lex order); the
+    # ``?pin=<symbol>`` query parameter overrides on click.
+    pinned_symbol: str = ""
 
     def __post_init__(self) -> None:
         if not str(self.account_id).strip():

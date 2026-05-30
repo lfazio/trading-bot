@@ -268,6 +268,13 @@ class PaperTradingRuntime:
     # the wizard (future amendment) or by setting the field
     # directly after build_runtime.
     rebalance_cooldown_seconds: int = 3600
+    # CR-026 (REQ_F_PAP_015 / REQ_SDD_PAP_006) — full universe the
+    # runtime evaluates strategies against. Empty tuple ⇒ legacy
+    # single-instrument session (the runtime constructs a degenerate
+    # universe of just ``self.instrument`` in ``__post_init__``).
+    # Non-empty ⇒ the strategy sees every stock per tick + the
+    # runtime fans out submission across instruments.
+    universe: tuple[Stock, ...] = ()
 
     _alive: bool = field(default=True, init=False)
     _degraded_since: datetime | None = field(default=None, init=False)
@@ -280,6 +287,21 @@ class PaperTradingRuntime:
     )
     _next_order_seq: int = field(default=0, init=False)
     _last_rebalance_at: datetime | None = field(default=None, init=False)
+
+    def __post_init__(self) -> None:
+        """CR-026 (REQ_SDD_PAP_006) — normalise ``universe``:
+
+        - empty input + ``self.instrument`` is a ``Stock`` ⇒ build a
+          degenerate single-symbol universe so the legacy
+          single-instrument constructor path keeps working;
+        - non-empty input ⇒ enforce lex-sorted-by-symbol ordering
+          (mis-sorted input is normalised silently — the contract is
+          deterministic iteration, not "caller MUST sort").
+        """
+        if not self.universe and isinstance(self.instrument, Stock):
+            self.universe = (self.instrument,)
+        elif self.universe:
+            self.universe = tuple(sorted(self.universe, key=lambda s: s.symbol))
 
     # ------------------------------------------------------------------
     # Public surface
@@ -327,26 +349,34 @@ class PaperTradingRuntime:
         return tuple(self._rejected)
 
     def _build_screener_ranking(self) -> tuple[ScoredStock, ...]:
-        """v1 paper-trading: rank just the runtime's instrument.
+        """CR-026 (REQ_F_PAP_015) — rank every stock in the universe.
 
-        Only ``Stock`` instances appear in the screener-ranking
-        Protocol (REQ_SDS_MOD_005). For non-stock instruments the
-        ranking is empty — the strategy's STOCK-bucket allocation
-        target produces no proposals + the portfolio drifts on
-        marks alone.
+        Iteration order is lex-sorted by symbol (enforced in
+        ``__post_init__``) so replay byte-equality (REQ_NF_DAT_001)
+        extends to multi-instrument sessions. v1 emits a uniform
+        score for every stock — the dashboard's per-instrument
+        grid carries the operator-visible signal; the screener
+        engine itself can rank with real scores once CR-026 has
+        a per-instrument fundamentals path.
+
+        For non-stock instruments (turbos, structured products)
+        the ranking is empty — the strategy's STOCK-bucket
+        allocation target produces no proposals + the portfolio
+        drifts on marks alone (REQ_SDS_MOD_005).
         """
-        if not isinstance(self.instrument, Stock):
+        if not self.universe:
             return ()
-        return (
+        return tuple(
             ScoredStock(
-                stock=self.instrument,
+                stock=stock,
                 score=Decimal("0.5"),
                 breakdown=ScoreBreakdown(
                     stability=Decimal("0.5"),
                     yield_quality=Decimal("0.5"),
                     valuation=Decimal("0.5"),
                 ),
-            ),
+            )
+            for stock in self.universe
         )
 
     def _submit_proposal(

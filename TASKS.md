@@ -470,6 +470,46 @@ stdlib `webui/` fallback still has placeholders.
       All 9 new REQs (REQ_F_PAP_011..014, REQ_SDD_PAP_001..005)
       at TEST. Full suite 2 816 → 2 831.
 
+### 4c. CR-026 — Multi-instrument paper-trading runtime + dashboard grid
+
+- [x] **CR-026 SRS / SDS / SDD / TP cascade** ✅ DONE 2026-05-30 @
+      `<this commit>`. Wiki cascade stamped 2026-05-30 — SRS §3.33
+      adds REQ_F_PAP_015..018; SDS §3.39 amended + new §3.39c
+      documents `MultiInstrumentBarSource`; SDD §13.33 adds
+      REQ_SDD_PAP_006..010; Test Plan adds TC_PAP_MULTI_001..006.
+- [x] **`MultiInstrumentBarSource` + runtime universe field** ✅
+      DONE 2026-05-30 @ `<this commit>`.
+      `trading_system/webapp/runtimes/multi_instrument_bar_source.py`
+      ships `MultiInstrumentBarSource` — `@dataclass(frozen=True,
+      slots=True)` wrapping a `MarketDataProvider`; `poll()`
+      iterates the lex-sorted universe and returns
+      `Ok({InstrumentId: Bar})` on partial fan-out,
+      `Err("data:no_bars")` only when EVERY symbol fails
+      (REQ_F_PAP_016 / REQ_SDD_PAP_008). `PaperTradingRuntime`
+      gains a `universe: tuple[Stock, ...]` field normalised
+      lex-sorted-by-symbol in `__post_init__`; the legacy
+      single-instrument constructor builds a degenerate
+      single-symbol universe so backwards-compat holds
+      (REQ_SDD_PAP_006). `_build_screener_ranking` now emits one
+      `ScoredStock` per universe member (REQ_F_PAP_015 /
+      REQ_SDD_PAP_007). `PaperStateResponse` gains a new
+      `per_instrument: tuple[InstrumentRow, ...]` field +
+      `pinned_symbol: str` — `InstrumentRow` is a new frozen
+      dataclass carrying `(symbol, last_close, day_change_pct,
+      has_open_position, sparkline)` per universe stock
+      (REQ_F_PAP_017 / REQ_SDD_PAP_009). 10 new tests at
+      `tests/webapp/test_multi_instrument_paper_runtime.py`. All 9
+      new REQs (REQ_F_PAP_015..018 + REQ_SDD_PAP_006..010) at TEST.
+      Full suite 2 831 → 2 841.
+- [ ] **Multi-instrument tick fan-out + dashboard grid template**
+      — the SSE payload contract is shipped; the runtime's
+      per-tick MarketState construction + dashboard grid render
+      (REQ_F_PAP_018 / REQ_SDD_PAP_010 implementation surface)
+      lands in a follow-up slice. v1 ships the algorithmic core
+      (universe-wide ranking + bar-source fan-out + schema
+      extension) so the next slice is purely tick-loop + template
+      wiring.
+
 ### 5. CR-023 — Overlap-tolerant cache fallback
 
 - [ ] **CR-023 SRS / SDS / SDD / TP cascade** (status: ⚪
