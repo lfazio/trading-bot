@@ -438,6 +438,71 @@ def test_build_screener_ranking_emits_one_scored_stock_per_universe_member():
     assert [s.stock.symbol for s in ranking] == ["AAA", "BBB", "CCC"]
 
 
+# ---------------------------------------------------------------------------
+# TC_PAP_MULTI_005 (reader integration) — paper_state populates per_instrument
+# ---------------------------------------------------------------------------
+
+
+def test_paper_state_reader_populates_per_instrument_from_universe():
+    """REQ_F_PAP_017 / REQ_SDD_PAP_009 — the
+    ``RuntimePaperStateReader.paper_state`` snapshot SHALL carry
+    one ``InstrumentRow`` per universe stock, sorted by symbol
+    lex-order; default pin = first symbol."""
+    from dataclasses import dataclass, field
+    from datetime import datetime, UTC
+
+    from trading_system.models.identifiers import AccountId
+    from trading_system.result import Nothing, Some
+    from trading_system.webapp.paper_state_reader import RuntimePaperStateReader
+
+    @dataclass
+    class _Registry:
+        runtimes: dict = field(default_factory=dict)
+
+        def status(self, aid):
+            r = self.runtimes.get(aid)
+            return Some(r) if r is not None else Nothing()
+
+    class _Runtime:
+        universe = (_stock("BBB"), _stock("AAA"), _stock("CCC"))
+        market_data_provider = _StubProvider(
+            payload={
+                "AAA": Ok(_bar("10.00")),
+                "BBB": Ok(_bar("20.00")),
+                "CCC": Ok(_bar("30.00")),
+            }
+        )
+
+        def is_alive(self):
+            return True
+
+        def is_degraded(self):
+            return False
+
+        def degraded_since(self):
+            return None
+
+        def last_tick_at(self):
+            return datetime(2026, 5, 30, 12, tzinfo=UTC)
+
+        def equity_history(self):
+            return ()
+
+    # Sort the universe so the assertion order matches the
+    # reader's lex-sorted output.
+    runtime = _Runtime()
+    runtime.universe = tuple(sorted(runtime.universe, key=lambda s: s.symbol))
+    aid = AccountId("paper-2026-05-30T12:00:00+00:00")
+    reader = RuntimePaperStateReader(registry=_Registry(runtimes={aid: runtime}))
+    snap = reader.paper_state(
+        account_id=aid, as_of=datetime(2026, 5, 30, 12, tzinfo=UTC)
+    )
+    assert [r.symbol for r in snap.per_instrument] == ["AAA", "BBB", "CCC"]
+    assert snap.pinned_symbol == "AAA"
+    assert all(r.last_close is not None for r in snap.per_instrument)
+    assert all(not r.has_open_position for r in snap.per_instrument)
+
+
 def test_instrument_row_canonical_dataclass_fields():
     """REQ_SDD_PAP_009 — ``InstrumentRow`` carries exactly the
     documented fields. Defensive: any future field addition is a

@@ -29,6 +29,7 @@ from trading_system.models.identifiers import AccountId
 from trading_system.result import Some
 from trading_system.webapp.runtimes.quant_indicators import compute_indicators
 from trading_system.webui.schemas import (
+    InstrumentRow,
     OpenPositionView,
     PaperStateResponse,
     RecentTradeView,
@@ -242,6 +243,19 @@ class RuntimePaperStateReader:
                 recent_view = tuple(items)
             except Exception:  # noqa: BLE001
                 recent_view = ()
+        # CR-026 — per-instrument grid rows. The runtime's `universe`
+        # attribute (lex-sorted by symbol per REQ_SDD_PAP_006) is the
+        # canonical source. Each row pulls best-effort live close +
+        # day-change from the wrapped MarketDataProvider; the
+        # `has_open_position` flag joins against the live positions.
+        per_instrument_rows = _per_instrument_rows(
+            runtime, live_positions_by_symbol(portfolio)
+        )
+        # Default pin = first symbol in lex order (REQ_F_PAP_018).
+        pinned_symbol = (
+            per_instrument_rows[0].symbol if per_instrument_rows else ""
+        )
+
         return PaperStateResponse(
             account_id=account_id,
             as_of=as_of,
@@ -265,6 +279,8 @@ class RuntimePaperStateReader:
             index_close_timestamps=(
                 tuple(index_timestamps[-60:]) if index_timestamps else ()
             ),
+            per_instrument=per_instrument_rows,
+            pinned_symbol=pinned_symbol,
             **_indicator_kwargs(runtime, history, bar_closes, bar_timestamps),
         )
 
@@ -282,6 +298,91 @@ class RuntimePaperStateReader:
                 account_id=account_id, as_of=datetime.now(tz=UTC)
             )
             await asyncio.sleep(self.tick_seconds)
+
+
+# ---------------------------------------------------------------------------
+# CR-026 — per-instrument grid rows
+# ---------------------------------------------------------------------------
+
+
+def live_positions_by_symbol(portfolio) -> dict[str, object]:  # type: ignore[no-untyped-def]
+    """Return ``{symbol: Position}`` for every non-zero position
+    in the portfolio. Empty dict when ``portfolio`` is None or has
+    no `.positions()` accessor (test stubs)."""
+    if portfolio is None or not hasattr(portfolio, "positions"):
+        return {}
+    try:
+        positions = portfolio.positions()
+    except Exception:  # noqa: BLE001 — defensive
+        return {}
+    out: dict[str, object] = {}
+    for p in positions.values():
+        if getattr(p, "quantity", 0) == 0:
+            continue
+        symbol = getattr(getattr(p, "instrument", None), "symbol", "")
+        if symbol:
+            out[symbol] = p
+    return out
+
+
+def _per_instrument_rows(  # type: ignore[no-untyped-def]
+    runtime, positions_by_symbol: dict[str, object]
+) -> tuple[InstrumentRow, ...]:
+    """REQ_F_PAP_017 / REQ_SDD_PAP_009 — build the per-instrument
+    grid rows.
+
+    Reads the runtime's ``universe`` attribute (lex-sorted per
+    REQ_SDD_PAP_006). For each stock, queries the wrapped
+    MarketDataProvider for the latest bar (best-effort; missing
+    data ⇒ ``None`` fields). Joins against the portfolio's open
+    positions for the ``has_open_position`` flag.
+
+    Empty tuple when the runtime carries no universe (test stubs
+    without the field) — the dashboard panel falls back to the
+    legacy ``instrument_symbol`` surface in that case.
+    """
+    universe = getattr(runtime, "universe", ())
+    if not universe:
+        return ()
+    provider = getattr(runtime, "market_data_provider", None)
+    rows: list[InstrumentRow] = []
+    for stock in universe:
+        symbol = getattr(stock, "symbol", "")
+        if not symbol:
+            continue
+        last_close: Decimal | None = None
+        day_change_pct: Decimal | None = None
+        sparkline: tuple[Decimal, ...] = ()
+        if provider is not None and hasattr(provider, "latest"):
+            try:
+                result = provider.latest(stock)
+                # Result-shaped: Ok(bar) carries .value with .close/.open;
+                # Err carries .error — duck-type so test stubs work.
+                if hasattr(result, "value") and not hasattr(result, "error"):
+                    bar = result.value
+                    last_close = getattr(bar, "close", None)
+                    bar_open = getattr(bar, "open", None)
+                    if (
+                        last_close is not None
+                        and bar_open is not None
+                        and bar_open > 0
+                    ):
+                        day_change_pct = (
+                            (last_close - bar_open) / bar_open * Decimal("100")
+                        ).quantize(Decimal("0.01"))
+            except Exception:  # noqa: BLE001 — defensive
+                last_close = None
+                day_change_pct = None
+        rows.append(
+            InstrumentRow(
+                symbol=symbol,
+                last_close=last_close,
+                day_change_pct=day_change_pct,
+                has_open_position=symbol in positions_by_symbol,
+                sparkline=sparkline,
+            )
+        )
+    return tuple(rows)
 
 
 # ---------------------------------------------------------------------------
