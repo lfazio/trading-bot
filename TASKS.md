@@ -423,15 +423,33 @@ expected effort + dependency.
       so the operator sees alerts in the inbox AND on their
       configured channels simultaneously.
 
-### 3. Operator hypothesis surface (CR-002 Phase B)
+### 3. Operator hypothesis surface (CR-002 Phase B / CR-027)
 
-- [ ] **Webapp `strategies/hypotheses` panel** — browse
-      VALIDATED hypotheses, file new ones via a small form,
-      view `ImprovementReport.hypothesis_ids` per shipped
-      strategy. CR-008 `HypothesisRepository` already shipped.
-- [ ] **`POST /api/hypotheses` endpoint** — operator-token-gated
-      submission, runs the 5-gate validator, returns 201 +
-      hypothesis_id on success.
+- [x] **CR-027 SRS / SDS / SDD / TP cascade** ✅ DONE 2026-05-30 @
+      `<this commit>`. Wiki cascade stamped 2026-05-30 — SRS §3.21
+      adds REQ_F_QNT_007..010 in a new "Operator hypothesis-filing
+      surface" sub-section; SDS §3.26 amended; SDD §13.20 adds
+      REQ_SDD_QNT_009..012; Test Plan adds TC_QNT_OPS_001..006.
+      8 new REQs (4 SRS + 4 SDD) at TP — design contract locked;
+      implementation lands as the next slice.
+- [ ] **Webapp `strategies/hypotheses` panel implementation** —
+      `webapp/routers/views/hypotheses.py` (view route) +
+      `templates/hypotheses.html` (form + PENDING-REJECTED +
+      VALIDATED tables) per REQ_SDD_QNT_009. HTMX hx-post for the
+      form; no JavaScript beyond HTMX (REQ_NF_WEB2_001).
+- [ ] **`POST /api/hypotheses` endpoint** —
+      `webapp/routers/api/hypotheses.py` per REQ_SDD_QNT_010.
+      Operator-token-gated; household-claim REJECTED with
+      `registry:household_claim_rejected`; 5-gate Validator inline;
+      201 + canonical-JSON on Ok, 400 + categorised
+      `hypothesis:*` Err on rejection; LogCategory.SECURITY audit
+      on success per the CR-024 shape.
+- [ ] **`GET /api/hypotheses` paginated read** per REQ_SDD_QNT_011
+      — per_page default 25, cap 100; canonical-JSON
+      byte-determinism.
+- [ ] **`GET /api/strategies/{strategy_id}/hypotheses`** per
+      REQ_SDD_QNT_012 — returns ImprovementReport.hypothesis_ids;
+      empty tuple is the documented "no lineage" signal.
 
 ### 4. Stdlib webui Phase B (CR-004 Phase B)
 
@@ -509,6 +527,25 @@ stdlib `webui/` fallback still has placeholders.
       (universe-wide ranking + bar-source fan-out + schema
       extension) so the next slice is purely tick-loop + template
       wiring.
+
+### 4d. CR-028 — Technical-indicator library for the quant layer
+
+- [ ] **CR-028 SRS / SDS / SDD / TP cascade** (status: ⚪
+      Proposed 2026-05-30). Closed indicator set: SMA-N, RSI,
+      ATR, OBV, ADX + VIX volatility-index provider Protocol.
+      Pure-Python Decimal (no numpy/pandas) so REQ_NF_DET_001
+      byte-equality holds.
+- [ ] **`trading_system/quant/indicators/`** — pure-function
+      package (SMA / RSI / ATR / OBV / ADX). Each returns a
+      parallel series aligned to the input bars; warmup
+      positions hold `None`.
+- [ ] **`trading_system/data/volatility_index.py`** —
+      `VolatilityIndexProvider` Protocol + yfinance-backed
+      concrete reading `^VIX` / `^VSTOXX` through the existing
+      CR-009 cache (REQ_NF_DAT_001 replay determinism preserved).
+- [ ] **`StrategyMetrics` extension** — optional `*_signal`
+      fields so trade rationales (CR-015) carry the indicator
+      reading at the decision moment.
 
 ### 5. CR-023 — Overlap-tolerant cache fallback
 
