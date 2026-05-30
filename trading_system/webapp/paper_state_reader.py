@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Protocol, runtime_checkable
@@ -59,7 +59,7 @@ class PaperRegistryView(Protocol):
     def status(self, account_id: AccountId): ...  # returns Option[runtime]
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class RuntimePaperStateReader:
     """Concrete ``PaperStateReader`` over a ``RuntimeRegistry``.
 
@@ -68,10 +68,26 @@ class RuntimePaperStateReader:
     sets the SSE push cadence (default 2s — the paper panel needs
     to feel live; the existing 5s live-state cadence is for the
     aggregate dashboard).
+
+    A small in-memory TTL cache memoises the slow per-symbol
+    provider calls (120-day close windows + VIX + index series +
+    per-instrument grid latest-bar polls). Without it, each SSE
+    push for a 70-symbol universe issues ~75 provider round-trips
+    + a pin switch blocks for the synchronous yfinance fetch of
+    the just-pinned symbol's 120-day history (~10s in practice on
+    a cold cache). The cache's TTL is short enough that operators
+    still see fresh prices within the cache window + long enough
+    that a chart swap is instant.
     """
 
     registry: PaperRegistryView
     tick_seconds: float = 2.0
+    # CR-026 / CR-029 follow-up — per-symbol provider-call cache.
+    # Key: ``("close_window_120d" / "latest" / "vix" / "index",
+    # symbol_or_instrument_id)``. Value: ``(expires_at, result)``.
+    # Cleared opportunistically when the key is read past its TTL.
+    cache_ttl_seconds: float = 30.0
+    _cache: dict = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         if self.tick_seconds <= 0:
@@ -79,6 +95,26 @@ class RuntimePaperStateReader:
                 "RuntimePaperStateReader.tick_seconds must be > 0, "
                 f"got {self.tick_seconds}"
             )
+        if self.cache_ttl_seconds < 0:
+            raise ValueError(
+                "RuntimePaperStateReader.cache_ttl_seconds must be >= 0, "
+                f"got {self.cache_ttl_seconds}"
+            )
+
+    def _cached(self, key: tuple, compute):  # type: ignore[no-untyped-def]
+        """Memoise ``compute()`` under ``key`` for
+        ``cache_ttl_seconds``. TTL=0 disables caching."""
+        if self.cache_ttl_seconds <= 0:
+            return compute()
+        from time import monotonic
+
+        now = monotonic()
+        entry = self._cache.get(key)
+        if entry is not None and entry[0] > now:
+            return entry[1]
+        value = compute()
+        self._cache[key] = (now + self.cache_ttl_seconds, value)
+        return value
 
     def paper_state(
         self,
@@ -123,8 +159,20 @@ class RuntimePaperStateReader:
         # Load the bar-history window ONCE — both the positions
         # view (for per-position sparklines) and the quant-
         # indicators view (for SMA / vol / drawdown) consume it.
-        bar_closes, bar_timestamps = _bar_history_for_runtime(
-            runtime, pinned_instrument=pinned_instrument
+        # Cache on the pinned instrument's id so a pin switch only
+        # pays the 120-day fetch on the FIRST snapshot, not every
+        # SSE tick (CR-026 follow-up — operator-reported 10s
+        # switch latency).
+        pinned_key = (
+            "close_window_120d",
+            str(getattr(pinned_instrument, "id", ""))
+            or str(getattr(getattr(runtime, "instrument", None), "id", "")),
+        )
+        bar_closes, bar_timestamps = self._cached(
+            pinned_key,
+            lambda: _bar_history_for_runtime(
+                runtime, pinned_instrument=pinned_instrument
+            ),
         )
 
         # Reference-index window — REQ_F_WEB2_010. Reuses the
@@ -134,13 +182,19 @@ class RuntimePaperStateReader:
         # universe declares no index OR the provider can't reach
         # the upstream.
         index_symbol, index_closes, index_timestamps, index_volumes = (
-            _index_bars_for_runtime(runtime)
+            self._cached(
+                ("index_window_120d", str(getattr(runtime, "reference_index", ""))),
+                lambda: _index_bars_for_runtime(runtime),
+            )
         )
         # CR-026 follow-up — VIX overlay. Currency-driven default:
         # USD ⇒ ^VIX; everything else ⇒ ^VSTOXX (most of our
         # universes are EU). Empty when the provider can't reach
         # the upstream; dashboard hides the overlay then.
-        vix_symbol, vix_closes, vix_timestamps = _vix_bars_for_runtime(runtime)
+        vix_symbol, vix_closes, vix_timestamps = self._cached(
+            ("vix_window_120d", str(getattr(runtime, "reference_index", ""))),
+            lambda: _vix_bars_for_runtime(runtime),
+        )
         # Session metadata + live price — best-effort. The Protocol
         # surface (PaperRuntimeView) doesn't pin these so tests with
         # minimal stubs still work; we duck-type via getattr.
@@ -278,8 +332,18 @@ class RuntimePaperStateReader:
         # canonical source. Each row pulls best-effort live close +
         # day-change from the wrapped MarketDataProvider; the
         # `has_open_position` flag joins against the live positions.
-        per_instrument_rows = _per_instrument_rows(
-            runtime, live_positions_by_symbol(portfolio)
+        # CR-029 follow-up — cache the 70-symbol latest() fan-out
+        # too (without this the cache miss makes a pin switch
+        # block on ~70 yfinance round-trips inside the async
+        # generator).
+        universe_id = tuple(
+            str(getattr(s, "id", "")) for s in getattr(runtime, "universe", ())
+        )
+        positions_by_symbol = live_positions_by_symbol(portfolio)
+        positions_key = tuple(sorted(positions_by_symbol.keys()))
+        per_instrument_rows = self._cached(
+            ("per_instrument_rows", universe_id, positions_key),
+            lambda: _per_instrument_rows(runtime, positions_by_symbol),
         )
         # Pin resolution (REQ_F_PAP_018 / REQ_SDD_PAP_010):
         #   - operator-supplied ``pinned_symbol`` wins iff it's in

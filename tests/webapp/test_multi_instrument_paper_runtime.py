@@ -910,6 +910,161 @@ def test_runtime_skips_fan_out_when_repo_unwired():
     assert spy.calls == []
 
 
+# ---------------------------------------------------------------------------
+# CR-026 follow-up — reader cache (pin switch latency fix)
+# ---------------------------------------------------------------------------
+
+
+def test_paper_state_reader_caches_provider_calls_within_ttl():
+    """CR-026 follow-up — second call within ``cache_ttl_seconds``
+    SHALL NOT re-invoke the wrapped MarketDataProvider. Catches the
+    operator-reported "10s switch" regression: each pin switch
+    triggers a new ``paper_state(pinned_symbol=...)`` call; without
+    the cache, each call paid the 120-day fetch."""
+    from dataclasses import dataclass, field
+    from datetime import datetime, UTC
+
+    from trading_system.models.identifiers import AccountId
+    from trading_system.result import Nothing, Some
+    from trading_system.webapp.paper_state_reader import RuntimePaperStateReader
+
+    @dataclass
+    class _Registry:
+        runtimes: dict = field(default_factory=dict)
+
+        def status(self, aid):
+            r = self.runtimes.get(aid)
+            return Some(r) if r is not None else Nothing()
+
+    # Spy provider that counts every `.latest()` + `.bars()` call.
+    @dataclass
+    class _SpyProvider:
+        latest_calls: int = 0
+        bars_calls: int = 0
+
+        def latest(self, instrument):
+            self.latest_calls += 1
+            return Ok(_bar("100.00"))
+
+        def bars(self, *_a, **_k):
+            self.bars_calls += 1
+            return Ok([_bar("100.00")])
+
+        def dividends(self, *_a, **_k):
+            return Err("data:not_supported")
+
+    class _BarSourceStub:
+        def __init__(self, provider):
+            self._provider = provider
+
+    provider = _SpyProvider()
+
+    class _Runtime:
+        pass
+
+    runtime = _Runtime()
+    runtime.universe = (_stock("AAA"), _stock("BBB"))
+    runtime.instrument = _stock("AAA")
+    runtime.bar_source = _BarSourceStub(provider)
+    runtime.market_data_provider = provider
+    runtime.is_alive = lambda: True
+    runtime.is_degraded = lambda: False
+    runtime.degraded_since = lambda: None
+    runtime.last_tick_at = lambda: datetime(2026, 5, 30, 12, tzinfo=UTC)
+    runtime.equity_history = lambda: ()
+    runtime.session = None
+    runtime.latest_close = lambda: Decimal("100.00")
+
+    aid = AccountId("paper-2026-05-30T12:00:00+00:00")
+    reader = RuntimePaperStateReader(
+        registry=_Registry(runtimes={aid: runtime}),
+        cache_ttl_seconds=30.0,
+    )
+    reader.paper_state(
+        account_id=aid, as_of=datetime(2026, 5, 30, 12, tzinfo=UTC)
+    )
+    latest_after_first = provider.latest_calls
+    bars_after_first = provider.bars_calls
+    assert latest_after_first > 0  # populated grid + day-change
+
+    # Second call within TTL — counters frozen.
+    reader.paper_state(
+        account_id=aid, as_of=datetime(2026, 5, 30, 12, tzinfo=UTC)
+    )
+    assert provider.latest_calls == latest_after_first
+    assert provider.bars_calls == bars_after_first
+
+
+def test_paper_state_reader_cache_ttl_zero_disables_caching():
+    """Defensive — ``cache_ttl_seconds=0`` SHALL bypass the cache
+    entirely so the legacy uncached path stays exercisable."""
+    from dataclasses import dataclass, field
+    from datetime import datetime, UTC
+
+    from trading_system.models.identifiers import AccountId
+    from trading_system.result import Nothing, Some
+    from trading_system.webapp.paper_state_reader import RuntimePaperStateReader
+
+    @dataclass
+    class _Registry:
+        runtimes: dict = field(default_factory=dict)
+
+        def status(self, aid):
+            r = self.runtimes.get(aid)
+            return Some(r) if r is not None else Nothing()
+
+    @dataclass
+    class _SpyProvider:
+        latest_calls: int = 0
+
+        def latest(self, instrument):
+            self.latest_calls += 1
+            return Ok(_bar("100.00"))
+
+        def bars(self, *_a, **_k):
+            return Ok([_bar("100.00")])
+
+        def dividends(self, *_a, **_k):
+            return Err("data:not_supported")
+
+    class _BarSourceStub:
+        def __init__(self, provider):
+            self._provider = provider
+
+    provider = _SpyProvider()
+
+    class _Runtime:
+        pass
+
+    runtime = _Runtime()
+    runtime.universe = (_stock("AAA"),)
+    runtime.instrument = _stock("AAA")
+    runtime.bar_source = _BarSourceStub(provider)
+    runtime.market_data_provider = provider
+    runtime.is_alive = lambda: True
+    runtime.is_degraded = lambda: False
+    runtime.degraded_since = lambda: None
+    runtime.last_tick_at = lambda: datetime(2026, 5, 30, 12, tzinfo=UTC)
+    runtime.equity_history = lambda: ()
+    runtime.session = None
+    runtime.latest_close = lambda: Decimal("100.00")
+
+    aid = AccountId("paper-2026-05-30T12:00:00+00:00")
+    reader = RuntimePaperStateReader(
+        registry=_Registry(runtimes={aid: runtime}),
+        cache_ttl_seconds=0,
+    )
+    reader.paper_state(
+        account_id=aid, as_of=datetime(2026, 5, 30, 12, tzinfo=UTC)
+    )
+    calls_after_first = provider.latest_calls
+    reader.paper_state(
+        account_id=aid, as_of=datetime(2026, 5, 30, 12, tzinfo=UTC)
+    )
+    # Counter must have grown — cache is disabled.
+    assert provider.latest_calls > calls_after_first
+
+
 def test_instrument_row_canonical_dataclass_fields():
     """REQ_SDD_PAP_009 — ``InstrumentRow`` carries exactly the
     documented fields. Defensive: any future field addition is a
