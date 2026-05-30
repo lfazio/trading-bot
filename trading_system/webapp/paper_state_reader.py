@@ -114,10 +114,18 @@ class RuntimePaperStateReader:
         else:
             latest_amount = None
 
+        # CR-026 (REQ_F_PAP_018 / REQ_SDD_PAP_010) — resolve the
+        # pinned instrument BEFORE loading the bar-history window
+        # so the Price-Evolution chart series matches the row the
+        # operator clicked, not the runtime's primary instrument.
+        pinned_instrument = _resolve_pinned_instrument(runtime, pinned_symbol)
+
         # Load the bar-history window ONCE — both the positions
         # view (for per-position sparklines) and the quant-
         # indicators view (for SMA / vol / drawdown) consume it.
-        bar_closes, bar_timestamps = _bar_history_for_runtime(runtime)
+        bar_closes, bar_timestamps = _bar_history_for_runtime(
+            runtime, pinned_instrument=pinned_instrument
+        )
 
         # Reference-index window — REQ_F_WEB2_010. Reuses the
         # runtime's market-data provider (which already wraps
@@ -144,12 +152,25 @@ class RuntimePaperStateReader:
             if starting_capital_money is not None
             else None
         )
-        instrument = getattr(runtime, "instrument", None)
+        # CR-026 — the dashboard's "Price evolution" chart + the
+        # instrument caption + the live "Last close" stat SHALL
+        # reflect the PINNED instrument so clicking a row in the
+        # per-instrument grid actually swaps the chart. Fall back
+        # to the runtime's primary instrument when no pin is set.
+        chart_instrument = pinned_instrument or getattr(
+            runtime, "instrument", None
+        )
         instrument_symbol = (
-            getattr(instrument, "symbol", "") if instrument else ""
+            getattr(chart_instrument, "symbol", "") if chart_instrument else ""
         )
         latest_close: Decimal | None = None
-        if hasattr(runtime, "latest_close"):
+        if pinned_instrument is not None:
+            # The latest close for the pinned instrument lives at
+            # the end of the bar-history series we just loaded —
+            # cheap reuse instead of an extra provider round-trip.
+            if bar_closes:
+                latest_close = bar_closes[-1]
+        elif hasattr(runtime, "latest_close"):
             try:
                 latest_close = runtime.latest_close()
             except Exception:  # noqa: BLE001 — defensive
@@ -471,14 +492,39 @@ def _volume_history_for_runtime(runtime) -> list:  # type: ignore[no-untyped-def
     return []  # yfinance source: volume not surfaced through the bar-window helper yet
 
 
-def _bar_history_for_runtime(runtime) -> tuple[list, list]:  # type: ignore[no-untyped-def]
-    """Load the bar-close window the runtime can expose. Two paths:
+def _resolve_pinned_instrument(  # type: ignore[no-untyped-def]
+    runtime, pinned_symbol: str | None
+):
+    """CR-026 (REQ_F_PAP_018 / REQ_SDD_PAP_010) — return the
+    ``Instrument`` matching ``pinned_symbol`` from the runtime's
+    universe, or ``None`` when no pin / unknown pin / empty
+    universe. ``None`` ⇒ caller falls back to the runtime's
+    primary instrument (legacy single-instrument behaviour).
+    """
+    if not pinned_symbol:
+        return None
+    universe = getattr(runtime, "universe", ())
+    for stock in universe:
+        if getattr(stock, "symbol", "") == pinned_symbol:
+            return stock
+    return None
+
+
+def _bar_history_for_runtime(  # type: ignore[no-untyped-def]
+    runtime, *, pinned_instrument=None
+):
+    """Load the bar-close window for ``pinned_instrument``. Two paths:
 
     1. ``bar_source.history()`` — the simulated bar source keeps a
-       full history of every emitted bar.
+       full history of every emitted bar. v1 simulated source is
+       single-symbol so the series matches ``runtime.instrument``
+       regardless of the pinned symbol — that's the known
+       limitation for simulated sessions.
     2. ``bar_source._provider`` — the yfinance source only keeps
        the most recent bar; this fetches a 120-day window through
-       the wrapped MarketDataProvider.
+       the wrapped MarketDataProvider for the PINNED instrument
+       (CR-026 / REQ_F_PAP_018). Falls back to the runtime's
+       primary instrument when no pin is supplied.
 
     Returns ``(closes, timestamps)`` lists. Empty on any failure
     so callers can render the empty-state placeholder.
@@ -497,7 +543,7 @@ def _bar_history_for_runtime(runtime) -> tuple[list, list]:  # type: ignore[no-u
             fetch_recent_close_window,
         )
 
-        instrument = getattr(runtime, "instrument", None)
+        instrument = pinned_instrument or getattr(runtime, "instrument", None)
         if instrument is not None:
             return fetch_recent_close_window(
                 bar_source._provider,  # noqa: SLF001

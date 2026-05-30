@@ -301,6 +301,36 @@ class TestRangeAwareLookup:
             case _:
                 raise AssertionError("expected widest envelope hit")
 
+    def test_naive_key_compares_against_tz_aware_filename_window(
+        self, tmp_path: Path
+    ) -> None:
+        """Regression — when the caller's ``CacheKey`` carries naïve
+        datetimes (e.g., from ``state.at - timedelta(...)`` against a
+        naïve tick) and the cached filename window is tz-aware, the
+        envelope predicate SHALL promote both sides to UTC instead
+        of raising ``TypeError: can't compare offset-naive and
+        offset-aware datetimes``."""
+        cache = YFinanceCache(root=tmp_path)
+        # Seed a tz-aware cached envelope Jan 1..Jan 10.
+        envelope_key = self._envelope_key(
+            datetime(2026, 1, 1, tzinfo=UTC),
+            datetime(2026, 1, 10, tzinfo=UTC),
+        )
+        cache.put_bars(envelope_key, [_bar(d) for d in range(2, 9)])
+        # Query with NAÏVE datetimes — should not raise + should
+        # surface the same envelope hit.
+        naive_query = CacheKey(
+            symbol="ASML.AS",
+            timeframe="1d",
+            start=datetime(2026, 1, 3),  # naïve
+            end=datetime(2026, 1, 6),  # naïve
+        )
+        match cache.get_bars(naive_query):
+            case Some(bars):
+                assert [b.at.day for b in bars] == [3, 4, 5, 6]
+            case _:
+                raise AssertionError("expected envelope hit on naïve key")
+
     def test_naive_datetime_in_cache_normalised_on_read(
         self, tmp_path: Path
     ) -> None:

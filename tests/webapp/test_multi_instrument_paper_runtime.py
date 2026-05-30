@@ -443,6 +443,102 @@ def test_build_screener_ranking_emits_one_scored_stock_per_universe_member():
 # ---------------------------------------------------------------------------
 
 
+def test_paper_state_reader_swaps_price_chart_series_to_pinned_symbol():
+    """CR-026 follow-up — clicking a non-default symbol in the
+    per-instrument grid SHALL swap the Price-Evolution chart's
+    series + `instrument_symbol` caption + `latest_close` to
+    the pinned stock (not stay on the runtime's primary
+    instrument). Regression for the live "still see AC" bug."""
+    from dataclasses import dataclass, field
+    from datetime import datetime, UTC
+
+    from trading_system.models.identifiers import AccountId
+    from trading_system.result import Nothing, Some
+    from trading_system.webapp.paper_state_reader import RuntimePaperStateReader
+
+    @dataclass
+    class _Registry:
+        runtimes: dict = field(default_factory=dict)
+
+        def status(self, aid):
+            r = self.runtimes.get(aid)
+            return Some(r) if r is not None else Nothing()
+
+    # Stub yfinance-style provider returning a 3-bar history per
+    # symbol; the close differs per symbol so the caller can
+    # distinguish series.
+    class _ProviderStub:
+        def latest(self, instrument):
+            sym = instrument.symbol
+            return Ok(_bar({"AAA": "10.00", "BBB": "20.00", "CCC": "30.00"}[sym]))
+
+        def bars(self, instrument, *_args, **_kwargs):
+            sym = instrument.symbol
+            base = {"AAA": Decimal("10"), "BBB": Decimal("20"), "CCC": Decimal("30")}[sym]
+            from datetime import timedelta
+            bars = [
+                Bar(
+                    at=datetime(2026, 5, 28, tzinfo=UTC) + timedelta(days=i),
+                    open=base + Decimal(i),
+                    high=base + Decimal(i) + Decimal("0.5"),
+                    low=base + Decimal(i) - Decimal("0.5"),
+                    close=base + Decimal(i),
+                    volume=Decimal("1000"),
+                )
+                for i in range(3)
+            ]
+            return Ok(bars)
+
+        def dividends(self, *_a, **_k):
+            return Err("data:not_supported")
+
+    class _BarSourceStub:
+        def __init__(self, provider):
+            self._provider = provider
+
+    universe = (_stock("AAA"), _stock("BBB"), _stock("CCC"))
+    provider = _ProviderStub()
+
+    class _Runtime:
+        pass
+
+    runtime = _Runtime()
+    runtime.universe = universe
+    runtime.instrument = _stock("AAA")  # primary
+    runtime.bar_source = _BarSourceStub(provider)
+    runtime.market_data_provider = provider
+    runtime.is_alive = lambda: True
+    runtime.is_degraded = lambda: False
+    runtime.degraded_since = lambda: None
+    runtime.last_tick_at = lambda: datetime(2026, 5, 30, 12, tzinfo=UTC)
+    runtime.equity_history = lambda: ()
+    runtime.session = None
+    runtime.latest_close = lambda: Decimal("10.00")  # primary's close
+
+    aid = AccountId("paper-2026-05-30T12:00:00+00:00")
+    reader = RuntimePaperStateReader(registry=_Registry(runtimes={aid: runtime}))
+
+    # No pin ⇒ chart series + caption + last_close belong to AAA.
+    default_snap = reader.paper_state(
+        account_id=aid, as_of=datetime(2026, 5, 30, 12, tzinfo=UTC)
+    )
+    assert default_snap.instrument_symbol == "AAA"
+    assert default_snap.recent_close_series  # non-empty
+    # AAA series close-3 = 10 + 2 = 12.
+    assert default_snap.recent_close_series[-1] == Decimal("12")
+
+    # Pin BBB ⇒ chart series + caption + last_close SHALL swap.
+    pinned_snap = reader.paper_state(
+        account_id=aid,
+        as_of=datetime(2026, 5, 30, 12, tzinfo=UTC),
+        pinned_symbol="BBB",
+    )
+    assert pinned_snap.instrument_symbol == "BBB"
+    # BBB series close-3 = 20 + 2 = 22.
+    assert pinned_snap.recent_close_series[-1] == Decimal("22")
+    assert pinned_snap.latest_close == Decimal("22")
+
+
 def test_paper_state_reader_honors_pinned_symbol_query_override():
     """REQ_F_PAP_018 / REQ_SDD_PAP_010 — ``?pin=<symbol>`` query
     parameter overrides the default lex-first pin. Unknown symbols

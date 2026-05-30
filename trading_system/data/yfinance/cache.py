@@ -107,13 +107,29 @@ class YFinanceCache:
         sym_tf_dir = self.root / safe_symbol / safe_tf
         if not sym_tf_dir.exists():
             return Nothing()
+        # Filenames carry tz-aware datetimes (``_parse_filename_window``
+        # promotes naïve values to UTC). The caller's ``key.start`` /
+        # ``key.end`` MAY arrive naïve when the strategy computed
+        # ``state.at - timedelta(...)`` against a naïve tick (e.g., live
+        # yfinance polling on older Python paths). Normalise both sides
+        # to UTC-aware before comparing so the predicate doesn't raise
+        # ``TypeError: can't compare offset-naive and offset-aware
+        # datetimes``. The cache stays the system of record per
+        # REQ_NF_DAT_001 — promoting a naïve key to UTC is a no-op for
+        # already-UTC inputs.
+        key_start = (
+            key.start.replace(tzinfo=UTC) if key.start.tzinfo is None else key.start
+        )
+        key_end = (
+            key.end.replace(tzinfo=UTC) if key.end.tzinfo is None else key.end
+        )
         candidates: list[tuple[int, str, Path]] = []
         for path in sym_tf_dir.glob("*_bars.jsonl"):
             window = _parse_filename_window(path.name)
             if window is None:
                 continue
             file_start, file_end = window
-            if file_start <= key.start and file_end >= key.end:
+            if file_start <= key_start and file_end >= key_end:
                 width = int((file_end - file_start).total_seconds())
                 # Negative width so ``sort`` returns widest first.
                 candidates.append((-width, path.name, path))
@@ -124,7 +140,8 @@ class YFinanceCache:
             match self._read_jsonl_bars(path):
                 case Ok(bars):
                     sliced = [
-                        b for b in bars if key.start <= b.at <= key.end
+                        b for b in bars
+                        if key_start <= _as_utc(b.at) <= key_end
                     ]
                     return Some(sliced)
                 case Err(_):
@@ -287,6 +304,17 @@ def _decode_iso(token: str) -> datetime:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)
     return parsed
+
+
+def _as_utc(dt: datetime) -> datetime:
+    """Promote a naïve datetime to UTC-aware. No-op for tz-aware inputs.
+
+    Defensive helper used by the envelope-lookup predicates so a
+    legacy cache file holding naïve datetimes (older recorder runs)
+    or a naïve caller key compare uniformly against tz-aware values.
+    The cache stays the system of record per REQ_NF_DAT_001 — the
+    bytes don't change, only the comparison normalises."""
+    return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt
 
 
 def _bar_to_record(b: Bar) -> dict:
