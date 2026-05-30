@@ -57,3 +57,35 @@ def test_negative_leverage_rejected() -> None:
 def test_negative_risk_rejected() -> None:
     with pytest.raises(ValueError, match="risk"):
         _metrics(risk=Decimal("-0.01"))
+
+
+def test_indicator_signal_fields_default_to_none() -> None:
+    """CR-028 follow-up — every `*_signal` field defaults to None so
+    pre-CR-028 callers stay unaffected."""
+    m = _metrics()
+    assert m.sma_200_signal is None
+    assert m.rsi_signal is None
+    assert m.atr_signal is None
+    assert m.obv_signal is None
+    assert m.adx_signal is None
+    assert m.vix_signal is None
+
+
+def test_indicator_signal_fields_carry_decimal_when_set() -> None:
+    """CR-028 follow-up — strategies that consume the indicator
+    library populate the matching `*_signal` so the trade rationale
+    (CR-015) carries the reading."""
+    m = _metrics(
+        sma_200_signal=Decimal("105.5"),
+        rsi_signal=Decimal("65.0"),
+        atr_signal=Decimal("1.85"),
+        obv_signal=Decimal("12500"),
+        adx_signal=Decimal("32.0"),
+        vix_signal=Decimal("14.5"),
+    )
+    assert m.sma_200_signal == Decimal("105.5")
+    assert m.rsi_signal == Decimal("65.0")
+    assert m.atr_signal == Decimal("1.85")
+    assert m.obv_signal == Decimal("12500")
+    assert m.adx_signal == Decimal("32.0")
+    assert m.vix_signal == Decimal("14.5")

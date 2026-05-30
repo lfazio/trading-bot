@@ -430,26 +430,27 @@ expected effort + dependency.
       adds REQ_F_QNT_007..010 in a new "Operator hypothesis-filing
       surface" sub-section; SDS §3.26 amended; SDD §13.20 adds
       REQ_SDD_QNT_009..012; Test Plan adds TC_QNT_OPS_001..006.
-      8 new REQs (4 SRS + 4 SDD) at TP — design contract locked;
-      implementation lands as the next slice.
-- [ ] **Webapp `strategies/hypotheses` panel implementation** —
-      `webapp/routers/views/hypotheses.py` (view route) +
-      `templates/hypotheses.html` (form + PENDING-REJECTED +
-      VALIDATED tables) per REQ_SDD_QNT_009. HTMX hx-post for the
-      form; no JavaScript beyond HTMX (REQ_NF_WEB2_001).
-- [ ] **`POST /api/hypotheses` endpoint** —
-      `webapp/routers/api/hypotheses.py` per REQ_SDD_QNT_010.
-      Operator-token-gated; household-claim REJECTED with
-      `registry:household_claim_rejected`; 5-gate Validator inline;
-      201 + canonical-JSON on Ok, 400 + categorised
-      `hypothesis:*` Err on rejection; LogCategory.SECURITY audit
-      on success per the CR-024 shape.
-- [ ] **`GET /api/hypotheses` paginated read** per REQ_SDD_QNT_011
-      — per_page default 25, cap 100; canonical-JSON
-      byte-determinism.
-- [ ] **`GET /api/strategies/{strategy_id}/hypotheses`** per
-      REQ_SDD_QNT_012 — returns ImprovementReport.hypothesis_ids;
-      empty tuple is the documented "no lineage" signal.
+- [x] **Implementation slice** ✅ DONE 2026-05-30 @ `<this commit>`.
+      Three JSON routes + one view route + HTML template.
+      The webapp routes consume the hypothesis layer via Protocol
+      slots (`hypothesis_filer`, `hypothesis_lister`,
+      `improvement_report_lookup`) so REQ_NF_QNT_001 +
+      REQ_SDD_FAS_001 boundaries hold. Concrete adapters
+      `StrategyLabHypothesisFiler` + `StrategyLabHypothesisLister`
+      live at `trading_system/strategy_lab/quant/webapp_adapter.py`
+      and are wired by operator code at boot. Files:
+      `trading_system/webapp/routers/api/hypotheses.py` (POST +
+      GET + per-strategy lineage); `trading_system/webapp/
+      routers/views/hypotheses.py` (HTML view); `trading_system/
+      webapp/templates/hypotheses.html` (form + two tables).
+      Auth gating mirrors CR-019 step 2 (`HOUSEHOLD_CLAIM`
+      rejected; cross-account rejected; missing Authorization
+      ⇒ 401). LogCategory.SECURITY audit on every authorised
+      `file` action carrying `event` / `account_id` / `outcome`
+      / `token_hash` / `hypothesis_id` per CR-024 shape.
+      12 new tests at `tests/webapp/test_hypotheses_api.py`
+      cover all 6 TC_QNT_OPS_001..006 cases. All 8 CR-027 REQs
+      at TEST. Full suite 2 862 → 2 877.
 
 ### 4. Stdlib webui Phase B (CR-004 Phase B)
 

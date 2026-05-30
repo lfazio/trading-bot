@@ -61,6 +61,20 @@ class StrategyMetrics:
     n_train_periods: int = 0  # sample size of the training window
     information_coefficient: Decimal = Decimal("0")  # Pearson IC train ↔ OOS
 
+    # ----- CR-028 indicator signals --------------------------------------
+    # Optional readings populated by strategies that consume the CR-028
+    # technical-indicator library at decision time. CR-015's
+    # ``TradeRationale.signal_reason`` SHALL consume these so the audit
+    # trail records the indicator state at the moment the strategy
+    # decided. ``None`` ⇒ the strategy did not consume the indicator
+    # (or didn't have enough warm-up history yet — REQ_F_IND_002).
+    sma_200_signal: Decimal | None = None
+    rsi_signal: Decimal | None = None
+    atr_signal: Decimal | None = None
+    obv_signal: Decimal | None = None
+    adx_signal: Decimal | None = None
+    vix_signal: Decimal | None = None
+
     def __post_init__(self) -> None:
         for name, value in (
             ("stability", self.stability),

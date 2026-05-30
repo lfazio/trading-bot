@@ -207,6 +207,54 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HypothesisCreateBody": {
+        "description": "Wire shape \u2014 operator-supplied; server fills ``id`` /\n``state`` / ``created_at`` (REQ_SDD_QNT_010 step c).",
+        "properties": {
+          "account_id": {
+            "minLength": 1,
+            "title": "Account Id",
+            "type": "string"
+          },
+          "claim": {
+            "minLength": 1,
+            "title": "Claim",
+            "type": "string"
+          },
+          "dataset_window": {
+            "$ref": "#/components/schemas/_DatasetWindowBody"
+          },
+          "expected_direction": {
+            "title": "Expected Direction",
+            "type": "string"
+          },
+          "falsification_criterion": {
+            "minLength": 1,
+            "title": "Falsification Criterion",
+            "type": "string"
+          },
+          "metric": {
+            "minLength": 1,
+            "title": "Metric",
+            "type": "string"
+          },
+          "operator_rationale": {
+            "minLength": 1,
+            "title": "Operator Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "claim",
+          "falsification_criterion",
+          "dataset_window",
+          "metric",
+          "expected_direction",
+          "operator_rationale",
+          "account_id"
+        ],
+        "title": "HypothesisCreateBody",
+        "type": "object"
+      },
       "PromoteRequest": {
         "description": "Body schema for ``POST /api/registry/{strategy_id}/promote``.\n\nPydantic validation kicks in at the FastAPI boundary; malformed\nbodies surface as a 422 with the auto-generated detail. The\nAuthorization header carries the Bearer token; the\n``X-Operator-Token`` header carries the action-specific operator\ntoken (kept distinct so the audit row can pair both).",
         "properties": {
@@ -297,6 +345,32 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "_DatasetWindowBody": {
+        "properties": {
+          "end": {
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "frequency": {
+            "minLength": 1,
+            "title": "Frequency",
+            "type": "string"
+          },
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "frequency"
+        ],
+        "title": "_DatasetWindowBody",
         "type": "object"
       }
     }
@@ -603,6 +677,89 @@
         "summary": "Read a single backtest's status + summary"
       }
     },
+    "/api/hypotheses": {
+      "get": {
+        "description": "REQ_F_QNT_009 / REQ_SDD_QNT_011 \u2014 paginated per-account read.\nCanonical-JSON response preserves REQ_NF_WEB_002 byte-determinism\nacross two calls against identical repository state.",
+        "operationId": "get_hypotheses_api_hypotheses_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "title": "Per Page",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List filed hypotheses (CR-027 / REQ_F_QNT_009)"
+      },
+      "post": {
+        "description": "REQ_F_QNT_008 / REQ_SDD_QNT_010 \u2014 operator-token-gated\nsubmission; 5-gate Validator inline; 201 on Ok, 400 on\ncategorised hypothesis:* Err.",
+        "operationId": "post_hypothesis_api_hypotheses_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HypothesisCreateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "File a new hypothesis (CR-027 / REQ_F_QNT_008)"
+      }
+    },
     "/api/inbox": {
       "get": {
         "description": "Returns the bounded ring buffer of recent operator-facing notifications, newest LAST. The body is canonical-JSON; equal buffer states produce byte-identical bodies.",
@@ -711,6 +868,39 @@
           }
         },
         "summary": "Open a cookie-backed session"
+      }
+    },
+    "/api/strategies/{strategy_id}/hypotheses": {
+      "get": {
+        "description": "REQ_F_QNT_010 / REQ_SDD_QNT_012 \u2014 return the strategy's\n``ImprovementReport.hypothesis_ids`` tuple. Hand-curated\nstrategies (no ImprovementReport) \u21d2 empty tuple, 200 OK.",
+        "operationId": "get_strategy_hypotheses_api_strategies__strategy_id__hypotheses_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Per-strategy hypothesis lineage (CR-027 / REQ_F_QNT_010)"
       }
     },
     "/events/backtests/{job_id}": {
@@ -1275,6 +1465,47 @@
           }
         },
         "summary": "Strategies"
+      }
+    },
+    "/strategies/hypotheses": {
+      "get": {
+        "description": "REQ_F_QNT_007 / REQ_SDD_QNT_009 \u2014 render the three sections.",
+        "operationId": "strategies_hypotheses_strategies_hypotheses_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "account_id",
+            "required": false,
+            "schema": {
+              "default": "default",
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Strategies-Hypotheses"
       }
     },
     "/strategies/{strategy_id}/promote": {

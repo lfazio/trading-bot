@@ -1,0 +1,147 @@
+{% extends parent_template|default("base.html") %}
+{% set active_nav = 'strategies' %}
+{% block title %}Hypotheses &mdash; trading-bot{% endblock %}
+{% block content %}
+<h1>Operator hypotheses</h1>
+<p class="subhead">
+  CR-027 — file new hypotheses for the meta-loop, browse PENDING /
+  REJECTED ones with their categorised reason, and the VALIDATED
+  trail that produced shipped strategies (CR-002 Phase B).
+</p>
+
+{% if flash %}
+<div class="alert {{ 'success' if flash.startswith('hypothesis:filed') else 'error' }}" role="alert">
+  <p>{{ flash }}</p>
+</div>
+{% endif %}
+
+<section class="card" id="file-hypothesis">
+  <h2>File a new hypothesis</h2>
+  <p class="muted">
+    The 5-gate Validator runs inline on submit. Rejected submissions
+    surface the categorised <code>hypothesis:*</code> Err so you can
+    fix the offending field and resubmit.
+  </p>
+  <form
+    method="post"
+    hx-post="/api/hypotheses"
+    hx-target="#form-error"
+    hx-swap="innerHTML"
+  >
+    <label>
+      Claim
+      <textarea name="claim" rows="2" required></textarea>
+    </label>
+    <label>
+      Falsification criterion
+      <textarea name="falsification_criterion" rows="2" required></textarea>
+    </label>
+    <label>
+      Metric
+      <input
+        name="metric"
+        type="text"
+        placeholder="adjusted_sharpe / net_after_tax_return / ..."
+        required
+      />
+    </label>
+    <label>
+      Expected direction
+      <select name="expected_direction" required>
+        <option value="positive">positive</option>
+        <option value="negative">negative</option>
+        <option value="two_tailed">two_tailed</option>
+      </select>
+    </label>
+    <fieldset>
+      <legend>Dataset window</legend>
+      <label>
+        Start
+        <input name="dataset_window.start" type="datetime-local" required />
+      </label>
+      <label>
+        End
+        <input name="dataset_window.end" type="datetime-local" required />
+      </label>
+      <label>
+        Frequency
+        <input
+          name="dataset_window.frequency"
+          type="text"
+          value="1d"
+          required
+        />
+      </label>
+    </fieldset>
+    <label>
+      Operator rationale
+      <textarea name="operator_rationale" rows="3" required></textarea>
+    </label>
+    <input type="hidden" name="account_id" value="{{ account_id }}" />
+    <button type="submit">File hypothesis</button>
+    <div id="form-error" class="form-error" aria-live="polite"></div>
+  </form>
+</section>
+
+<section class="card" id="pending-rejected">
+  <h2>Pending &amp; rejected</h2>
+  {% if pending_rejected %}
+  <table class="data" style="width:100%">
+    <thead>
+      <tr>
+        <th scope="col">id</th>
+        <th scope="col">claim</th>
+        <th scope="col">metric</th>
+        <th scope="col">state</th>
+        <th scope="col">reason</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for h in pending_rejected %}
+      <tr>
+        <td><code>{{ h.id }}</code></td>
+        <td>{{ h.claim }}</td>
+        <td><code>{{ h.metric }}</code></td>
+        <td>
+          <span class="badge state-{{ h.state }}" aria-label="State: {{ h.state }}">
+            {{ h.state }}
+          </span>
+        </td>
+        <td><code>{{ h.rejection_reason or '' }}</code></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No pending or rejected hypotheses.</p>
+  {% endif %}
+</section>
+
+<section class="card" id="validated">
+  <h2>Validated</h2>
+  {% if validated %}
+  <table class="data" style="width:100%">
+    <thead>
+      <tr>
+        <th scope="col">id</th>
+        <th scope="col">claim</th>
+        <th scope="col">metric</th>
+        <th scope="col">validated at</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for h in validated %}
+      <tr>
+        <td><code>{{ h.id }}</code></td>
+        <td>{{ h.claim }}</td>
+        <td><code>{{ h.metric }}</code></td>
+        <td>{{ h.created_at }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No validated hypotheses yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

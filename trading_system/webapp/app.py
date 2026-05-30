@@ -45,6 +45,9 @@ from trading_system.observability import (
 from trading_system.webapp.health import router as health_router
 from trading_system.webapp.job_queue import InProcessJobQueue, JobQueue
 from trading_system.webapp.routers.api.backtests import router as backtests_router
+from trading_system.webapp.routers.api.hypotheses import (
+    router as hypotheses_api_router,
+)
 from trading_system.webapp.routers.api.inbox import router as inbox_api_router
 from trading_system.webapp.routers.api.live_mode import router as live_mode_router
 from trading_system.webapp.routers.api.live_state import router as live_state_router
@@ -63,6 +66,9 @@ from trading_system.webapp.routers.views.paper_session import (
 )
 from trading_system.webapp.routers.views.recovery import (
     router as recovery_router,
+)
+from trading_system.webapp.routers.views.hypotheses import (
+    router as hypotheses_view_router,
 )
 from trading_system.webapp.routers.views.reports import router as reports_router
 from trading_system.webapp.routers.views.strategies import (
@@ -102,6 +108,13 @@ class WebappState:
     live_mode_controller: Any | None = None
     emergency_stop_controller: Any | None = None
     broker_reconnect_controller: Any | None = None
+    # CR-027 — hypothesis-filing slots (REQ_F_QNT_007..010).
+    # Strategy_lab/quant/ stays offline-only (REQ_NF_QNT_001);
+    # webapp routes go through Protocol slots only (the concrete
+    # adapter is wired at boot in operator code).
+    hypothesis_filer: Any | None = None
+    hypothesis_lister: Any | None = None
+    improvement_report_lookup: Any | None = None
     templates: Jinja2Templates = field(init=False)
 
     def __post_init__(self) -> None:
@@ -186,6 +199,10 @@ def create_app(state: WebappState) -> FastAPI:
     app.state.live_mode_controller = state.live_mode_controller
     app.state.emergency_stop_controller = state.emergency_stop_controller
     app.state.broker_reconnect_controller = state.broker_reconnect_controller
+    # CR-027 hypothesis-filing slots.
+    app.state.hypothesis_filer = state.hypothesis_filer
+    app.state.hypothesis_lister = state.hypothesis_lister
+    app.state.improvement_report_lookup = state.improvement_report_lookup
 
     # Routers.
     app.include_router(health_router)
@@ -193,6 +210,7 @@ def create_app(state: WebappState) -> FastAPI:
     app.include_router(live_state_router)
     app.include_router(paper_state_router)
     app.include_router(inbox_api_router)
+    app.include_router(hypotheses_api_router)
     app.include_router(registry_router)
     app.include_router(backtests_router)
     app.include_router(session_router)
@@ -204,6 +222,7 @@ def create_app(state: WebappState) -> FastAPI:
     app.include_router(recovery_router)
     app.include_router(reports_router)
     app.include_router(strategies_router)
+    app.include_router(hypotheses_view_router)
     app.include_router(dashboard_router)
     app.include_router(jobs_view_router)
 
