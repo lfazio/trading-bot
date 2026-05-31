@@ -20,7 +20,10 @@ from trading_system.strategy_lab.evaluator import Evaluator
 from trading_system.strategy_lab.generator import Generator, StaticGenerator
 from trading_system.strategy_lab.loop_controller import LoopController
 from trading_system.strategy_lab.mc_drawdown_floor import MCDrawdownFloor
-from trading_system.strategy_lab.metrics import StrategyMetrics
+from trading_system.strategy_lab.metrics import (
+    StrategyMetrics,
+    format_signal_reason,
+)
 from trading_system.strategy_lab.optimizer import (
     Optimizer,
     OptimizerConfig,
@@ -52,5 +55,6 @@ __all__ = [
     "StaticGenerator",
     "StrategyCandidate",
     "StrategyMetrics",
+    "format_signal_reason",
     "score_metrics",
 ]

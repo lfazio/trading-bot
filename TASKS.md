@@ -586,9 +586,28 @@ stdlib `webui/` fallback still has placeholders.
       process + across subprocesses), Protocol conformance, and
       runtime-safe import. All 11 new REQs at TEST.
       Full suite 2 841 → 2 862.
-- [ ] **`StrategyMetrics` extension** — optional `*_signal`
-      fields so trade rationales (CR-015) carry the indicator
-      reading at the decision moment. Tracked as follow-up.
+- [x] **`StrategyMetrics` extension** ✅ DONE 2026-05-31 @
+      `<this commit>`. The `*_signal` Decimal-or-None fields
+      already shipped with the CR-028 cascade; this slice adds
+      the canonical helpers strategies call to turn the
+      readings into a `TradeRationale.signal_reason` string:
+      `StrategyMetrics.to_signal_reason() -> str` (instance
+      method) + `format_signal_reason(*, sma_200, rsi, atr,
+      obv, adx, vix)` (standalone helper at
+      `trading_system/strategy_lab/metrics.py`). Both produce
+      the same canonical output: `"name=value;name=value;..."`
+      sorted alphabetically by indicator name; None values
+      omitted; Decimal values render via `str(...)` for
+      canonical-decimal stability (REQ_NF_REP_001 family);
+      empty string when every signal is None (back-compat).
+      8 new tests at `tests/strategy_lab/test_metrics.py` —
+      empty / sorted-order / None-skip / Decimal-canonical /
+      determinism / delegation / default-empty / full-set.
+      Exported from `trading_system.strategy_lab` as
+      `format_signal_reason`. Strategies that consume the
+      CR-028 indicator library at decision time now have a
+      single helper to call when building TradeRationales;
+      the audit trail bytes stay deterministic across replays.
 
 ### 4e. CR-029 — Multi-instrument bar persistence
 

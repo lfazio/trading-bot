@@ -105,3 +105,78 @@ class StrategyMetrics:
                 f"StrategyMetrics.information_coefficient must lie in "
                 f"[-1, 1], got {self.information_coefficient}"
             )
+
+    def to_signal_reason(self) -> str:
+        """Render the indicator readings as a canonical
+        ``TradeRationale.signal_reason`` string.
+
+        Format: ``"name=value;name=value;..."`` sorted by
+        indicator name; ``None``-valued indicators SHALL be
+        omitted (the strategy did not consume them or warm-up
+        history was insufficient). Decimal values render via
+        ``str(value)`` so the audit-trail bytes stay
+        canonical-decimal (REQ_NF_REP_001 family).
+
+        Example::
+
+            metrics = StrategyMetrics(..., rsi_signal=Decimal("68.2"),
+                                            atr_signal=Decimal("2.51"))
+            metrics.to_signal_reason() == "atr=2.51;rsi=68.2"
+
+        Returns the empty string when every signal field is
+        ``None`` — the strategy's emitted ``TradeRationale``
+        carries an empty ``signal_reason`` if no indicator was
+        consumed (back-compat with strategies that never opted in).
+        """
+        return format_signal_reason(
+            sma_200=self.sma_200_signal,
+            rsi=self.rsi_signal,
+            atr=self.atr_signal,
+            obv=self.obv_signal,
+            adx=self.adx_signal,
+            vix=self.vix_signal,
+        )
+
+
+_INDICATOR_NAMES = ("adx", "atr", "obv", "rsi", "sma_200", "vix")
+
+
+def format_signal_reason(
+    *,
+    sma_200: Decimal | None = None,
+    rsi: Decimal | None = None,
+    atr: Decimal | None = None,
+    obv: Decimal | None = None,
+    adx: Decimal | None = None,
+    vix: Decimal | None = None,
+) -> str:
+    """Canonical ``signal_reason`` formatter.
+
+    Standalone helper for callers that don't have a
+    ``StrategyMetrics`` on hand (e.g., a strategy that
+    consumes the CR-028 indicators directly without first
+    building a metrics row).
+
+    Format: ``"name=value;name=value;..."`` sorted by
+    indicator name; ``None``-valued indicators are omitted.
+    Returns ``""`` when every argument is ``None``.
+
+    Determinism: identical kwargs SHALL produce
+    byte-identical strings — a precondition for the
+    persistence-layer JSON round-trip + the
+    backtest-engine replay invariant.
+    """
+    readings = {
+        "sma_200": sma_200,
+        "rsi": rsi,
+        "atr": atr,
+        "obv": obv,
+        "adx": adx,
+        "vix": vix,
+    }
+    pairs = [
+        f"{name}={value}"
+        for name in _INDICATOR_NAMES
+        if (value := readings[name]) is not None
+    ]
+    return ";".join(pairs)

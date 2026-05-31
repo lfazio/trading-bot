@@ -9,7 +9,10 @@ from decimal import Decimal
 
 import pytest
 
-from trading_system.strategy_lab.metrics import StrategyMetrics
+from trading_system.strategy_lab.metrics import (
+    StrategyMetrics,
+    format_signal_reason,
+)
 
 
 def _metrics(**overrides) -> StrategyMetrics:
@@ -89,3 +92,105 @@ def test_indicator_signal_fields_carry_decimal_when_set() -> None:
     assert m.obv_signal == Decimal("12500")
     assert m.adx_signal == Decimal("32.0")
     assert m.vix_signal == Decimal("14.5")
+
+
+# ---------------------------------------------------------------------------
+# CR-028 + CR-015 follow-up — signal_reason helper
+# ---------------------------------------------------------------------------
+
+
+def test_format_signal_reason_empty_when_all_none() -> None:
+    """No indicators consumed ⇒ empty string. Strategies that
+    never opted in keep emitting empty `signal_reason` rows
+    (back-compat)."""
+    assert format_signal_reason() == ""
+
+
+def test_format_signal_reason_orders_by_indicator_name() -> None:
+    """Sorted indicator names regardless of kwarg order — the
+    audit-trail bytes are stable across callers."""
+    out = format_signal_reason(
+        rsi=Decimal("68.2"),
+        sma_200=Decimal("145.23"),
+        atr=Decimal("2.51"),
+    )
+    # Alphabetical: adx, atr, obv, rsi, sma_200, vix
+    # Present here: atr, rsi, sma_200
+    assert out == "atr=2.51;rsi=68.2;sma_200=145.23"
+
+
+def test_format_signal_reason_skips_none_values() -> None:
+    """None entries are omitted from the output."""
+    out = format_signal_reason(
+        rsi=Decimal("68.2"),
+        atr=None,
+        obv=Decimal("12500"),
+    )
+    assert out == "obv=12500;rsi=68.2"
+
+
+def test_format_signal_reason_decimal_canonical_serialisation() -> None:
+    """REQ_NF_REP_001 family — Decimal values render via `str(...)`
+    so the bytes are canonical-decimal stable (no float
+    intermediate, no truncation)."""
+    out = format_signal_reason(
+        atr=Decimal("2.510000"),  # trailing zeros preserved by Decimal.__str__
+        rsi=Decimal("0.0001"),
+    )
+    assert out == "atr=2.510000;rsi=0.0001"
+
+
+def test_format_signal_reason_is_deterministic() -> None:
+    """Two calls with identical kwargs SHALL produce byte-identical
+    strings — precondition for the persistence layer's JSON
+    round-trip + the backtest engine's replay invariant."""
+    kwargs = {
+        "sma_200": Decimal("145.23"),
+        "rsi": Decimal("68.2"),
+        "atr": Decimal("2.51"),
+        "obv": Decimal("12500"),
+        "adx": Decimal("32.0"),
+        "vix": Decimal("14.5"),
+    }
+    assert format_signal_reason(**kwargs) == format_signal_reason(**kwargs)
+
+
+def test_to_signal_reason_delegates_to_format_helper() -> None:
+    """The instance method SHALL produce the same output as the
+    standalone helper when given identical readings."""
+    m = _metrics(
+        sma_200_signal=Decimal("145.23"),
+        rsi_signal=Decimal("68.2"),
+        atr_signal=Decimal("2.51"),
+    )
+    assert m.to_signal_reason() == format_signal_reason(
+        sma_200=Decimal("145.23"),
+        rsi=Decimal("68.2"),
+        atr=Decimal("2.51"),
+    )
+
+
+def test_to_signal_reason_empty_when_no_signals_consumed() -> None:
+    """Default-constructed metrics (every signal None) renders
+    as an empty signal_reason — strategies opting out of
+    indicator readings preserve the legacy empty-string
+    behaviour."""
+    m = _metrics()
+    assert m.to_signal_reason() == ""
+
+
+def test_to_signal_reason_full_set() -> None:
+    """All six indicators populated ⇒ all six in the output,
+    alphabetically sorted."""
+    m = _metrics(
+        sma_200_signal=Decimal("105.5"),
+        rsi_signal=Decimal("65.0"),
+        atr_signal=Decimal("1.85"),
+        obv_signal=Decimal("12500"),
+        adx_signal=Decimal("32.0"),
+        vix_signal=Decimal("14.5"),
+    )
+    assert (
+        m.to_signal_reason()
+        == "adx=32.0;atr=1.85;obv=12500;rsi=65.0;sma_200=105.5;vix=14.5"
+    )
