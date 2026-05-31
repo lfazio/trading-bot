@@ -720,14 +720,28 @@ stdlib `webui/` fallback still has placeholders.
 
 ### 9. CI / infrastructure
 
-- [ ] **GitHub Actions workflow** — wire `pytest` + `pytest -m
-      docker` + traceability `--check` + coverage upload into
-      CI. The repo has the structural primitives; only the
-      `.github/workflows/*.yaml` files are missing.
-- [ ] **CVE scanner provisioning** — install `trivy` (or `grype`
-      / `docker scout`) in CI so the
-      `tests/webapp/test_container_cve_scan.py` test runs the
-      Phase-8 C7 gate against the built image.
+- [x] **GitHub Actions workflow** ✅ DONE 2026-05-31 @
+      `<this commit>`. `.github/workflows/ci.yaml` chains
+      structural audits → `traceability-report.py --check` →
+      OpenAPI snapshot guard → full pytest (excluding docker /
+      cve_scan markers) on every push + PR against `main`.
+      Concurrency group on the branch cancels stale runs.
+      Python 3.13 + dependencies installed via
+      `pip install --require-hashes -r requirements.lock` so
+      runs are byte-deterministic across actors.
+      `.github/pull_request_template.md` surfaces the
+      CLAUDE.md hard-rule-8 documentation-update checklist.
+- [x] **CVE scanner provisioning** ✅ DONE 2026-05-31 @
+      `<this commit>`. `.github/workflows/docker.yaml` ships a
+      separate workflow gated on `workflow_dispatch` + a weekly
+      Monday 06:00 UTC cron (upstream CVE database refresh).
+      Three jobs: `container-runtime` (Dockerfile + runtime smoke
+      + read-only-fs invariants), `container-reproducibility`
+      bundled into runtime, `cve-scan` (installs Trivy + runs
+      `tests/webapp/test_container_cve_scan.py`). The CVE
+      allow-list lives at `Documentations/CVE-Allowlist.md`
+      (operator-maintained; every entry SHALL carry a
+      justification + re-review date).
 
 ### 10. Deferred (re-triage after live trading lands)
 

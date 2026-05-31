@@ -1,0 +1,113 @@
+# CR-019 §9 — main CI workflow.
+#
+# Runs on every push + PR against main. Three stages:
+#   1. install — set up Python + install the runtime + dev dependency
+#      groups from requirements.lock so the run is byte-deterministic
+#      across actors.
+#   2. validate — fast static checks (the structural audits + the
+#      traceability --check guard + the OpenAPI snapshot guard).
+#   3. test — pytest over the full suite excluding the docker /
+#      cve_scan markers (those run via the docker.yaml workflow on
+#      manual dispatch).
+#
+# Docker / CVE-scan tests are intentionally NOT part of the default
+# matrix — they need a docker daemon + a CVE scanner that GitHub's
+# hosted runners may or may not have. The dedicated workflow runs
+# on `workflow_dispatch` so the operator triggers it from the
+# Actions tab.
+#
+# Concurrency: cancel stale runs on the same ref so a fast follow-up
+# push doesn't queue a long-running run behind it.
+
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate-and-test:
+    name: validate + pytest
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # The wiki lives as a git submodule under Documentations/.
+          # The traceability tool reads it; without recursing the
+          # checkout the --check fails on missing source files.
+          submodules: recursive
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies from requirements.lock
+        run: |
+          python -m pip install --upgrade pip
+          # The lock pins the full webapp + dev extra surface.
+          pip install --require-hashes -r requirements.lock
+          pip install -e . --no-deps
+
+      - name: Structural audits
+        run: |
+          # The structural audits + the conformance suite catch
+          # boundary violations before pytest's main loop. Splitting
+          # them out makes the failure obvious in the Actions UI.
+          pytest \
+            tests/conformance/ \
+            tests/webapp/test_structural.py \
+            tests/strategy_lab/quant/test_structural.py \
+            tests/webapp/test_view_router_layout.py \
+            -q --no-header --strict-markers
+
+      - name: Traceability check
+        # REQ_NF_TRC_001 — the matrix MUST be regenerated before
+        # commit. The --check mode exits non-zero if the on-disk
+        # CSV is stale relative to the wiki source.
+        run: python tools/traceability-report.py --check
+
+      - name: OpenAPI snapshot guard
+        # REQ_F_FAS_004 — the committed snapshot MUST match the
+        # live FastAPI app's generated schema. If a route changes,
+        # the snapshot is regenerated as part of the PR (the
+        # operator runs `python tools/regenerate_openapi_snapshot.py`
+        # locally) and the wiki re-approval row is added.
+        run: |
+          pytest tests/webapp/test_openapi_stability.py -q --no-header
+
+      - name: Full test suite
+        run: |
+          # Skip the docker / CVE-scan markers — those run in the
+          # dedicated `docker.yaml` workflow on `workflow_dispatch`.
+          # The exclusion via `-m 'not docker and not cve_scan'`
+          # honours the markers registered in pyproject.toml.
+          pytest \
+            tests/ \
+            --ignore=tests/webapp/test_container_runtime_smoke.py \
+            --ignore=tests/webapp/test_container_cve_scan.py \
+            --ignore=tests/webapp/test_container_reproducibility.py \
+            -q --no-header --strict-markers \
+            -m "not docker and not cve_scan"
+
+      - name: Upload pytest cache on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-cache
+          path: .pytest_cache/
+          retention-days: 7
