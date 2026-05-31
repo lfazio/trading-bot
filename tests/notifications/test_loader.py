@@ -9,8 +9,11 @@ import pytest
 
 from trading_system.notifications.loader import (
     ApprovalConfig,
+    EmailChannelConfig,
     NotificationsConfig,
     RetryConfig,
+    SlackChannelConfig,
+    build_channels,
     load_notifications_config,
 )
 from trading_system.result import Err, Ok
@@ -262,3 +265,273 @@ def test_non_string_local_log_path_returns_schema_err(tmp_path: Path) -> None:
             assert reason.startswith("config:schema:")
         case _:
             raise AssertionError("expected Err")
+
+
+# ---------------------------------------------------------------------------
+# CR-001 Phase B — slack + email channel selectors
+# ---------------------------------------------------------------------------
+
+
+def test_slack_channel_config_defaults() -> None:
+    cfg = SlackChannelConfig()
+    assert cfg.webhook_url_env == "TRADING_BOT_SLACK_WEBHOOK_URL"
+    assert cfg.timeout_seconds == 5.0
+
+
+def test_slack_channel_config_rejects_empty_env_name() -> None:
+    with pytest.raises(ValueError, match="webhook_url_env"):
+        SlackChannelConfig(webhook_url_env="")
+
+
+def test_slack_channel_config_rejects_non_positive_timeout() -> None:
+    with pytest.raises(ValueError, match="timeout_seconds"):
+        SlackChannelConfig(timeout_seconds=0)
+
+
+def test_email_channel_config_invariants() -> None:
+    """Every required field carries an invariant — missing
+    smtp_host / smtp_port out of range / empty recipients all
+    raise ValueError."""
+    base = {
+        "smtp_host": "smtp.example.com",
+        "smtp_port": 587,
+        "user": "alerts@example.com",
+        "from_addr": "alerts@example.com",
+        "recipients": ("operator@example.com",),
+    }
+    # Happy path constructs cleanly.
+    cfg = EmailChannelConfig(**base)  # type: ignore[arg-type]
+    assert cfg.use_starttls is True
+
+    with pytest.raises(ValueError, match="smtp_host"):
+        EmailChannelConfig(**{**base, "smtp_host": ""})  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="smtp_port"):
+        EmailChannelConfig(**{**base, "smtp_port": 0})  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="recipients"):
+        EmailChannelConfig(**{**base, "recipients": ()})  # type: ignore[arg-type]
+
+
+def test_notifications_config_accepts_slack_channel() -> None:
+    cfg = NotificationsConfig(
+        channels=("local_log", "slack"),
+        slack=SlackChannelConfig(),
+    )
+    assert "slack" in cfg.channels
+
+
+def test_notifications_config_rejects_email_without_settings() -> None:
+    """email selector without an email sub-section is a hard
+    schema error — the channel needs SMTP settings."""
+    with pytest.raises(ValueError, match="notifications.email is missing"):
+        NotificationsConfig(channels=("local_log", "email"))
+
+
+def test_notifications_config_accepts_email_with_settings() -> None:
+    cfg = NotificationsConfig(
+        channels=("email",),
+        email=EmailChannelConfig(
+            smtp_host="smtp.example.com",
+            smtp_port=587,
+            user="alerts@example.com",
+            from_addr="alerts@example.com",
+            recipients=("operator@example.com",),
+        ),
+    )
+    assert "email" in cfg.channels
+    assert cfg.email is not None
+    assert cfg.email.smtp_host == "smtp.example.com"
+
+
+def test_loader_parses_slack_subsection(tmp_path: Path) -> None:
+    p = _write(
+        tmp_path,
+        """
+notifications:
+  channels: [local_log, slack]
+  slack:
+    webhook_url_env: CUSTOM_WEBHOOK_ENV
+    timeout_seconds: 3
+""",
+    )
+    match load_notifications_config(p):
+        case Ok(cfg):
+            assert cfg.channels == ("local_log", "slack")
+            assert cfg.slack is not None
+            assert cfg.slack.webhook_url_env == "CUSTOM_WEBHOOK_ENV"
+            assert cfg.slack.timeout_seconds == 3.0
+        case _:
+            raise AssertionError("expected Ok")
+
+
+def test_loader_parses_email_subsection(tmp_path: Path) -> None:
+    p = _write(
+        tmp_path,
+        """
+notifications:
+  channels: [email]
+  email:
+    smtp_host: smtp.example.com
+    smtp_port: 587
+    user: alerts@example.com
+    from_addr: alerts@example.com
+    recipients:
+      - operator@example.com
+      - oncall@example.com
+    use_starttls: true
+""",
+    )
+    match load_notifications_config(p):
+        case Ok(cfg):
+            assert cfg.channels == ("email",)
+            assert cfg.email is not None
+            assert cfg.email.smtp_host == "smtp.example.com"
+            assert cfg.email.recipients == (
+                "operator@example.com",
+                "oncall@example.com",
+            )
+        case _:
+            raise AssertionError("expected Ok")
+
+
+def test_loader_rejects_email_selector_without_settings(tmp_path: Path) -> None:
+    p = _write(tmp_path, "notifications:\n  channels: [email]\n")
+    match load_notifications_config(p):
+        case Err(reason):
+            assert "config:invariant" in reason
+            assert "email is missing" in reason
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_loader_rejects_non_string_smtp_host(tmp_path: Path) -> None:
+    p = _write(
+        tmp_path,
+        """
+notifications:
+  channels: [email]
+  email:
+    smtp_host: 12345
+    smtp_port: 587
+    user: alerts@example.com
+    from_addr: alerts@example.com
+    recipients: [operator@example.com]
+""",
+    )
+    match load_notifications_config(p):
+        case Err(reason):
+            assert reason.startswith("config:schema:")
+            assert "smtp_host" in reason
+        case _:
+            raise AssertionError("expected Err")
+
+
+def test_loader_rejects_email_recipients_not_list(tmp_path: Path) -> None:
+    p = _write(
+        tmp_path,
+        """
+notifications:
+  channels: [email]
+  email:
+    smtp_host: smtp.example.com
+    smtp_port: 587
+    user: alerts@example.com
+    from_addr: alerts@example.com
+    recipients: not_a_list
+""",
+    )
+    match load_notifications_config(p):
+        case Err(reason):
+            assert reason.startswith("config:schema:")
+            assert "recipients" in reason
+        case _:
+            raise AssertionError("expected Err")
+
+
+# ---------------------------------------------------------------------------
+# build_channels factory
+# ---------------------------------------------------------------------------
+
+
+def test_build_channels_local_log_only(tmp_path: Path) -> None:
+    cfg = NotificationsConfig(
+        channels=("local_log",),
+        local_log_path=str(tmp_path / "notifications.jsonl"),
+    )
+    channels = build_channels(cfg)
+    assert len(channels) == 1
+    # Channel type — read its class name without coupling to the
+    # exact import path.
+    assert type(channels[0]).__name__ == "LocalLogChannel"
+
+
+def test_build_channels_slack_carries_config() -> None:
+    cfg = NotificationsConfig(
+        channels=("slack",),
+        slack=SlackChannelConfig(
+            webhook_url_env="CUSTOM_ENV", timeout_seconds=7.5
+        ),
+    )
+    channels = build_channels(cfg)
+    assert len(channels) == 1
+    assert type(channels[0]).__name__ == "SlackNotificationChannel"
+    assert channels[0].webhook_url_env == "CUSTOM_ENV"  # type: ignore[attr-defined]
+    assert channels[0].timeout_seconds == 7.5  # type: ignore[attr-defined]
+
+
+def test_build_channels_slack_default_config_when_absent() -> None:
+    """No slack: sub-section ⇒ build_channels uses the channel's
+    default env-var name."""
+    cfg = NotificationsConfig(
+        channels=("slack",),
+    )
+    channels = build_channels(cfg)
+    assert channels[0].webhook_url_env == "TRADING_BOT_SLACK_WEBHOOK_URL"  # type: ignore[attr-defined]
+
+
+def test_build_channels_email_uses_full_smtp_settings() -> None:
+    cfg = NotificationsConfig(
+        channels=("email",),
+        email=EmailChannelConfig(
+            smtp_host="smtp.example.com",
+            smtp_port=465,
+            user="alerts@example.com",
+            from_addr="alerts@example.com",
+            recipients=("operator@example.com",),
+            use_starttls=False,
+        ),
+    )
+    channels = build_channels(cfg)
+    assert len(channels) == 1
+    email = channels[0]
+    assert type(email).__name__ == "EmailNotificationChannel"
+    assert email.smtp_port == 465  # type: ignore[attr-defined]
+    assert email.use_starttls is False  # type: ignore[attr-defined]
+
+
+def test_build_channels_preserves_yaml_selector_order() -> None:
+    """Channel order matches the YAML selector list — precondition
+    for replay determinism on the fan-out subscriber order."""
+    cfg = NotificationsConfig(
+        channels=("slack", "local_log"),
+        slack=SlackChannelConfig(),
+    )
+    channels = build_channels(cfg)
+    assert type(channels[0]).__name__ == "SlackNotificationChannel"
+    assert type(channels[1]).__name__ == "LocalLogChannel"
+
+
+def test_build_channels_appends_extra_after_yaml_configured() -> None:
+    """``extra`` channels land after the YAML-configured ones —
+    documented for callers (e.g., the webapp's InboxChannel)."""
+
+    class _StubExtraChannel:
+        def deliver(self, payload):  # type: ignore[no-untyped-def]
+            del payload
+            return None
+
+    extra = _StubExtraChannel()
+    cfg = NotificationsConfig(channels=("local_log",))
+    channels = build_channels(cfg, extra=(extra,))
+    assert len(channels) == 2
+    assert type(channels[0]).__name__ == "LocalLogChannel"
+    assert channels[1] is extra

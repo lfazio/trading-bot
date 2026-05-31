@@ -407,21 +407,54 @@ expected effort + dependency.
 
 ### 2. Notification adapters (CR-001 Phase B)
 
-- [ ] **`SlackNotificationChannel`** — Slack incoming-webhook
-      adapter reading from `TRADING_BOT_SLACK_WEBHOOK_URL` env
-      var per REQ_F_NOT_002 (CR-018 amendment).
-- [ ] **`EmailNotificationChannel`** — SMTP adapter reading
-      credentials from env vars (REQ_SDD_NOT_007 / REQ_NF_NOT_003
-      privacy discipline).
-- [ ] **`notifications/loader.py` selector** — load
-      `config/notifications.yaml`, instantiate the configured
-      channels.
-- [ ] **`config/notifications.yaml` sample** — 9th YAML file
-      (REQ_SDS_CFG_001 amendment).
+- [x] **`SlackNotificationChannel`** ✅ DONE (already shipped in
+      an earlier CR-018 slice). Slack incoming-webhook adapter at
+      `trading_system/notifications/channels/slack.py` reading
+      from `TRADING_BOT_SLACK_WEBHOOK_URL` env var per
+      REQ_NF_NOT_003 (env-var name resolved lazily on every
+      delivery so rotated webhooks land without restart).
+- [x] **`EmailNotificationChannel`** ✅ DONE (already shipped in
+      an earlier slice). SMTP adapter at
+      `trading_system/notifications/channels/email.py` reading
+      password from `TRADING_BOT_SMTP_PASSWORD` per
+      REQ_SDD_NOT_007 / REQ_NF_NOT_003. STARTTLS by default;
+      port 465 implicit-TLS path supported via
+      `use_starttls: false`.
+- [x] **`notifications/loader.py` selector** ✅ DONE 2026-05-31
+      @ `<this commit>`. The loader-side gap is closed:
+      `_CHANNEL_SELECTORS` extended from `{"local_log"}` to
+      `{"local_log", "slack", "email"}`; two new frozen
+      sub-configs `SlackChannelConfig` + `EmailChannelConfig`;
+      YAML parser handles the `notifications.slack` +
+      `notifications.email` sub-sections with categorised
+      `config:schema:` Errs on type mismatches +
+      `config:invariant:` Errs on missing-field invariants
+      (email requires `smtp_host`/`smtp_port`/`user`/`from_addr`/
+      `recipients` — no useful defaults). New
+      `build_channels(config, *, extra=())` factory function
+      turns the loaded `NotificationsConfig` into concrete
+      `NotificationChannel` instances; preserves the YAML
+      selector order for replay determinism; `extra` lets the
+      webapp append its `InboxChannel` without YAML coupling.
+      18 new tests at `tests/notifications/test_loader.py`
+      cover the new sub-configs, schema/invariant Err paths,
+      and the factory (44 loader tests total).
+- [x] **`config/notifications.yaml` sample** ✅ DONE 2026-05-31
+      @ `<this commit>`. The 9th YAML file already shipped;
+      this slice updates the sample to document the new
+      `slack` + `email` channel selectors with full sub-section
+      examples (commented out by default; operators uncomment
+      the channels they want). Env-var-only secret discipline
+      preserved in the comments per REQ_NF_NOT_003.
 - [ ] **Webapp inbox panel wire-up** — the FastAPI `webapp/inbox`
-      panel already exists; wire the Slack + email channels in
-      so the operator sees alerts in the inbox AND on their
-      configured channels simultaneously.
+      panel already exists + persists Phase-1 boot breadcrumbs;
+      wiring a `NotificationFanOut(channels=build_channels(cfg,
+      extra=(inbox,)))` into `default_app()` so dashboard alerts
+      land both in the operator's inbox AND on their configured
+      external channels (Slack / email) is the remaining slice.
+      The factory + schema gates ship in this commit; the
+      runtime composition needs a follow-up with broader webapp
+      smoke coverage.
 
 ### 3. Operator hypothesis surface (CR-002 Phase B / CR-027)
 

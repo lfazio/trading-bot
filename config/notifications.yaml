@@ -1,12 +1,28 @@
 # Notifications config — REQ_F_NOT_002 + REQ_SDD_NOT_008.
 #
-# v1 ships ``local_log`` as the only channel; Phase B adds ``email``
-# and ``whatsapp``. Operators may comment out channels they don't
-# want; the list MUST be non-empty (LocalLogChannel is the
-# always-available baseline).
+# v1 ships three channel selectors: `local_log` (always-available
+# baseline; one canonical-JSON line per delivered payload),
+# `slack` (incoming-webhook adapter; webhook URL read from an env
+# var per REQ_NF_NOT_003), and `email` (SMTP adapter; password
+# read from an env var). Operators may comment out channels they
+# don't want; the list MUST be non-empty.
+#
+# Channel selector order in `channels:` is preserved on fan-out —
+# precondition for replay determinism on the fan-out subscriber
+# order.
 notifications:
   channels:
     - local_log
+    # Uncomment to enable Slack alerts. Requires the env var
+    # named by `slack.webhook_url_env` (default
+    # `TRADING_BOT_SLACK_WEBHOOK_URL`) to be set at process
+    # boot — the channel reads it lazily on every delivery so
+    # rotating the webhook URL works without a restart.
+    # - slack
+    # Uncomment to enable SMTP email alerts. Requires the
+    # `email:` sub-section below + the env var named by
+    # `email.password_env` (default `TRADING_BOT_SMTP_PASSWORD`).
+    # - email
 
   retry:
     max_attempts: 3
@@ -23,3 +39,25 @@ notifications:
     threshold_currency: EUR
 
   local_log_path: var/logs/notifications.jsonl
+
+  # Optional Slack sub-section. All fields default sensibly; the
+  # whole block can stay commented out if the documented env-var
+  # name works for the deployment.
+  # slack:
+  #   webhook_url_env: TRADING_BOT_SLACK_WEBHOOK_URL
+  #   timeout_seconds: 5.0
+
+  # Required when `email` is in the channels list. The SMTP server
+  # settings have no useful defaults — operators SHALL fill in
+  # every field below.
+  # email:
+  #   smtp_host: smtp.example.com
+  #   smtp_port: 587
+  #   user: alerts@example.com
+  #   from_addr: alerts@example.com
+  #   recipients:
+  #     - operator@example.com
+  #     - oncall@example.com
+  #   password_env: TRADING_BOT_SMTP_PASSWORD
+  #   use_starttls: true
+  #   timeout_seconds: 10.0
