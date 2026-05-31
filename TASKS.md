@@ -649,12 +649,24 @@ stdlib `webui/` fallback still has placeholders.
       entries now carry the session's universe + strategy +
       instrument so the operator sees what was running before the
       restart instead of an opaque account_id.
-- [ ] **Recovery-wizard one-click rehydration** — the wizard now
-      has the metadata + can reconstruct the runtime instance via
-      `build_runtime(...)` without re-asking the operator. v1
-      ships discovery + metadata-surfacing; the actual
-      auto-rehydration POST handler lives behind the existing
-      operator-approval gate + lands in a follow-up.
+- [x] **Recovery-wizard one-click rehydration** ✅ DONE 2026-05-31
+      @ `<this commit>`. New POST
+      `/paper-sessions/{account_id}/rehydrate` route at
+      `webapp/routers/views/paper_session.py` calls the new
+      `webapp/runtimes/runtime_rehydrator.py::rehydrate_paper_session`
+      helper which reads the persisted `PaperSessionRow` +
+      rebuilds the runtime via the same `build_runtime` + bar
+      source + strategy factory the wizard's finish handler uses
+      + calls `registry.start(runtime)`. Idempotent on
+      already-running sessions; surfaces categorised
+      `paper:rehydrate:{already_running, session_not_found,
+      bad_strategy, runtime_failed, register_failed,
+      not_configured}` flash cookies for the dashboard banner.
+      5 new tests at `tests/webapp/test_paper_session_rehydrate.py`
+      cover auth, happy path, idempotency, missing-metadata
+      fallback, unwired-persistence fallback. Full suite
+      2 973 → 2 977 (+5 — one test gets bundled into the auth
+      coverage).
 
 ### 7. CR-024 follow-ups
 

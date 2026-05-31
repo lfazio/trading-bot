@@ -1386,6 +1386,44 @@
         "summary": "Operator-Recovery-Submit"
       }
     },
+    "/paper-sessions/{account_id}/rehydrate": {
+      "post": {
+        "description": "CR-019 \u00a76 \u2014 one-click resume after a webapp restart.\n\nReads the wizard's persisted metadata (via the Protocol-shaped\n``paper_session_repository`` slot) + rebuilds the runtime via\nthe same factory the wizard's finish handler uses + registers\nit. Idempotent on already-running sessions (caller gets\nredirected back to the dashboard with the categorised flash\ncookie).\n\nAuth: same gate as ``post_stop`` (any valid claim).",
+        "operationId": "post_rehydrate_paper_sessions__account_id__rehydrate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Rehydrate"
+      }
+    },
     "/paper-sessions/{account_id}/stop": {
       "post": {
         "description": "Stop the paper-trading runtime keyed on ``account_id``.\n\nAuth: any valid token claim (household OR per-account) is\naccepted \u2014 the dashboard view uses the same gate. Mutation\nis idempotent: stopping a non-existent / already-stopped\nsession is a no-op (the redirect still lands the operator\nback on the dashboard).",
