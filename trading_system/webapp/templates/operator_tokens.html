@@ -1,0 +1,90 @@
+{% extends parent_template|default("base.html") %}
+{% set active_nav = 'operator' %}
+{% block title %}Operator tokens &mdash; trading-bot{% endblock %}
+{% block content %}
+<h1>Operator-token management</h1>
+<p class="subhead">
+  CR-024 §7 — rotate the household secret + revoke per-account
+  tokens by <code>jti</code>. Every mutation emits a
+  <code>LogCategory.SECURITY</code> structured-log entry; the raw
+  token is never logged (only its SHA-256 hash).
+</p>
+
+<section class="card" id="rotate-secret">
+  <h2>Rotate household secret</h2>
+  <p class="muted">
+    Household-token-gated. Rotation generates a fresh 64-byte
+    random secret server-side + returns it ONCE. The previous
+    secret enters the grace window — existing tokens signed
+    with it keep verifying until the NEXT rotation drops it
+    (REQ_F_TOK_003 rolling rotation).
+  </p>
+  <form
+    method="post"
+    hx-post="/api/operator/rotate-secret"
+    hx-target="#rotate-result"
+    hx-swap="innerHTML"
+    onsubmit="return confirm('Rotate the household secret? You SHALL capture the response value before navigating away — it is shown only ONCE.');"
+  >
+    <button type="submit" class="button warn">Rotate secret</button>
+    <div id="rotate-result" class="form-error" aria-live="polite"></div>
+  </form>
+</section>
+
+<section class="card" id="revoke-token">
+  <h2>Revoke an operator token</h2>
+  <p class="muted">
+    Per-account-token-gated. Add a <code>(account_id, jti)</code>
+    row to the revocation list. After this call the token can no
+    longer authenticate any operation — the revocation check
+    runs BEFORE the TTL check.
+  </p>
+  <form
+    method="post"
+    hx-post=""
+    hx-target="#revoke-result"
+    hx-swap="innerHTML"
+    onsubmit="event.preventDefault(); const jti = this.elements['jti'].value; if (!jti) return false; fetch('/api/operator/accounts/{{ account_id | urlencode }}/tokens/' + encodeURIComponent(jti) + '/revoke', { method: 'POST', credentials: 'include' }).then((r) => r.text()).then((t) => document.getElementById('revoke-result').textContent = t); return false;"
+  >
+    <label>
+      jti (32-char hex)
+      <input
+        name="jti"
+        type="text"
+        pattern="[a-fA-F0-9]{32}"
+        required
+        placeholder="abc123def4567890abc123def4567890"
+      />
+    </label>
+    <input type="hidden" name="account_id" value="{{ account_id }}" />
+    <button type="submit">Revoke</button>
+    <div id="revoke-result" class="form-error" aria-live="polite"></div>
+  </form>
+</section>
+
+<section class="card" id="revoked-tokens">
+  <h2>Revoked tokens (account: <code>{{ account_id }}</code>)</h2>
+  {% if revocations %}
+  <table class="data" style="width:100%">
+    <thead>
+      <tr>
+        <th scope="col">jti</th>
+        <th scope="col">reason</th>
+        <th scope="col">revoked at</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in revocations %}
+      <tr>
+        <td><code>{{ r.jti }}</code></td>
+        <td>{{ r.reason or '—' }}</td>
+        <td><code>{{ r.revoked_at }}</code></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No revoked tokens recorded for this account.</p>
+  {% endif %}
+</section>
+{% endblock %}

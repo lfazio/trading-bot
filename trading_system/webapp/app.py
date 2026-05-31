@@ -45,6 +45,9 @@ from trading_system.observability import (
 from trading_system.webapp.health import router as health_router
 from trading_system.webapp.job_queue import InProcessJobQueue, JobQueue
 from trading_system.webapp.routers.api.bars import router as bars_api_router
+from trading_system.webapp.routers.api.operator_tokens import (
+    router as operator_tokens_api_router,
+)
 from trading_system.webapp.routers.api.backtests import router as backtests_router
 from trading_system.webapp.routers.api.hypotheses import (
     router as hypotheses_api_router,
@@ -70,6 +73,9 @@ from trading_system.webapp.routers.views.recovery import (
 )
 from trading_system.webapp.routers.views.hypotheses import (
     router as hypotheses_view_router,
+)
+from trading_system.webapp.routers.views.operator_tokens import (
+    router as operator_tokens_view_router,
 )
 from trading_system.webapp.routers.views.reports import router as reports_router
 from trading_system.webapp.routers.views.strategies import (
@@ -127,6 +133,11 @@ class WebappState:
     # finish + the recovery wizard reads them back for one-click
     # resume after a webapp restart.
     paper_session_repository: Any | None = None
+    # CR-024 §7 — operator-token revocation repository slot. When
+    # wired, POST /api/operator/accounts/<aid>/tokens/<jti>/revoke
+    # adds a row to the revocation list + the verifier consults
+    # it BEFORE the TTL check.
+    operator_token_revocation_repo: Any | None = None
     templates: Jinja2Templates = field(init=False)
 
     def __post_init__(self) -> None:
@@ -219,6 +230,10 @@ def create_app(state: WebappState) -> FastAPI:
     app.state.instrument_bar_repository = state.instrument_bar_repository
     # CR-019 §6 — paper-session metadata slot.
     app.state.paper_session_repository = state.paper_session_repository
+    # CR-024 §7 — operator-token revocation slot.
+    app.state.operator_token_revocation_repo = (
+        state.operator_token_revocation_repo
+    )
 
     # Routers.
     app.include_router(health_router)
@@ -228,6 +243,7 @@ def create_app(state: WebappState) -> FastAPI:
     app.include_router(inbox_api_router)
     app.include_router(hypotheses_api_router)
     app.include_router(bars_api_router)
+    app.include_router(operator_tokens_api_router)
     app.include_router(registry_router)
     app.include_router(backtests_router)
     app.include_router(session_router)
@@ -240,6 +256,7 @@ def create_app(state: WebappState) -> FastAPI:
     app.include_router(reports_router)
     app.include_router(strategies_router)
     app.include_router(hypotheses_view_router)
+    app.include_router(operator_tokens_view_router)
     app.include_router(dashboard_router)
     app.include_router(jobs_view_router)
 
@@ -372,6 +389,9 @@ def default_app() -> FastAPI:
     # and the runtime keeps ticking without the fan-out.
     instrument_bar_repository = _instrument_bar_repo_for_default_app()
     paper_session_repository = _paper_session_repo_for_default_app()
+    operator_token_revocation_repo = (
+        _operator_token_revocation_repo_for_default_app()
+    )
     return create_app(
         WebappState(
             token_verifier=verifier,
@@ -383,6 +403,7 @@ def default_app() -> FastAPI:
             job_queue=queue,
             instrument_bar_repository=instrument_bar_repository,
             paper_session_repository=paper_session_repository,
+            operator_token_revocation_repo=operator_token_revocation_repo,
         )
     )
 
@@ -529,5 +550,21 @@ def _paper_session_repo_for_default_app():  # type: ignore[no-untyped-def]
     if conn is None:
         return None
     return PaperSessionRepository(conn=conn)
+
+
+def _operator_token_revocation_repo_for_default_app():  # type: ignore[no-untyped-def]
+    """CR-024 §7 — open the ``OperatorTokenRevocationRepository``
+    for ``default_app()``. Returns ``None`` when persistence is
+    unconfigured; the rotation endpoint still works
+    (rotate_secret is in-process), but the revocation endpoint
+    surfaces `webapp:operator_token_revocation_repo_missing`."""
+    from trading_system.persistence.repositories.token_revocations import (
+        OperatorTokenRevocationRepository,
+    )
+
+    conn = _persistence_connection()
+    if conn is None:
+        return None
+    return OperatorTokenRevocationRepository(conn=conn)
 
 

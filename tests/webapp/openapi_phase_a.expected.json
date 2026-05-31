@@ -840,6 +840,93 @@
         "summary": "Notifications inbox snapshot"
       }
     },
+    "/api/operator/accounts/{account_id}/tokens/revoked": {
+      "get": {
+        "description": "Per-account-token-gated; household claim REJECTED.\n\nReturns the canonical-JSON list of revoked\n`(account_id, jti, reason, revoked_at)` rows so the\noperator UI can render the table beneath an \"active vs\nrevoked\" toggle. v1 lists revoked entries only \u2014 issuing\na token doesn't go through a central registry (operators\nissue via the `trading-bot issue-token` CLI per\nREQ_F_TOK_005) so the webapp can't enumerate ACTIVE\ntokens. Operators track issued jti's externally\n(deployment secret store) + revoke by jti via the POST\nendpoint above.",
+        "operationId": "get_revoked_tokens_api_operator_accounts__account_id__tokens_revoked_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List revoked operator tokens for an account (CR-024)"
+      }
+    },
+    "/api/operator/accounts/{account_id}/tokens/{jti}/revoke": {
+      "post": {
+        "description": "Add ``(account_id, jti)`` to the revocation list. After\nthis call the token can no longer authenticate any\noperation; the revocation check precedes TTL verification.\n\nREQ_F_TOK_002: the jti pair is the canonical revocation key.\nLegacy 3-segment tokens (no jti) are unrevocable through this\nendpoint; the operator rotates the secret instead.",
+        "operationId": "post_revoke_token_api_operator_accounts__account_id__tokens__jti__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "jti",
+            "required": true,
+            "schema": {
+              "title": "Jti",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke an operator token by jti (CR-024 / REQ_F_TOK_002)"
+      }
+    },
+    "/api/operator/rotate-secret": {
+      "post": {
+        "description": "Generate a fresh 64-byte random secret + atomically rotate\nthe verifier + return the new secret in the response body\nONCE.\n\nThe operator captures the new secret server-side over HTTPS\nand stores it in their secrets manager. The previous secret\nenters the grace window \u2014 existing tokens signed with it\nkeep verifying until the NEXT rotation drops it\n(REQ_F_TOK_003 multi-secret rolling rotation).",
+        "operationId": "post_rotate_secret_api_operator_rotate_secret_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Rotate the operator-token secret (CR-024 / REQ_F_TOK_003)"
+      }
+    },
     "/api/registry/{strategy_id}/promote": {
       "post": {
         "description": "REQ_F_FAS_001 / REQ_F_FAS_005 \u2014 mutation endpoint gated by the\naccount-scoped operator token.",
@@ -1384,6 +1471,47 @@
           }
         },
         "summary": "Operator-Recovery-Submit"
+      }
+    },
+    "/operator/tokens": {
+      "get": {
+        "description": "Render the operator-token management panel.\n\nTwo sub-sections:\n- **Rotate secret** \u2014 household-only POST control; rotating\n  generates a fresh secret server-side + displays it ONCE.\n- **Revoked tokens** \u2014 per-account table of jti's the\n  revocation list carries. The \"Revoke\" form takes a fresh\n  jti + posts to the JSON API.",
+        "operationId": "operator_tokens_operator_tokens_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "account_id",
+            "required": false,
+            "schema": {
+              "default": "default",
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Operator-Tokens"
       }
     },
     "/paper-sessions/{account_id}/rehydrate": {

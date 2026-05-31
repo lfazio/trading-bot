@@ -670,16 +670,41 @@ stdlib `webui/` fallback still has placeholders.
 
 ### 7. CR-024 follow-ups
 
-- [ ] **Webapp `POST /api/operator/rotate-secret` endpoint** —
-      household-token-gated; calls
-      `verifier.rotate_secret(new_secret)`; operators rotate
-      without touching the deployment supervisor.
+- [x] **Webapp `POST /api/operator/rotate-secret` endpoint** ✅
+      DONE 2026-05-31 @ `<this commit>`. Household-token-gated;
+      server generates a fresh 64-byte random secret + atomically
+      rotates the verifier (`previous_secret` slot keeps existing
+      tokens verifying through the grace window) + returns the
+      new secret in the canonical-JSON body ONCE for the operator
+      to capture. Emits LogCategory.SECURITY audit per
+      REQ_NF_TOK_001. Per-account tokens REJECTED with
+      `registry:household_required`.
+      Lives at
+      `trading_system/webapp/routers/api/operator_tokens.py`;
+      sibling endpoints:
+      - `POST /api/operator/accounts/{aid}/tokens/{jti}/revoke`
+        — per-account-token-gated, household REJECTED, idempotent
+        on duplicate.
+      - `GET /api/operator/accounts/{aid}/tokens/revoked` —
+        per-account list of revocation rows.
+- [x] **Operator UI for revocation** ✅ DONE 2026-05-31 @
+      `<this commit>`. New `GET /operator/tokens` view +
+      `operator_tokens.html` template ships three sections:
+      "Rotate household secret" form (HTMX-bound to the JSON
+      endpoint, confirm-dialog guards against accidental rotation),
+      "Revoke an operator token" form (jti pattern-validated to
+      32-char hex), and the per-account "Revoked tokens" table
+      sourced from the repository. 12 tests at
+      `tests/webapp/test_operator_tokens_api.py` cover rotation
+      happy path / household-required / per-account rejection,
+      revocation happy path / idempotency / household-claim
+      REJECTED / cross-account REJECTED / missing-repo, list
+      per-account scoping, view rendering / login redirect /
+      seeded-revocation rendering.
 - [ ] **Multi-process revocation propagation** — v1 cache is
       process-local + re-loaded on every persistence write.
       Multi-process deployments need an SSE / database-notify
       channel; not blocking single-container deployments.
-- [ ] **Operator UI for revocation** — a dashboard form that
-      lists active jti's per account + a "revoke" button.
 
 ### 8. Known-limitation drills (Validation.md §5)
 
