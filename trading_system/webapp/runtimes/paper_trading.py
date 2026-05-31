@@ -456,6 +456,11 @@ class PaperTradingRuntime:
             # order (which the Order dataclass would reject anyway).
             return
         self._next_order_seq += 1
+        # CR-030 (REQ_F_SRD_002) — honour the proposal's
+        # order_type so SRD-aware strategies can route fills
+        # through the deferred-settlement path. Pre-CR-030
+        # strategies always set MARKET (the field's default).
+        order_type = getattr(proposal, "order_type", OrderType.MARKET)
         order = Order(
             id=OrderId(
                 f"paper-{self.session.account_id}-{self._next_order_seq:08d}"
@@ -463,11 +468,32 @@ class PaperTradingRuntime:
             instrument=proposal.instrument,
             side=proposal.side,
             quantity=quantity,
-            type=OrderType.MARKET,
+            type=order_type,
             stop_loss=proposal.stop_loss,
             created_at=tick.at,
             source_strategy=self.strategy.id,
         )
+        # SRD orders never hit the broker — the deferred-settlement
+        # contract means cash exchange happens at the monthly
+        # liquidation, not at the fill. Apply the open directly to
+        # the portfolio's SRD ledger; the SRDSettlementScheduler
+        # books P&L + fees at month-end (REQ_F_SRD_005).
+        if order_type in (OrderType.SRD_LONG, OrderType.SRD_SHORT):
+            from trading_system.models.identifiers import TradeId
+            from trading_system.models.trading import Trade
+
+            srd_trade = Trade(
+                id=TradeId(f"srd-{order.id}"),
+                order_id=order.id,
+                executed_at=tick.at,
+                price=tick.last,
+                quantity_filled=quantity,
+                fees=Money(Decimal(0), self.portfolio.currency),
+            )
+            self.portfolio.apply_srd_open(order, srd_trade)
+            self._trades.append(srd_trade)
+            self._orders_by_trade[str(srd_trade.id)] = order
+            return
         # Wrap the LocalBrokerAdapter so submit returns the Trade
         # directly (the bare adapter only returns OrderId).
         wrapped = BacktestBroker(adapter=self.broker)

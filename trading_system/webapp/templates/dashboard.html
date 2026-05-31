@@ -407,6 +407,34 @@
     </tfoot>
   </table>
 
+  <h3 style="margin-top:1.2em">
+    SRD positions (CR-030 — deferred settlement)
+    <span class="badge" data-field="paper_srd_settlements_badge" aria-label="SRD settlements booked this session" style="margin-left:0.5em; font-size:0.8rem">0 settled</span>
+  </h3>
+  <p class="muted" style="font-size:0.85rem; margin-top:-0.25em">
+    Open SRD positions. Cash exchange happens on the last business day
+    of the entry month. Estimated CRD fee = quantity × entry × monthly
+    carry rate (default 0.25%/month).
+  </p>
+  <table class="data-table" data-field="paper_srd_positions_table" style="width:100%; margin-bottom:1em">
+    <thead>
+      <tr>
+        <th>Instrument</th>
+        <th>Direction</th>
+        <th class="numeric">Quantity</th>
+        <th class="numeric">Entry</th>
+        <th class="numeric">Last close</th>
+        <th class="numeric">P&amp;L</th>
+        <th>Settles</th>
+        <th class="numeric">Est. CRD fee</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+    <tfoot>
+      <tr><td colspan="8" class="muted">No open SRD positions.</td></tr>
+    </tfoot>
+  </table>
+
   <h3>Recent trades</h3>
   <table class="data-table" data-field="paper_trades_table" style="width:100%">
     <thead>
@@ -667,6 +695,55 @@ function renderPaperState(raw) {
   };
   renderPositions();
   renderTrades();
+
+  // CR-030 — SRD positions panel. One row per open SRD position
+  // with quantity / entry / mark / unrealized PnL / next-settlement-
+  // date / estimated CRD fee. Empty-state shown when no SRD
+  // positions are open.
+  const renderSrd = () => {
+    const table = document.querySelector('[data-field="paper_srd_positions_table"]');
+    if (!table) return;
+    const tbody = table.querySelector('tbody');
+    const tfoot = table.querySelector('tfoot');
+    if (!tbody || !tfoot) return;
+    tbody.innerHTML = '';
+    const positions = Array.isArray(data.srd_positions) ? data.srd_positions : [];
+    if (positions.length === 0) {
+      tfoot.style.display = '';
+    } else {
+      tfoot.style.display = 'none';
+      for (const p of positions) {
+        const tr = document.createElement('tr');
+        const pnlPct = p.unrealized_pnl_pct;
+        let pnlCell = '<span class="muted">—</span>';
+        if (pnlPct !== undefined && pnlPct !== null && pnlPct !== '') {
+          const n = Number(pnlPct);
+          if (isFinite(n)) {
+            const tone = n >= 0 ? 'success' : 'error';
+            pnlCell = `<span class="badge ${tone}" aria-label="Unrealized P&L ${n.toFixed(2)} percent">${n >= 0 ? '+' : ''}${n.toFixed(2)} %</span>`;
+          }
+        }
+        const directionBadge = `<span class="badge ${p.direction === 'LONG' ? 'success' : 'warn'}" aria-label="SRD direction ${p.direction}">${p.direction || '?'}</span>`;
+        const settles = (p.settlement_at || '').split('T')[0] + (p.auto_rollover ? ' ↻' : '');
+        tr.innerHTML =
+          `<td><code>${p.instrument_symbol || '?'}</code></td>` +
+          `<td>${directionBadge}</td>` +
+          `<td class="numeric">${fmtQty(p.quantity)}</td>` +
+          `<td class="numeric">${fmtMoney(p.entry_price) || p.entry_price}</td>` +
+          `<td class="numeric">${fmtMoney(p.latest_close) || '—'}</td>` +
+          `<td class="numeric">${pnlCell}</td>` +
+          `<td class="muted" style="font-size:0.9rem">${settles}</td>` +
+          `<td class="numeric">${fmtMoney(p.estimated_crd_fee) || p.estimated_crd_fee}</td>`;
+        tbody.appendChild(tr);
+      }
+    }
+    const badge = document.querySelector('[data-field="paper_srd_settlements_badge"]');
+    if (badge) {
+      const count = Number(data.srd_settlements_count) || 0;
+      badge.textContent = count + ' settled';
+    }
+  };
+  renderSrd();
 
   // CR-026 — per-instrument grid. One row per universe symbol;
   // click pins the symbol as the detail chart's data source by

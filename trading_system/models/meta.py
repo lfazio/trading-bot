@@ -21,7 +21,7 @@ from trading_system.models.identifiers import StrategyId
 from trading_system.models.instrument import Instrument
 from trading_system.models.money import Money
 from trading_system.models.phase import MarketRegime
-from trading_system.models.trading import Side, StopLoss
+from trading_system.models.trading import OrderType, Side, StopLoss
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +37,13 @@ class TradeProposal:
     expected_fees: Money
     stop_loss: StopLoss
     source_strategy: StrategyId
+    # CR-030 (REQ_F_SRD_002) — order_type the runtime SHALL use
+    # when materialising this proposal into an Order. Default
+    # ``OrderType.MARKET`` preserves the pre-CR-030 behaviour for
+    # every existing strategy; SRD-aware strategies set
+    # `OrderType.SRD_LONG` / `OrderType.SRD_SHORT` so the fill
+    # routes through the deferred-settlement path.
+    order_type: OrderType = OrderType.MARKET
 
     def __post_init__(self) -> None:
         if not (0 < self.size_pct_of_capital <= 1):

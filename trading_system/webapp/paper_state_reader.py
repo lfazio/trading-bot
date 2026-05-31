@@ -33,6 +33,7 @@ from trading_system.webui.schemas import (
     OpenPositionView,
     PaperStateResponse,
     RecentTradeView,
+    SRDPositionRow,
 )
 
 
@@ -390,6 +391,8 @@ class RuntimePaperStateReader:
             ),
             per_instrument=per_instrument_rows,
             pinned_symbol=resolved_pin,
+            srd_positions=_srd_position_rows(portfolio),
+            srd_settlements_count=_srd_settlements_count(portfolio),
             **_indicator_kwargs(runtime, history, bar_closes, bar_timestamps),
         )
 
@@ -421,6 +424,72 @@ class RuntimePaperStateReader:
 # ---------------------------------------------------------------------------
 # CR-026 — per-instrument grid rows
 # ---------------------------------------------------------------------------
+
+
+def _srd_position_rows(portfolio) -> tuple:  # type: ignore[no-untyped-def]
+    """CR-030 — build the dashboard's SRD-positions panel rows.
+
+    Empty tuple when the portfolio has no SRD positions, no
+    ``srd_positions`` accessor (test stub), or any read raises
+    defensively.
+    """
+    if portfolio is None or not hasattr(portfolio, "srd_positions"):
+        return ()
+    try:
+        positions = portfolio.srd_positions()
+    except Exception:  # noqa: BLE001 — defensive
+        return ()
+    if not positions:
+        return ()
+    rows: list = []
+    for iid, pos in sorted(
+        positions.items(), key=lambda kv: getattr(kv[1].instrument, "symbol", "")
+    ):
+        symbol = getattr(pos.instrument, "symbol", str(iid))
+        latest_close = None
+        if hasattr(portfolio, "_last_prices"):
+            latest_close = portfolio._last_prices.get(iid)  # type: ignore[attr-defined]
+        unrealized_pct: Decimal | None = None
+        if (
+            latest_close is not None
+            and pos.entry_price is not None
+            and pos.entry_price > 0
+        ):
+            delta = latest_close - pos.entry_price
+            if pos.direction == "SHORT":
+                delta = -delta
+            unrealized_pct = (
+                delta / pos.entry_price * Decimal("100")
+            ).quantize(Decimal("0.01"))
+        estimated_crd = (
+            pos.quantity * pos.entry_price * pos.carry_fee_rate_monthly
+        )
+        rows.append(
+            SRDPositionRow(
+                instrument_symbol=symbol,
+                direction=pos.direction,
+                quantity=pos.quantity,
+                entry_price=pos.entry_price,
+                settlement_at=pos.settlement_cycle,
+                estimated_crd_fee=estimated_crd,
+                auto_rollover=pos.auto_rollover,
+                latest_close=latest_close,
+                unrealized_pnl_pct=unrealized_pct,
+            )
+        )
+    return tuple(rows)
+
+
+def _srd_settlements_count(portfolio) -> int:  # type: ignore[no-untyped-def]
+    """CR-030 — number of SRD settlements booked so far this
+    session. The dashboard renders this as a small counter
+    badge so the operator sees the settlement cycle is running."""
+    if portfolio is None or not hasattr(portfolio, "srd_settlement_rows"):
+        return 0
+    try:
+        return len(portfolio.srd_settlement_rows())
+    except Exception:  # noqa: BLE001 — defensive
+        return 0
 
 
 def live_positions_by_symbol(portfolio) -> dict[str, object]:  # type: ignore[no-untyped-def]

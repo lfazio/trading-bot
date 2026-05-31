@@ -168,6 +168,41 @@ class OpenPositionView:
 
 
 @dataclass(frozen=True, slots=True)
+class SRDPositionRow:
+    """CR-030 — open SRD position row for the dashboard's
+    deferred-settlement panel.
+
+    Fields:
+    - ``instrument_symbol`` — display symbol (e.g., ``AC``).
+    - ``direction`` — ``"LONG"`` or ``"SHORT"``.
+    - ``quantity`` — always positive (direction encodes sign).
+    - ``entry_price`` — settled at open.
+    - ``latest_close`` — most-recent mark; ``None`` until the
+      next tick records one.
+    - ``unrealized_pnl_pct`` — (latest − entry)/entry × 100,
+      negated for SHORT; ``None`` until ``latest_close`` is set.
+    - ``settlement_at`` — last business day of the entry month
+      (ISO-8601 UTC); the dashboard renders this as the
+      "next settlement" countdown.
+    - ``estimated_crd_fee`` — ``quantity × entry_price ×
+      carry_fee_rate_monthly``. Operator-visible total the CRD
+      will deduct on settlement day.
+    - ``auto_rollover`` — true when the position is set to roll
+      to next month at settlement.
+    """
+
+    instrument_symbol: str
+    direction: str
+    quantity: Decimal
+    entry_price: Decimal
+    settlement_at: datetime
+    estimated_crd_fee: Decimal
+    auto_rollover: bool = False
+    latest_close: Decimal | None = None
+    unrealized_pnl_pct: Decimal | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class InstrumentRow:
     """CR-026 (REQ_F_PAP_017 / REQ_SDD_PAP_009) — per-instrument
     state for the dashboard grid.
@@ -298,6 +333,12 @@ class PaperStateResponse:
     # is the first symbol in ``per_instrument`` (lex order); the
     # ``?pin=<symbol>`` query parameter overrides on click.
     pinned_symbol: str = ""
+    # CR-030 — SRD positions surfaced separately from the cash
+    # positions table so the operator sees the open SRD exposure
+    # + next-settlement-date + estimated CRD-fee summary. Empty
+    # tuple when no SRD positions are open.
+    srd_positions: tuple["SRDPositionRow", ...] = ()
+    srd_settlements_count: int = 0
 
     def __post_init__(self) -> None:
         if not str(self.account_id).strip():
