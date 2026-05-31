@@ -508,6 +508,65 @@ def test_fetch_live_bars_falls_back_to_cache_on_network_failure(
             raise AssertionError(f"expected cache fallback, got Err: {e}")
 
 
+def test_fetch_live_bars_overlap_fallback_returns_cached_prefix(
+    tmp_path: Path,
+) -> None:
+    """CR-023 / TC_DAT_C3_003 — when the cache covers
+    `[file_start, file_end]` with `file_end < key.end` AND the
+    network fetch raises ``TransientDownloadError``,
+    ``fetch_live_bars`` SHALL surface the cached prefix sliced
+    to the intersection via ``get_bars_overlap``. The previous
+    strict-envelope fallback would have returned Nothing →
+    network Err; CR-023 surfaces the cached prefix so the
+    paper-trading dashboard stays populated."""
+    # Cache covers Jan 1..Jan 5 (file_end = Jan 5).
+    bars = [
+        Bar(
+            at=_ts(2026, 1, d),
+            open=Decimal("100"),
+            high=Decimal("100"),
+            low=Decimal("100"),
+            close=Decimal("100"),
+            volume=Decimal("0"),
+        )
+        for d in range(2, 6)  # days 2..5
+    ]
+    cache = YFinanceCache(root=tmp_path)
+    seed_key = CacheKey(
+        symbol="ASML.AS",
+        timeframe="1d",
+        start=_ts(2026, 1, 1),
+        end=_ts(2026, 1, 5),
+    )
+    cache.put_bars(seed_key, bars)
+
+    def _fail(*_args: Any, **_kw: Any) -> Any:
+        raise TransientDownloadError("data:network:fake-timeout")
+
+    provider = YFinanceMarketDataProvider(
+        cache=cache,
+        currency=EUR,
+        allow_network=True,
+        bar_downloader=_fail,
+        backoff_sleep=_no_sleep,
+    )
+    # Query Jan 1..Jan 10 — key.end (Jan 10) is AFTER file_end
+    # (Jan 5). The strict-envelope path returns Nothing here; the
+    # overlap fallback returns the intersection (= the full
+    # cached prefix Jan 1..Jan 5).
+    res = provider.fetch_live_bars(
+        _stock(), Timeframe.D1, _ts(2026, 1, 1), _ts(2026, 1, 10)
+    )
+    match res:
+        case Ok(received):
+            assert received == bars
+        case Err(e):
+            raise AssertionError(
+                f"expected overlap fallback to surface the cached prefix, "
+                f"got Err: {e}"
+            )
+
+
 def test_fetch_live_bars_offline_uses_cache_only(tmp_path: Path) -> None:
     """``allow_network=False`` SHALL keep ``fetch_live_bars`` on the
     cache path (no network attempt) — operators that want strict

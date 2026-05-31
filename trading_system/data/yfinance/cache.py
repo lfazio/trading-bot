@@ -148,6 +148,71 @@ class YFinanceCache:
                     continue
         return Nothing()
 
+    def get_bars_overlap(self, key: CacheKey) -> Option[list[Bar]]:
+        """CR-023 (REQ_SDD_DAT_016) — third-pass overlap-tolerant
+        lookup. Used by ``YFinanceMarketDataProvider.fetch_live_bars``'s
+        network-failure fallback so the paper-trading runtime
+        surfaces the cached prefix when ``file_end < key.end``
+        instead of treating partial coverage as a miss.
+
+        Differs from :meth:`_envelope_lookup` in one bit only: the
+        predicate is ``file_end >= key.start and file_start <= key.end``
+        (intersection) rather than the strict envelope. The returned
+        bars are sliced to
+        ``max(file_start, key.start) <= bar.at <= min(file_end, key.end)``.
+
+        The widest-intersection file wins (largest
+        ``min(file_end, key.end) - max(file_start, key.start)``);
+        lexicographic filename order breaks ties. Older recorder
+        runs are inspected; corrupted files are skipped.
+
+        Backtest replay determinism (REQ_NF_DAT_001) is preserved:
+        ``Backtest.run()`` calls ``MarketDataProvider.bars()`` which
+        goes through ``get_bars`` (strict envelope) — this helper is
+        only invoked by the live-poll fallback path.
+        """
+        safe_symbol = key.symbol.replace("/", "_")
+        safe_tf = key.timeframe.replace("/", "_")
+        sym_tf_dir = self.root / safe_symbol / safe_tf
+        if not sym_tf_dir.exists():
+            return Nothing()
+        key_start = _as_utc(key.start)
+        key_end = _as_utc(key.end)
+        # Each candidate: (negative-intersection-width, filename, path,
+        # intersect_start, intersect_end). Negative width so sort
+        # returns widest first.
+        candidates: list[
+            tuple[int, str, Path, datetime, datetime]
+        ] = []
+        for path in sym_tf_dir.glob("*_bars.jsonl"):
+            window = _parse_filename_window(path.name)
+            if window is None:
+                continue
+            file_start, file_end = window
+            # Intersection predicate.
+            if file_end < key_start or file_start > key_end:
+                continue
+            intersect_start = max(file_start, key_start)
+            intersect_end = min(file_end, key_end)
+            width = int((intersect_end - intersect_start).total_seconds())
+            candidates.append(
+                (-width, path.name, path, intersect_start, intersect_end)
+            )
+        if not candidates:
+            return Nothing()
+        candidates.sort()
+        for _, _, path, intersect_start, intersect_end in candidates:
+            match self._read_jsonl_bars(path):
+                case Ok(bars):
+                    sliced = [
+                        b for b in bars
+                        if intersect_start <= _as_utc(b.at) <= intersect_end
+                    ]
+                    return Some(sliced)
+                case Err(_):
+                    continue
+        return Nothing()
+
     def put_bars(self, key: CacheKey, bars: list[Bar]) -> Result[None, str]:
         path = self._bars_path(key)
         path.parent.mkdir(parents=True, exist_ok=True)

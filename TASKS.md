@@ -590,13 +590,34 @@ stdlib `webui/` fallback still has placeholders.
 
 ### 5. CR-023 — Overlap-tolerant cache fallback
 
-- [ ] **CR-023 SRS / SDS / SDD / TP cascade** (status: ⚪
-      Proposed).
-- [ ] **`YFinanceCache.get_bars_overlap` helper** for the
-      fallback-only path so a paper poll under network outage
-      with `file_end < now()` still surfaces the cached prefix.
-- [ ] **`fetch_live_bars` fallback wired through the overlap
-      path** on network failure.
+- [x] **CR-023 SRS / SDS / SDD / TP cascade** ✅ DONE 2026-05-30
+      @ `<this commit>`. Wiki cascade stamped 2026-05-30 — SRS
+      REQ_F_PAP_002 amended (cached-only includes the prefix
+      case); SDS §3.3 amendment; SDD adds REQ_SDD_DAT_016; Test
+      Plan §3.15.3 adds TC_DAT_C3_001..003.
+- [x] **`YFinanceCache.get_bars_overlap` helper** ✅ DONE
+      2026-05-30 @ `<this commit>`. Third-pass overlap-tolerant
+      scan in `trading_system/data/yfinance/cache.py`. Returns
+      bars sliced to `max(file_start, key.start) <= bar.at <=
+      min(file_end, key.end)` from the widest-intersection file
+      (lex order breaks ties); Nothing() only when zero files
+      intersect. Used by the fallback-only path so backtest
+      replays keep REQ_NF_DAT_001 byte-equality via the strict
+      envelope.
+- [x] **`fetch_live_bars` fallback wired through the overlap
+      path** ✅ DONE 2026-05-30 @ `<this commit>`.
+      `trading_system/data/yfinance/provider.py` swaps the
+      network-failure fallback from `cache.get_bars(key)` to
+      `cache.get_bars_overlap(key)`. The cached prefix now
+      surfaces when `file_end < key.end` instead of returning
+      the network Err.
+- [x] **TC_DAT_C3_001..003 tests land** ✅ DONE 2026-05-30 @
+      `<this commit>`. 4 new tests at
+      `tests/data/yfinance/test_cache.py` +
+      `tests/data/yfinance/test_provider.py`: intersection
+      slice, non-intersecting Nothing(), widest-intersection
+      wins, fetch_live_bars overlap fallback returns the
+      cached prefix. Full suite 2 905 → 2 908.
 
 ### 6. Paper-trading session metadata persistence (CR-019 follow-up)
 

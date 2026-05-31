@@ -231,9 +231,16 @@ class YFinanceMarketDataProvider:
             # snapshot, so evict that entry.
             self._latest_cache.pop(sym, None)
             return net_res
-        # Network failed — graceful degradation to whatever the
-        # cache can serve (CR-021 range-aware lookup).
-        match self.cache.get_bars(key):
+        # Network failed — graceful degradation. CR-023 (REQ_SDD_DAT_016):
+        # the fallback uses the OVERLAP-tolerant lookup (not the strict
+        # envelope) so a cache covering `[file_start, file_end]` with
+        # `file_end < key.end` surfaces the cached prefix instead of
+        # returning the network Err. Operator-visible result: the
+        # paper-trading session keeps showing the most-recent cached
+        # bars instead of an empty dashboard. Backtest replays go
+        # through `bars()` which keeps using the strict envelope, so
+        # REQ_NF_DAT_001 replay determinism is preserved.
+        match self.cache.get_bars_overlap(key):
             case Some(bars) if bars:
                 return Ok(bars)
             case _:

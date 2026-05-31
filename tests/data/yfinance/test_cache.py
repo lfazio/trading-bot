@@ -331,6 +331,87 @@ class TestRangeAwareLookup:
             case _:
                 raise AssertionError("expected envelope hit on naïve key")
 
+    # -------------------------------------------------------------
+    # TC_DAT_C3_001..002 — overlap-tolerant lookup (CR-023)
+    # -------------------------------------------------------------
+
+    def test_overlap_lookup_returns_intersection_slice(
+        self, tmp_path: Path
+    ) -> None:
+        """REQ_SDD_DAT_016 / TC_DAT_C3_001 — cached `[Jan 1..Jan 10]`
+        queried for `[Jan 5..Jan 12]` SHALL return the bars sliced to
+        `[Jan 5..Jan 10]` (the intersection)."""
+        cache = YFinanceCache(root=tmp_path)
+        envelope_key = self._envelope_key(
+            datetime(2026, 1, 1, tzinfo=UTC),
+            datetime(2026, 1, 10, tzinfo=UTC),
+        )
+        # Bars on days 2..8 (within the envelope).
+        cache.put_bars(envelope_key, [_bar(d) for d in range(2, 9)])
+        # Query overlaps to the right.
+        wider = self._envelope_key(
+            datetime(2026, 1, 5, tzinfo=UTC),
+            datetime(2026, 1, 12, tzinfo=UTC),
+        )
+        match cache.get_bars_overlap(wider):
+            case Some(bars):
+                # Intersection is [Jan 5..Jan 10]; bars on days 5..8.
+                assert [b.at.day for b in bars] == [5, 6, 7, 8]
+            case _:
+                raise AssertionError("expected overlap hit")
+
+    def test_overlap_lookup_no_intersection_returns_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """REQ_SDD_DAT_016 / TC_DAT_C3_002 — non-intersecting query
+        SHALL return Nothing(). Distinguishes intersection from
+        envelope properly — partial coverage with gap is still a
+        miss."""
+        cache = YFinanceCache(root=tmp_path)
+        envelope_key = self._envelope_key(
+            datetime(2026, 1, 1, tzinfo=UTC),
+            datetime(2026, 1, 5, tzinfo=UTC),
+        )
+        cache.put_bars(envelope_key, [_bar(d) for d in range(2, 6)])
+        # Query is entirely after the cached envelope.
+        non_overlap = self._envelope_key(
+            datetime(2026, 1, 10, tzinfo=UTC),
+            datetime(2026, 1, 12, tzinfo=UTC),
+        )
+        assert cache.get_bars_overlap(non_overlap) == Nothing()
+
+    def test_overlap_lookup_picks_widest_intersection(
+        self, tmp_path: Path
+    ) -> None:
+        """REQ_SDD_DAT_016 — when multiple cached files intersect,
+        the file with the WIDEST intersection wins (so a partial
+        recorder run doesn't poison a longer cached run)."""
+        cache = YFinanceCache(root=tmp_path)
+        # Narrow envelope Jan 2..Jan 4 (intersection with query = Jan 3..Jan 4 ⇒ 2 days).
+        narrow_key = self._envelope_key(
+            datetime(2026, 1, 2, tzinfo=UTC),
+            datetime(2026, 1, 4, tzinfo=UTC),
+        )
+        # Wide envelope Jan 1..Jan 10 (intersection with query = Jan 3..Jan 8 ⇒ 6 days).
+        wide_key = self._envelope_key(
+            datetime(2026, 1, 1, tzinfo=UTC),
+            datetime(2026, 1, 10, tzinfo=UTC),
+        )
+        cache.put_bars(narrow_key, [_bar(3, close="999")])  # poisoned
+        cache.put_bars(wide_key, [_bar(d) for d in range(2, 9)])
+        # Query [Jan 3..Jan 8] overlaps both; widest intersection
+        # (6 days from wide_key) wins.
+        query = self._envelope_key(
+            datetime(2026, 1, 3, tzinfo=UTC),
+            datetime(2026, 1, 8, tzinfo=UTC),
+        )
+        match cache.get_bars_overlap(query):
+            case Some(bars):
+                # From the wide envelope ⇒ unpoisoned close.
+                assert all(b.close == Decimal("100") for b in bars)
+            case _:
+                raise AssertionError("expected widest intersection hit")
+
     def test_naive_datetime_in_cache_normalised_on_read(
         self, tmp_path: Path
     ) -> None:
