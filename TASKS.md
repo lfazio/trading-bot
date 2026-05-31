@@ -799,10 +799,40 @@ stdlib `webui/` fallback still has placeholders.
       REJECTED / cross-account REJECTED / missing-repo, list
       per-account scoping, view rendering / login redirect /
       seeded-revocation rendering.
-- [ ] **Multi-process revocation propagation** — v1 cache is
-      process-local + re-loaded on every persistence write.
-      Multi-process deployments need an SSE / database-notify
-      channel; not blocking single-container deployments.
+- [x] **Multi-process revocation propagation** ✅ DONE
+      2026-05-31 @ `<this commit>`. Re-scoped after
+      investigation. The v1 design described in the original
+      bullet (process-local in-memory cache + re-loaded on
+      every persistence write) was aspirational — the actual
+      shipped code in `OperatorTokenRevocationRepository` does
+      a SELECT on every `is_revoked()` call, with no cache
+      layer. This is correct under SQLite WAL semantics:
+      committed revocations from any process are immediately
+      visible to readers in other connections (same host,
+      shared SQLite file). Single-host multi-process
+      deployments (the v1 target) get cross-process
+      revocation propagation for free.
+      Two real gaps surfaced + closed in this commit:
+      1. **Verifier wire-up gap.** `default_app()` was
+         constructing the `AccountScopedTokenVerifier` WITHOUT
+         passing `revocation_lookup` — revoked tokens still
+         passed auth checks. Wired the repo into the verifier
+         so the auth path consults `is_revoked()` BEFORE the
+         TTL check (REQ_F_TOK_002 / REQ_SDD_TOK_002).
+      2. **Multi-process test gap.** Added two new tests at
+         `tests/persistence/test_token_revocations_repository.py`:
+         `test_multi_process_revocation_visible_via_shared_sqlite`
+         (two repos on shared SQLite file see each other's
+         revocations immediately via WAL) +
+         `test_multi_process_revoke_idempotent_across_connections`
+         (concurrent duplicate revocations land exactly once).
+      Repository docstring updated to remove the aspirational
+      "in-memory set warmed at startup + re-loaded after every
+      write" wording and document the actual SELECT-on-every-
+      call + SQLite-WAL approach. Multi-HOST propagation
+      (SSE / database-NOTIFY) remains a future-CR scope —
+      SQLite is single-host by design, so the trading-bot's v1
+      deployment target doesn't need it.
 
 ### 8. Known-limitation drills (Validation.md §5)
 

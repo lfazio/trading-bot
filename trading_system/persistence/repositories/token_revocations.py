@@ -1,10 +1,23 @@
 """``OperatorTokenRevocationRepository`` — CR-024 persistence.
 
-Backs the in-memory ``TokenRevocationList`` consumed by
+The SQLite ``operator_token_revocations`` table is the source
+of truth for which ``(account_id, jti)`` tuples are revoked.
 ``AccountScopedTokenVerifier.verify`` (REQ_F_TOK_002 /
-REQ_SDD_TOK_002). The table is the system of record across
-process restarts; the verifier's runtime check is the in-memory
-set warmed at startup + re-loaded after every write.
+REQ_SDD_TOK_002) consults this repository's ``is_revoked``
+on every verify — there is no in-memory cache layer. The
+SELECT-on-every-call shape keeps the design simple and is
+correct under SQLite WAL semantics: committed revocations
+in one connection are immediately visible to readers on
+other connections (same host, shared SQLite file).
+
+This is what gives single-host multi-process deployments
+(multiple webapp workers behind a reverse proxy) the
+cross-process revocation propagation guarantee without any
+extra channel — every worker reads through the same WAL
+log. Multi-host deployments are out of scope for v1
+(SQLite is single-host); the future-CR path for multi-host
+revocation propagation would add an SSE / database-NOTIFY
+channel + a process-local cache.
 
 REQ refs:
 - REQ_F_TOK_002 — TokenRevocationList persisted.

@@ -213,3 +213,110 @@ def test_token_revocation_dataclass_rejects_empty_jti() -> None:
             jti="",
             revoked_at=datetime(2026, 5, 26, tzinfo=UTC),
         )
+
+
+# ---------------------------------------------------------------------------
+# Multi-process correctness — SQLite WAL propagation
+# ---------------------------------------------------------------------------
+
+
+def test_multi_process_revocation_visible_via_shared_sqlite(
+    tmp_path: Path,
+) -> None:
+    """Two ``OperatorTokenRevocationRepository`` instances backed
+    by the same SQLite file SHALL see each other's revocations
+    immediately.
+
+    Single-host multi-process deployments (multiple webapp
+    workers behind a reverse proxy on the same machine) rely on
+    SQLite WAL semantics for cross-process revocation
+    propagation: committed writes are visible to readers in
+    other connections on their next query, with no
+    process-local cache to invalidate. This test pins that
+    contract — the v1 design does not need an SSE / DB-NOTIFY
+    channel for single-host multi-process scenarios.
+    """
+    db_path = tmp_path / "shared.sqlite"
+    # Two independent connections backing two independent repo
+    # instances — same shape as two webapp worker processes
+    # opening their own Connection at boot.
+    conn_a = Connection.open(db_path).unwrap()
+    MigrationRunner(conn=conn_a, migrations_dir=_BUNDLED_MIGRATIONS).run()
+    repo_a = OperatorTokenRevocationRepository(conn=conn_a)
+
+    conn_b = Connection.open(db_path).unwrap()
+    repo_b = OperatorTokenRevocationRepository(conn=conn_b)
+    try:
+        # Sanity: neither repo sees the jti yet.
+        assert repo_a.is_revoked(
+            account_id=AccountId("alpha"), jti="cross-proc-jti"
+        ).unwrap() is False
+        assert repo_b.is_revoked(
+            account_id=AccountId("alpha"), jti="cross-proc-jti"
+        ).unwrap() is False
+
+        # Process A revokes.
+        repo_a.revoke(
+            account_id=AccountId("alpha"),
+            jti="cross-proc-jti",
+            now=datetime(2026, 5, 26, 12, tzinfo=UTC),
+        )
+
+        # Process B's next read SHALL see it (WAL propagates the
+        # committed write without explicit invalidation).
+        check = repo_b.is_revoked(
+            account_id=AccountId("alpha"), jti="cross-proc-jti"
+        )
+        assert isinstance(check, Ok)
+        assert check.value is True, (
+            "SQLite WAL did NOT propagate the revocation across "
+            "connections — multi-process correctness is broken"
+        )
+
+        # Process A's own connection STILL sees the revocation
+        # (idempotent read).
+        again = repo_a.is_revoked(
+            account_id=AccountId("alpha"), jti="cross-proc-jti"
+        )
+        assert isinstance(again, Ok) and again.value is True
+    finally:
+        conn_a.close()
+        conn_b.close()
+
+
+def test_multi_process_revoke_idempotent_across_connections(
+    tmp_path: Path,
+) -> None:
+    """Two processes revoking the same ``(account_id, jti)``
+    SHALL both succeed — the integrity-error path in
+    ``revoke()`` swallows the duplicate-PK collision so neither
+    process sees a hard error."""
+    db_path = tmp_path / "shared.sqlite"
+    conn_a = Connection.open(db_path).unwrap()
+    MigrationRunner(conn=conn_a, migrations_dir=_BUNDLED_MIGRATIONS).run()
+    repo_a = OperatorTokenRevocationRepository(conn=conn_a)
+
+    conn_b = Connection.open(db_path).unwrap()
+    repo_b = OperatorTokenRevocationRepository(conn=conn_b)
+    try:
+        first = repo_a.revoke(
+            account_id=AccountId("alpha"),
+            jti="dup-jti",
+            now=datetime(2026, 5, 26, 12, tzinfo=UTC),
+        )
+        second = repo_b.revoke(
+            account_id=AccountId("alpha"),
+            jti="dup-jti",
+            now=datetime(2026, 5, 26, 12, tzinfo=UTC),
+        )
+        assert isinstance(first, Ok)
+        assert isinstance(second, Ok)
+        # The revocation lands exactly once — list_all SHALL
+        # return one row regardless of which repo did the
+        # original insert.
+        rows = repo_a.list_all(account_id=AccountId("alpha")).unwrap()
+        assert len(rows) == 1
+        assert rows[0].jti == "dup-jti"
+    finally:
+        conn_a.close()
+        conn_b.close()

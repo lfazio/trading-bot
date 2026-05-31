@@ -318,9 +318,21 @@ def default_app() -> FastAPI:
             "TRADING_BOT_OPERATOR_SECRET before booting the webapp"
         )
     ttl_seconds = int(os.environ.get("TRADING_BOT_TOKEN_TTL_SECONDS", "86400"))
+    # CR-024 — wire the revocation repo into the verifier so the
+    # auth path consults `is_revoked(account_id, jti)` BEFORE the
+    # TTL check (REQ_F_TOK_002 / REQ_SDD_TOK_002). The repo is
+    # SQLite-backed; multi-process single-host deployments rely on
+    # SQLite WAL semantics — committed revocations from any
+    # process are visible to all other processes on their next
+    # `is_revoked` call. Multi-host deployments are not supported
+    # by the v1 persistence target (SQLite is per-host).
+    operator_token_revocation_repo = (
+        _operator_token_revocation_repo_for_default_app()
+    )
     verifier = AccountScopedTokenVerifier(
         secret=secret_env.encode("utf-8"),
         ttl_seconds=ttl_seconds,
+        revocation_lookup=operator_token_revocation_repo,
     )
     workers = int(os.environ.get("TRADING_BOT_JOB_WORKERS", "2"))
     queue = InProcessJobQueue(workers=workers)
@@ -389,9 +401,10 @@ def default_app() -> FastAPI:
     # and the runtime keeps ticking without the fan-out.
     instrument_bar_repository = _instrument_bar_repo_for_default_app()
     paper_session_repository = _paper_session_repo_for_default_app()
-    operator_token_revocation_repo = (
-        _operator_token_revocation_repo_for_default_app()
-    )
+    # operator_token_revocation_repo was computed earlier in this
+    # function so the verifier could be wired with it; reuse the
+    # same instance here so the rotation/revocation route + the
+    # auth-check share one repo (one Connection per process).
     return create_app(
         WebappState(
             token_verifier=verifier,
