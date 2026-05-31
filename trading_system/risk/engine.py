@@ -87,9 +87,19 @@ class RiskEngine:
 
         # 4. Class-cap (sum of buckets that map to the instrument's
         #    class — REQ_F_RSK_002 / REQ_SDD_TYP_004).
+        # CR-030 (REQ_F_SRD_008 / REQ_SDD_SRD_009): the
+        # `exposure_pct_including_srd` variant adds SRD notional to
+        # the STOCK bucket so a 5:1-levered SRD position contributes
+        # at its full notional (not its zero cash deployed) to the
+        # per-phase ceiling check.
         cls = proposal.instrument.cls
         buckets = buckets_for_class(cls)
-        cur_class_exposure = sum((portfolio.exposure_pct(b) for b in buckets), start=Decimal(0))
+        exposure_fn = getattr(
+            portfolio, "exposure_pct_including_srd", portfolio.exposure_pct
+        )
+        cur_class_exposure = sum(
+            (exposure_fn(b) for b in buckets), start=Decimal(0)
+        )
         cls_cap = sum(
             (pc.allocation_targets.get(b, Decimal(0)) for b in buckets),
             start=Decimal(0),

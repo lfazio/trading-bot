@@ -286,6 +286,34 @@ class Portfolio:
             total += pos.quantity * price
         return total
 
+    def exposure_pct_including_srd(
+        self, bucket: AllocationBucket
+    ) -> Decimal:
+        """REQ_F_SRD_008 / REQ_SDD_SRD_009 — exposure_pct extended
+        to count SRD notional too.
+
+        v1 conservative choice (REQ_F_SRD_008): SRD positions
+        always contribute to ``AllocationBucket.STOCK`` regardless
+        of the instrument's underlying class. Operators who want
+        a separate SRD bucket request it via a later CR; today
+        the existing STOCK budget covers the leveraged exposure.
+
+        Returns the same share-of-equity fraction the existing
+        ``exposure_pct`` returns, just augmented by SRD notional
+        when ``bucket == STOCK``. For non-STOCK buckets the
+        result equals ``exposure_pct(bucket)`` unchanged.
+        """
+        base = self.exposure_pct(bucket)
+        if bucket is not AllocationBucket.STOCK:
+            return base
+        srd = self.srd_notional()
+        if srd <= 0:
+            return base
+        eq = self.equity_after_tax().amount
+        if eq <= 0:
+            return base
+        return base + srd / eq
+
     def apply_srd_open(self, order: Order, trade: Trade) -> None:
         """REQ_F_SRD_003 / REQ_SDD_SRD_004 — open a new SRDPosition
         from an SRD_LONG / SRD_SHORT fill.

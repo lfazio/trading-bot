@@ -399,6 +399,59 @@ def test_srd_coverage_formula_includes_held_equity_at_haircut():
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# TC_SRD_011 — phase-cap accounting against SRD notional
+# ---------------------------------------------------------------------------
+
+
+def test_exposure_pct_including_srd_counts_srd_notional_for_stock_bucket():
+    """REQ_F_SRD_008 / REQ_SDD_SRD_009 — SRD positions contribute
+    to the STOCK bucket's exposure at FULL NOTIONAL (not cash
+    deployed). A 5:1 levered SRD position counts at €5 000 even
+    though no cash was deployed at open."""
+    from trading_system.models.phase import AllocationBucket
+
+    set_srd_eligible_instruments({_AC.id})
+    try:
+        # Portfolio: €10 000 cash; 1 SRD position @ €50 × 100 ⇒
+        # notional €5 000. equity_after_tax = €10 000 (no
+        # unrealized PnL since marked at entry price).
+        portfolio = Portfolio.empty(_eur("10000"))
+        order = _srd_order(instrument=_AC, qty=Decimal(100))
+        trade = _fill(qty=Decimal(100), price=Decimal(50))
+        portfolio.apply_srd_open(order, trade)
+        portfolio.mark({_AC.id: Decimal(50)})
+
+        # exposure_pct(STOCK) — without SRD inclusion — is 0
+        # because no cash position exists.
+        assert portfolio.exposure_pct(AllocationBucket.STOCK) == Decimal(0)
+        # exposure_pct_including_srd(STOCK) = SRD notional / equity =
+        # 5 000 / 10 000 = 0.50.
+        assert (
+            portfolio.exposure_pct_including_srd(AllocationBucket.STOCK)
+            == Decimal("0.5")
+        )
+        # Non-STOCK buckets unchanged (always 0 here).
+        assert (
+            portfolio.exposure_pct_including_srd(AllocationBucket.TURBO)
+            == Decimal(0)
+        )
+    finally:
+        set_srd_eligible_instruments(())
+
+
+def test_exposure_pct_including_srd_falls_back_when_no_srd_positions():
+    """REQ_SDD_SRD_009 — when no SRD positions exist, the
+    function returns the same value as ``exposure_pct``."""
+    from trading_system.models.phase import AllocationBucket
+
+    portfolio = Portfolio.empty(_eur("10000"))
+    assert (
+        portfolio.exposure_pct_including_srd(AllocationBucket.STOCK)
+        == portfolio.exposure_pct(AllocationBucket.STOCK)
+    )
+
+
 def test_default_thresholds_match_documented_values():
     """REQ_F_SRD_004 — defaults pinned at 25%/30% with 50%
     equity-haircut."""
