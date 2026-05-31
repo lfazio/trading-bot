@@ -94,15 +94,16 @@ jobs:
         run: |
           # Skip the docker / CVE-scan markers — those run in the
           # dedicated `docker.yaml` workflow on `workflow_dispatch`.
-          # The exclusion via `-m 'not docker and not cve_scan'`
-          # honours the markers registered in pyproject.toml.
+          # Also skip the wallclock-marked tests (multi-year drill,
+          # long-horizon walk-forward) — they're operator-on-demand
+          # validation drills (Validation.md §5), not per-PR gates.
           pytest \
             tests/ \
             --ignore=tests/webapp/test_container_runtime_smoke.py \
             --ignore=tests/webapp/test_container_cve_scan.py \
             --ignore=tests/webapp/test_container_reproducibility.py \
             -q --no-header --strict-markers \
-            -m "not docker and not cve_scan"
+            -m "not docker and not cve_scan and not wallclock"
 
       - name: Upload pytest cache on failure
         if: failure()

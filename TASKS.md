@@ -708,9 +708,23 @@ stdlib `webui/` fallback still has placeholders.
 
 ### 8. Known-limitation drills (Validation.md §5)
 
-- [ ] **Phase-5+ multi-year mock-data drill** — backtest replay
-      across the full 7-year regime-crossing window; bundled
-      fixture is one year.
+- [x] **Phase-5+ multi-year mock-data drill** ✅ DONE 2026-05-31
+      @ `<this commit>`. New
+      `tests/integration/test_multi_year_regime_crossing.py`
+      ships three tests: (1) per-segment classification across
+      a 7-year synthetic series (BULL → BEAR → BULL) — runs in
+      default CI; (2) per-tick traversal asserting ≥ 2
+      TransitionEvents with BULL→BEAR + BEAR→BULL pairs
+      captured; (3) paired-replay determinism (REQ_NF_DET_001 /
+      REQ_NF_REP_001) — two independent walks of the same
+      7-year fixture produce tuple-equal TransitionEvent
+      sequences. Tests 2-3 carry `@pytest.mark.wallclock` so
+      they're excluded from the default CI matrix (they sample
+      the detector every 7 bars across 1 800 bars; the per-tick
+      growing-window re-eval is O(n²) and runs ~25 s each).
+      Operators run them on-demand via
+      `pytest -m wallclock tests/integration/test_multi_year_regime_crossing.py`.
+      CI workflow updated to exclude the wallclock marker.
 - [ ] **Multi-account live-runtime drill** — Phase-8 C8 covers
       the gate semantics; the runtime fan-out under a 3-account
       live tick is desk-pinned.
