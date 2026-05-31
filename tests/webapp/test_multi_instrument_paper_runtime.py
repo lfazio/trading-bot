@@ -813,6 +813,216 @@ def test_runtime_fans_out_polled_bars_to_instrument_bar_repo():
     }
 
 
+def test_runtime_marks_portfolio_at_universe_wide_prices_per_tick():
+    """REQ_F_PAP_018 / REQ_SDD_PAP_010 — multi-instrument tick
+    fan-out. _apply_bar SHALL fan ``portfolio.mark`` out across
+    every universe member so open positions in any symbol get
+    repriced every tick (not just the primary instrument)."""
+    from dataclasses import dataclass, field
+    from datetime import datetime, UTC
+
+    from trading_system.models.identifiers import AccountId, StrategyId
+    from trading_system.models.money import Money
+    from trading_system.models.phase import (
+        AllocationBucket,
+        MarketRegime,
+        PhaseConstraints,
+    )
+    from trading_system.webapp.runtimes.paper_trading import (
+        PAPER_ACCOUNT_PREFIX,
+        PaperTradingSession,
+        build_runtime,
+    )
+
+    provider = _StubProvider(
+        payload={
+            "AAA": Ok(_bar("10.00")),
+            "BBB": Ok(_bar("20.00")),
+            "CCC": Ok(_bar("30.00")),
+        }
+    )
+
+    cap = Money(amount=Decimal("10000"), currency=Currency.EUR)
+    session = PaperTradingSession(
+        account_id=AccountId(f"{PAPER_ACCOUNT_PREFIX}2026-05-30T12:00:00+00:00"),
+        universe="multi-test",
+        strategy_id=StrategyId("noop"),
+        starting_capital=cap,
+        started_at=datetime(2026, 5, 30, 12, tzinfo=UTC),
+    )
+    constraints = PhaseConstraints(
+        max_positions=3,
+        max_trades_per_month=4,
+        allocation_targets={
+            AllocationBucket.STOCK: Decimal("0.90"),
+            AllocationBucket.TACTICAL: Decimal("0.10"),
+        },
+        turbo_exposure_max=Decimal("0"),
+        risk_per_trade_band=(Decimal("0.01"), Decimal("0.02")),
+        max_drawdown=Decimal("0.15"),
+    )
+
+    class _Strat:
+        id = StrategyId("noop")
+
+        def evaluate(self, _state):
+            return []
+
+    @dataclass(slots=True)
+    class _SrcStub:
+        _emitted: bool = False
+
+        def next_bar(self):
+            from trading_system.result import Nothing, Some
+            if self._emitted:
+                return Ok(Nothing())
+            self._emitted = True
+            return Ok(Some(_bar("10.00")))
+
+        def latest_cached(self):
+            from trading_system.result import Some
+            return Ok(Some(_bar("10.00")))
+
+    @dataclass
+    class _SpyPortfolio:
+        """Wraps the real portfolio + records every mark call so
+        the test can assert which instrument_ids got priced."""
+
+        inner: object
+        mark_calls: list = field(default_factory=list)
+
+        def __getattr__(self, name):
+            return getattr(self.inner, name)
+
+        def mark(self, prices):
+            self.mark_calls.append(dict(prices))
+            return self.inner.mark(prices)
+
+    res = build_runtime(
+        session=session,
+        instrument=_stock("AAA"),
+        strategy=_Strat(),
+        bar_source=_SrcStub(),
+        phase_constraints=constraints,
+        regime=MarketRegime.SIDEWAYS,
+    )
+    assert isinstance(res, Ok)
+    runtime = res.value
+    runtime.universe = (_stock("AAA"), _stock("BBB"), _stock("CCC"))
+    runtime.market_data_provider = provider
+    spy = _SpyPortfolio(inner=runtime.portfolio)
+    runtime.portfolio = spy  # type: ignore[assignment]
+
+    tick_result = runtime.tick_once()
+    assert isinstance(tick_result, Ok)
+    assert len(spy.mark_calls) == 1, spy.mark_calls
+    marked = spy.mark_calls[0]
+    # Every universe member's instrument_id appears in the mark map.
+    assert {str(iid) for iid in marked} == {"AAA.AS", "BBB.AS", "CCC.AS"}
+    assert marked[InstrumentId("AAA.AS")] == Decimal("10.00")
+    assert marked[InstrumentId("BBB.AS")] == Decimal("20.00")
+    assert marked[InstrumentId("CCC.AS")] == Decimal("30.00")
+
+
+def test_legacy_single_instrument_runtime_marks_only_primary():
+    """REQ_SDD_PAP_006 — legacy single-instrument sessions
+    (no market_data_provider OR degenerate universe) fall through
+    to the primary-instrument-only mark. Backwards-compat."""
+    from dataclasses import dataclass, field
+    from datetime import datetime, UTC
+
+    from trading_system.models.identifiers import AccountId, StrategyId
+    from trading_system.models.money import Money
+    from trading_system.models.phase import (
+        AllocationBucket,
+        MarketRegime,
+        PhaseConstraints,
+    )
+    from trading_system.webapp.runtimes.paper_trading import (
+        PAPER_ACCOUNT_PREFIX,
+        PaperTradingSession,
+        build_runtime,
+    )
+
+    cap = Money(amount=Decimal("10000"), currency=Currency.EUR)
+    session = PaperTradingSession(
+        account_id=AccountId(f"{PAPER_ACCOUNT_PREFIX}2026-05-30T12:00:00+00:00"),
+        universe="single-test",
+        strategy_id=StrategyId("noop"),
+        starting_capital=cap,
+        started_at=datetime(2026, 5, 30, 12, tzinfo=UTC),
+    )
+    constraints = PhaseConstraints(
+        max_positions=3,
+        max_trades_per_month=4,
+        allocation_targets={
+            AllocationBucket.STOCK: Decimal("0.90"),
+            AllocationBucket.TACTICAL: Decimal("0.10"),
+        },
+        turbo_exposure_max=Decimal("0"),
+        risk_per_trade_band=(Decimal("0.01"), Decimal("0.02")),
+        max_drawdown=Decimal("0.15"),
+    )
+
+    class _Strat:
+        id = StrategyId("noop")
+
+        def evaluate(self, _state):
+            return []
+
+    @dataclass(slots=True)
+    class _SrcStub:
+        _emitted: bool = False
+
+        def next_bar(self):
+            from trading_system.result import Nothing, Some
+            if self._emitted:
+                return Ok(Nothing())
+            self._emitted = True
+            return Ok(Some(_bar("42.00")))
+
+        def latest_cached(self):
+            from trading_system.result import Some
+            return Ok(Some(_bar("42.00")))
+
+    @dataclass
+    class _SpyPortfolio:
+        inner: object
+        mark_calls: list = field(default_factory=list)
+
+        def __getattr__(self, name):
+            return getattr(self.inner, name)
+
+        def mark(self, prices):
+            self.mark_calls.append(dict(prices))
+            return self.inner.mark(prices)
+
+    res = build_runtime(
+        session=session,
+        instrument=_stock("AAA"),
+        strategy=_Strat(),
+        bar_source=_SrcStub(),
+        phase_constraints=constraints,
+        regime=MarketRegime.SIDEWAYS,
+    )
+    assert isinstance(res, Ok)
+    runtime = res.value
+    # Degenerate universe (only the primary instrument) — legacy path.
+    spy = _SpyPortfolio(inner=runtime.portfolio)
+    runtime.portfolio = spy  # type: ignore[assignment]
+    # market_data_provider stays None; universe stays the
+    # build_runtime-constructed degenerate single-element tuple.
+    assert runtime.market_data_provider is None
+    assert len(runtime.universe) == 1
+
+    tick_result = runtime.tick_once()
+    assert isinstance(tick_result, Ok)
+    assert len(spy.mark_calls) == 1
+    marked = spy.mark_calls[0]
+    # Only the primary instrument was marked (no fan-out).
+    assert set(marked) == {InstrumentId("AAA.AS")}
+
+
 def test_runtime_skips_fan_out_when_repo_unwired():
     """CR-029 — None slot ⇒ no repository calls. Defensive: a
     runtime without the slot SHALL operate exactly like the

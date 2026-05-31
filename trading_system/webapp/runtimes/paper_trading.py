@@ -391,18 +391,24 @@ class PaperTradingRuntime:
             for stock in self.universe
         )
 
-    def _persist_universe_bars(self, at: datetime) -> str | None:
-        """CR-029 (REQ_F_PER_012 / REQ_SDD_PER_012) — poll the
-        wrapped MarketDataProvider once per universe symbol and
-        persist the rows through ``self.instrument_bar_repo``.
+    def _poll_universe_bars(self) -> list[tuple[Any, Bar]]:
+        """Poll the wrapped MarketDataProvider once per universe
+        symbol; return the populated ``(instrument_id, bar)`` rows.
 
-        Returns ``None`` on success; a categorised
-        ``"paper:persist_bars:<reason>"`` string when the
-        repository surfaced an Err. NEVER raises — defensive at
-        every layer so the tick still completes.
+        The result feeds two fan-out paths inside ``_apply_bar``:
+        (a) ``portfolio.mark(...)`` so positions in every universe
+        member get repriced per tick — REQ_F_PAP_018's per-tick
+        mark fan-out; (b) ``instrument_bar_repo.append_bars(...)``
+        so the persistence trail covers every symbol — CR-029
+        REQ_F_PER_012. NEVER raises — defensive per-symbol so a
+        single quote failure doesn't break the tick.
+
+        Returns ``[]`` when no MarketDataProvider is wired or
+        every per-symbol poll failed; callers SHALL skip the
+        fan-out work on an empty result.
         """
-        if self.market_data_provider is None or self.instrument_bar_repo is None:
-            return None
+        if self.market_data_provider is None:
+            return []
         rows: list[tuple[Any, Bar]] = []
         for stock in self.universe:
             try:
@@ -413,10 +419,24 @@ class PaperTradingRuntime:
                 bar = result.value
                 if isinstance(bar, Bar):
                     rows.append((stock.id, bar))
-        if not rows:
-            del at  # unused on the empty path
+        return rows
+
+    def _persist_universe_bars(
+        self, rows: list[tuple[Any, Bar]]
+    ) -> str | None:
+        """CR-029 (REQ_F_PER_012 / REQ_SDD_PER_012) — persist the
+        polled rows through ``self.instrument_bar_repo``.
+
+        ``rows`` is the output of ``_poll_universe_bars`` shared
+        with the mark fan-out so the universe-wide poll runs at
+        most once per tick.
+
+        Returns ``None`` on success; a categorised
+        ``"paper:persist_bars:<reason>"`` string when the
+        repository surfaced an Err. NEVER raises.
+        """
+        if self.instrument_bar_repo is None or not rows:
             return None
-        del at
         account_id = self.session.account_id
         try:
             persist_result = self.instrument_bar_repo.append_bars(  # type: ignore[attr-defined]
@@ -622,26 +642,43 @@ class PaperTradingRuntime:
         self.broker.process_tick(tick)
         self._last_tick_at = tick.at
 
-        # 2. Mark portfolio at the latest price.
-        self.portfolio.mark({self.instrument.id: tick.last})
-
-        # 2b. CR-029 (REQ_F_PER_012 / REQ_SDD_PER_012) — persist
-        # every universe symbol's bar this tick into the
-        # ``instrument_bars`` table when the repository slot is
-        # wired. Fan-out runs BEFORE strategy evaluation so a
-        # strategy that consults the persisted history sees the
-        # just-polled row. Persistence failures DO NOT abort the
-        # tick — the rest of the engine runs + the Err surfaces
-        # as the tick's outcome so the dashboard's banner can
-        # report "saving disabled".
-        persist_err: str | None = None
+        # 2. CR-026 (REQ_F_PAP_018 / REQ_SDD_PAP_010) + CR-029
+        # (REQ_F_PER_012 / REQ_SDD_PER_012) — poll the universe
+        # once per tick + fan the result out to both the
+        # portfolio's mark (so every universe member's open
+        # position gets repriced) and the instrument-bars
+        # repository (so the persistence trail covers every
+        # symbol). Multi-instrument universes consume the
+        # universe-wide poll; single-instrument legacy sessions
+        # fall through to the primary-instrument mark below.
+        universe_rows: list[tuple[Any, Bar]] = []
         if (
-            self.instrument_bar_repo is not None
+            self.market_data_provider is not None
             and self.universe
             and len(self.universe) > 1
-            and self.market_data_provider is not None
         ):
-            persist_err = self._persist_universe_bars(tick.at)
+            universe_rows = self._poll_universe_bars()
+
+        # 2a. Mark portfolio at the latest universe-wide prices.
+        # Multi-instrument: every universe member's last close
+        # feeds the mark map. Single-instrument: just the primary.
+        if universe_rows:
+            mark_prices = {
+                instrument_id: row_bar.close
+                for instrument_id, row_bar in universe_rows
+            }
+        else:
+            mark_prices = {self.instrument.id: tick.last}
+        self.portfolio.mark(mark_prices)
+
+        # 2b. Persist the universe-wide poll when the repo is
+        # wired. Persistence failures DO NOT abort the tick —
+        # the rest of the engine runs + the Err surfaces as the
+        # tick's outcome so the dashboard's banner can report
+        # "saving disabled".
+        persist_err: str | None = None
+        if self.instrument_bar_repo is not None and universe_rows:
+            persist_err = self._persist_universe_bars(universe_rows)
 
         # 3. Evaluate the strategy (only when a MarketDataProvider
         # is wired — strategies that consult historical bars need

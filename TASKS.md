@@ -581,14 +581,32 @@ stdlib `webui/` fallback still has placeholders.
       `tests/webapp/test_multi_instrument_paper_runtime.py`. All 9
       new REQs (REQ_F_PAP_015..018 + REQ_SDD_PAP_006..010) at TEST.
       Full suite 2 831 → 2 841.
-- [ ] **Multi-instrument tick fan-out + dashboard grid template**
-      — the SSE payload contract is shipped; the runtime's
-      per-tick MarketState construction + dashboard grid render
-      (REQ_F_PAP_018 / REQ_SDD_PAP_010 implementation surface)
-      lands in a follow-up slice. v1 ships the algorithmic core
-      (universe-wide ranking + bar-source fan-out + schema
-      extension) so the next slice is purely tick-loop + template
-      wiring.
+- [x] **Multi-instrument tick fan-out + dashboard grid template**
+      ✅ DONE 2026-05-31 @ `<this commit>`. REQ_F_PAP_018 /
+      REQ_SDD_PAP_010 — `_apply_bar` now fans
+      `portfolio.mark(...)` out across every universe member
+      (not just the primary instrument), so open positions in
+      any universe symbol get repriced per tick. The refactor:
+      extracted `_poll_universe_bars()` as the shared poll
+      helper; `_apply_bar` consumes its output for both
+      (a) `portfolio.mark` with `{instrument_id: close}` across
+      every successful poll, and (b) the existing CR-029
+      `instrument_bar_repo.append_bars(...)` persistence
+      fan-out — the universe-wide poll runs at most once per
+      tick. Legacy single-instrument sessions (no
+      `market_data_provider` OR degenerate universe) fall
+      through to the primary-instrument-only mark for
+      back-compat. The dashboard's per-instrument grid +
+      pin-to-detail-chart JS already shipped with the CR-026
+      schema slice; this fan-out closes the runtime gap so the
+      universe rows show fresh prices on every poll. 2 new
+      tests at `tests/webapp/test_multi_instrument_paper_runtime.py`
+      (`test_runtime_marks_portfolio_at_universe_wide_prices_per_tick`
+      + `test_legacy_single_instrument_runtime_marks_only_primary`)
+      assert the mark fan-out + the legacy single-instrument
+      back-compat. Full multi-instrument runtime suite 18 → 20
+      tests; broader webapp + conformance suite stays at 581
+      passing.
 
 ### 4d. CR-028 — Technical-indicator library for the quant layer
 
