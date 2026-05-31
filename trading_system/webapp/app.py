@@ -121,6 +121,12 @@ class WebappState:
     # tick fans out polled bars to the repository + the GET
     # /api/accounts/{aid}/bars route reads them back.
     instrument_bar_repository: Any | None = None
+    # CR-019 §6 follow-up — paper-session metadata slot. When
+    # wired, the wizard writes the session's inputs (universe /
+    # strategy / instrument / starting capital / bar source) on
+    # finish + the recovery wizard reads them back for one-click
+    # resume after a webapp restart.
+    paper_session_repository: Any | None = None
     templates: Jinja2Templates = field(init=False)
 
     def __post_init__(self) -> None:
@@ -211,6 +217,8 @@ def create_app(state: WebappState) -> FastAPI:
     app.state.improvement_report_lookup = state.improvement_report_lookup
     # CR-029 — instrument-bar repository slot.
     app.state.instrument_bar_repository = state.instrument_bar_repository
+    # CR-019 §6 — paper-session metadata slot.
+    app.state.paper_session_repository = state.paper_session_repository
 
     # Routers.
     app.include_router(health_router)
@@ -315,6 +323,12 @@ def default_app() -> FastAPI:
     # account_ids are surfaced as a one-line breadcrumb in the
     # inbox so the operator notices them on next paint.
     portfolio_repo = _portfolio_repo_for_resume()
+    # CR-019 §6 — once we know the paper-session metadata is
+    # available, the boot-resume inbox entries can carry the
+    # universe + strategy + instrument so the operator sees what
+    # was running before the restart (instead of just an opaque
+    # account_id).
+    session_metadata_repo = _paper_session_repo_for_default_app()
     if portfolio_repo is not None:
         from datetime import UTC, datetime as _dt
 
@@ -324,6 +338,19 @@ def default_app() -> FastAPI:
         result = registry.resume_from_persistence(portfolio_repo)
         if isinstance(result, _Ok) and result.value:
             for aid in result.value:
+                meta_line = ""
+                if session_metadata_repo is not None:
+                    try:
+                        meta_res = session_metadata_repo.get(aid)
+                        if isinstance(meta_res, _Ok) and meta_res.value is not None:
+                            r = meta_res.value
+                            meta_line = (
+                                f" (universe={r.universe}, "
+                                f"strategy={r.strategy_id}, "
+                                f"instrument={r.instrument_symbol})"
+                            )
+                    except Exception:  # noqa: BLE001 — defensive
+                        meta_line = ""
                 inbox.append(
                     _Entry(
                         at=_dt.now(tz=UTC),
@@ -331,9 +358,9 @@ def default_app() -> FastAPI:
                         code="session_discovered",
                         severity="info",
                         message=(
-                            "Persisted paper session discovered at boot. "
-                            "Visit /operator/recovery (or attach a fresh "
-                            "runtime) to resume ticking."
+                            "Persisted paper session discovered at boot"
+                            f"{meta_line}. Visit /operator/recovery "
+                            "(or attach a fresh runtime) to resume ticking."
                         ),
                         account_id=str(aid),
                     )
@@ -344,6 +371,7 @@ def default_app() -> FastAPI:
     # ⇒ persistence unconfigured (TRADING_BOT_PERSISTENCE_DB unset)
     # and the runtime keeps ticking without the fan-out.
     instrument_bar_repository = _instrument_bar_repo_for_default_app()
+    paper_session_repository = _paper_session_repo_for_default_app()
     return create_app(
         WebappState(
             token_verifier=verifier,
@@ -354,6 +382,7 @@ def default_app() -> FastAPI:
             strategy_registry_reader=strategy_registry,
             job_queue=queue,
             instrument_bar_repository=instrument_bar_repository,
+            paper_session_repository=paper_session_repository,
         )
     )
 
@@ -484,5 +513,21 @@ def _instrument_bar_repo_for_default_app():  # type: ignore[no-untyped-def]
     if conn is None:
         return None
     return InstrumentBarRepository(conn=conn)
+
+
+def _paper_session_repo_for_default_app():  # type: ignore[no-untyped-def]
+    """CR-019 §6 — open the ``PaperSessionRepository`` for
+    ``default_app()``. Returns ``None`` when persistence is
+    unconfigured; the wizard skips the metadata write + the
+    recovery wizard falls back to its pre-§6 behaviour
+    (operator re-supplies the inputs)."""
+    from trading_system.persistence.repositories.paper_sessions import (
+        PaperSessionRepository,
+    )
+
+    conn = _persistence_connection()
+    if conn is None:
+        return None
+    return PaperSessionRepository(conn=conn)
 
 

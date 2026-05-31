@@ -29,6 +29,10 @@ from trading_system.persistence.repositories.live_orders import (
     LiveOrderRow,
     LiveOrderStatus,
 )
+from trading_system.persistence.repositories.paper_sessions import (
+    PaperSessionRepository,
+    PaperSessionRow,
+)
 from trading_system.persistence.repositories.portfolio import PortfolioRepository
 from trading_system.persistence.repositories.quant import HypothesisRepository
 from trading_system.persistence.repositories.registry import RegistryRepository
@@ -50,6 +54,8 @@ __all__ = [
     "LiveOrderRow",
     "LiveOrderStatus",
     "OperatorTokenRevocationRepository",
+    "PaperSessionRepository",
+    "PaperSessionRow",
     "PortfolioRepository",
     "RegistryRepository",
     "SqliteBacktestJobRepository",

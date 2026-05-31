@@ -449,6 +449,34 @@ async def post_finish(request: Request) -> RedirectResponse:
     if instrument_bar_repo is not None:
         runtime.instrument_bar_repo = instrument_bar_repo
 
+    # CR-019 §6 follow-up — persist the session's wizard inputs so
+    # ``RuntimeRegistry.resume_from_persistence`` can rehydrate
+    # the runtime after a webapp restart without re-asking the
+    # operator. Failure is non-fatal — the session keeps running
+    # without persisted metadata + the recovery wizard falls back
+    # to its pre-§6 behaviour (operator re-supplies the inputs).
+    paper_session_repo = getattr(
+        request.app.state, "paper_session_repository", None
+    )
+    if paper_session_repo is not None:
+        from trading_system.webapp.runtimes.paper_session_writer import (
+            build_paper_session_row,
+        )
+
+        row = build_paper_session_row(
+            account_id=session.account_id,
+            universe=state.universe,
+            strategy_id=StrategyId(state.strategy),
+            instrument_symbol=instrument.symbol,
+            starting_capital=session.starting_capital,
+            bar_source=state.bar_source,
+            started_at=session.started_at,
+        )
+        try:
+            paper_session_repo.append_session(row)
+        except Exception:  # noqa: BLE001 — defensive
+            pass
+
     # Register against the shared registry so the dashboard
     # panel + tick driver both see the new session.
     registry = getattr(request.app.state, "runtime_registry", None)

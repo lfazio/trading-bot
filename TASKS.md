@@ -621,16 +621,40 @@ stdlib `webui/` fallback still has placeholders.
 
 ### 6. Paper-trading session metadata persistence (CR-019 follow-up)
 
-- [ ] **`paper_sessions` persistence table** — migration
-      `0008_paper_sessions.sql` adding
-      `(account_id, universe, strategy_id, instrument_symbol,
-       starting_capital, currency, created_at)`.
-- [ ] **`PaperSessionRepository`** — write on `PaperTradingRuntime`
-      construction; read on `RuntimeRegistry.resume_from_persistence`.
-- [ ] **Recovery-wizard auto-revival** — the wizard already
-      shows resumable sessions; with metadata persisted, the
-      operator can resume with a single click instead of
-      re-supplying the inputs.
+- [x] **`paper_sessions` persistence table** ✅ DONE 2026-05-31 @
+      `<this commit>`. Migration `0010_paper_sessions.sql`
+      (numbering corrected — 0008 and 0009 were already used by
+      `live_orders` and `instrument_bars`) adds the table with
+      `(account_id PK, universe, strategy_id, instrument_symbol,
+      starting_capital TEXT, currency, bar_source, started_at,
+      mode_tag)` + `idx_paper_sessions_started_at` index.
+- [x] **`PaperSessionRepository`** ✅ DONE 2026-05-31 @
+      `<this commit>`. `append_session(row)` (renamed from
+      `write_session` to honour REQ_SDD_NAM_004), `get(account_id)`,
+      `list_all()` ordered by `started_at DESC`. Duplicate
+      account_id surfaces as
+      `persistence:integrity:paper_sessions:duplicate:<id>` so
+      the runtime can offer "stop existing first" rather than
+      silently shadowing the prior session.
+- [x] **Wizard write** ✅ DONE 2026-05-31 @ `<this commit>`. The
+      onboarding finish handler builds the row via the new
+      `webapp/runtimes/paper_session_writer.py` adapter (keeps
+      the view layer clean per REQ_SDD_FAS_001) + calls
+      `paper_session_repo.append_session(row)`. Write failure is
+      non-fatal — the session keeps ticking without persisted
+      metadata.
+- [x] **Boot-resume enrichment** ✅ DONE 2026-05-31 @ `<this commit>`.
+      `default_app()` opens the repo via the shared
+      `_persistence_connection()` helper. The boot-resume inbox
+      entries now carry the session's universe + strategy +
+      instrument so the operator sees what was running before the
+      restart instead of an opaque account_id.
+- [ ] **Recovery-wizard one-click rehydration** — the wizard now
+      has the metadata + can reconstruct the runtime instance via
+      `build_runtime(...)` without re-asking the operator. v1
+      ships discovery + metadata-surfacing; the actual
+      auto-rehydration POST handler lives behind the existing
+      operator-approval gate + lands in a follow-up.
 
 ### 7. CR-024 follow-ups
 
