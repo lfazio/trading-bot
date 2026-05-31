@@ -1,0 +1,250 @@
+# SRD (Service de Règlement Différé) eligible universe — starter.
+#
+# Euronext Paris's deferred-monthly-settlement margin service. The
+# eligibility list rotates quarterly; Euronext publishes the
+# official list at
+# https://www.euronext.com/en/products/equities/srd
+#
+# Status: PARTIAL — starter list of ~30 widely-traded SBF 120 names
+# known to be SRD-eligible at most reviews. Operators extending this
+# universe SHALL verify each new (id, isin) pair against the current
+# Euronext publication before adding. The yfinance cache key is
+# tied to (symbol, timeframe, range), so a typo poisons the cache
+# until manual cleanup.
+#
+# The shape mirrors data/universes/cac40.yaml so the same
+# UniverseLoader consumes both files; the CR-030 boot wiring
+# loads this file once at process start and populates
+# `trading_system.models.trading.SRD_ELIGIBLE_INSTRUMENT_IDS`.
+
+name: srd-eligible
+description: |
+  SRD-eligible Paris stocks — starter list of widely-traded
+  SBF 120 names with verified ISINs. Operators extend by
+  consulting Euronext's quarterly SRD publication and adding
+  validated (id, isin) entries below.
+
+stocks:
+  - id: AC.PA           # Accor
+    symbol: AC
+    exchange: PA
+    currency: EUR
+    isin: FR0000120404
+    sector: consumer-discretionary
+    country: FR
+
+  - id: AI.PA           # Air Liquide
+    symbol: AI
+    exchange: PA
+    currency: EUR
+    isin: FR0000120073
+    sector: industrials
+    country: FR
+
+  - id: AIR.PA          # Airbus
+    symbol: AIR
+    exchange: PA
+    currency: EUR
+    isin: NL0000235190
+    sector: industrials
+    country: NL
+
+  - id: BN.PA           # Danone
+    symbol: BN
+    exchange: PA
+    currency: EUR
+    isin: FR0000120644
+    sector: consumer-staples
+    country: FR
+
+  - id: BNP.PA          # BNP Paribas
+    symbol: BNP
+    exchange: PA
+    currency: EUR
+    isin: FR0000131104
+    sector: financials
+    country: FR
+
+  - id: CAP.PA          # Capgemini
+    symbol: CAP
+    exchange: PA
+    currency: EUR
+    isin: FR0000125338
+    sector: tech
+    country: FR
+
+  - id: CS.PA           # AXA
+    symbol: CS
+    exchange: PA
+    currency: EUR
+    isin: FR0000120628
+    sector: financials
+    country: FR
+
+  - id: DG.PA           # Vinci
+    symbol: DG
+    exchange: PA
+    currency: EUR
+    isin: FR0000125486
+    sector: industrials
+    country: FR
+
+  - id: DSY.PA          # Dassault Systèmes
+    symbol: DSY
+    exchange: PA
+    currency: EUR
+    isin: FR0014003TT8
+    sector: tech
+    country: FR
+
+  - id: EL.PA           # EssilorLuxottica
+    symbol: EL
+    exchange: PA
+    currency: EUR
+    isin: FR0000121667
+    sector: consumer-discretionary
+    country: FR
+
+  - id: ENGI.PA         # Engie
+    symbol: ENGI
+    exchange: PA
+    currency: EUR
+    isin: FR0010208488
+    sector: utilities
+    country: FR
+
+  - id: GLE.PA          # Société Générale
+    symbol: GLE
+    exchange: PA
+    currency: EUR
+    isin: FR0000130809
+    sector: financials
+    country: FR
+
+  - id: HO.PA           # Thales
+    symbol: HO
+    exchange: PA
+    currency: EUR
+    isin: FR0000121329
+    sector: industrials
+    country: FR
+
+  - id: KER.PA          # Kering
+    symbol: KER
+    exchange: PA
+    currency: EUR
+    isin: FR0000121485
+    sector: consumer-discretionary
+    country: FR
+
+  - id: MC.PA           # LVMH
+    symbol: MC
+    exchange: PA
+    currency: EUR
+    isin: FR0000121014
+    sector: consumer-discretionary
+    country: FR
+
+  - id: OR.PA           # L'Oréal
+    symbol: OR
+    exchange: PA
+    currency: EUR
+    isin: FR0000120321
+    sector: consumer-staples
+    country: FR
+
+  - id: ORA.PA          # Orange
+    symbol: ORA
+    exchange: PA
+    currency: EUR
+    isin: FR0000133308
+    sector: communication-services
+    country: FR
+
+  - id: PUB.PA          # Publicis Groupe
+    symbol: PUB
+    exchange: PA
+    currency: EUR
+    isin: FR0000130577
+    sector: communication-services
+    country: FR
+
+  - id: RI.PA           # Pernod Ricard
+    symbol: RI
+    exchange: PA
+    currency: EUR
+    isin: FR0000120693
+    sector: consumer-staples
+    country: FR
+
+  - id: RMS.PA          # Hermès International
+    symbol: RMS
+    exchange: PA
+    currency: EUR
+    isin: FR0000052292
+    sector: consumer-discretionary
+    country: FR
+
+  - id: SAF.PA          # Safran
+    symbol: SAF
+    exchange: PA
+    currency: EUR
+    isin: FR0000073272
+    sector: industrials
+    country: FR
+
+  - id: SAN.PA          # Sanofi
+    symbol: SAN
+    exchange: PA
+    currency: EUR
+    isin: FR0000120578
+    sector: healthcare
+    country: FR
+
+  - id: SGO.PA          # Saint-Gobain
+    symbol: SGO
+    exchange: PA
+    currency: EUR
+    isin: FR0000125007
+    sector: industrials
+    country: FR
+
+  - id: STMPA.PA        # STMicroelectronics
+    symbol: STMPA
+    exchange: PA
+    currency: EUR
+    isin: NL0000226223
+    sector: tech
+    country: NL
+
+  - id: SU.PA           # Schneider Electric
+    symbol: SU
+    exchange: PA
+    currency: EUR
+    isin: FR0000121972
+    sector: industrials
+    country: FR
+
+  - id: TTE.PA          # TotalEnergies
+    symbol: TTE
+    exchange: PA
+    currency: EUR
+    isin: FR0000120271
+    sector: energy
+    country: FR
+
+  - id: VIE.PA          # Veolia Environnement
+    symbol: VIE
+    exchange: PA
+    currency: EUR
+    isin: FR0000124141
+    sector: utilities
+    country: FR
+
+  - id: VIV.PA          # Vivendi
+    symbol: VIV
+    exchange: PA
+    currency: EUR
+    isin: FR0000127771
+    sector: communication-services
+    country: FR

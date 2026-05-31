@@ -40,6 +40,35 @@ class OrderType(StrEnum):
     MARKET = "market"
     LIMIT = "limit"
     STOP = "stop"
+    # CR-030 (REQ_F_SRD_002 / REQ_SDD_SRD_002) — SRD (Service de
+    # Règlement Différé) margin variants. The instrument SHALL be
+    # SRD-eligible (membership-checked at Order construction); the
+    # cash exchange happens on the last business day of the entry
+    # month, not on the fill. SRD_LONG buys with deferred
+    # settlement; SRD_SHORT sells short with deferred settlement.
+    SRD_LONG = "srd_long"
+    SRD_SHORT = "srd_short"
+
+
+# CR-030 (REQ_SDD_SRD_001) — frozen set of SRD-eligible instrument
+# ids loaded once at process boot. Defaults to ``frozenset()`` so a
+# pre-CR-030 boot path still works; populated by
+# ``set_srd_eligible_instruments(...)`` from the application boot
+# wiring (typically reads ``data/universes/srd-eligible.yaml`` via
+# the existing UniverseLoader).
+SRD_ELIGIBLE_INSTRUMENT_IDS: frozenset = frozenset()
+
+
+def set_srd_eligible_instruments(ids):
+    """Replace the module-level SRD eligibility set.
+
+    Operators call this once at boot after loading the universe;
+    the Order constructor reads the frozenset on every SRD order.
+    The function lives at module scope (not inside a class) so it
+    runs without instantiating anything.
+    """
+    global SRD_ELIGIBLE_INSTRUMENT_IDS
+    SRD_ELIGIBLE_INSTRUMENT_IDS = frozenset(ids)
 
 
 class OrderStatus(StrEnum):
@@ -91,6 +120,16 @@ class Order:
             raise ValueError(f"Order.limit_price must be None for {self.type.value} orders")
         if self.limit_price is not None and self.limit_price <= 0:
             raise ValueError(f"Order.limit_price must be > 0, got {self.limit_price}")
+        # CR-030 (REQ_F_SRD_002 / REQ_SDD_SRD_002) — SRD eligibility.
+        # The check runs AFTER the quantity/price validators so test
+        # fixtures with empty universes still fail at the bound checks
+        # rather than the eligibility check.
+        if self.type in (OrderType.SRD_LONG, OrderType.SRD_SHORT):
+            if self.instrument.id not in SRD_ELIGIBLE_INSTRUMENT_IDS:
+                raise ValueError(
+                    f"Order.type {self.type} requires SRD-eligible "
+                    f"instrument, got {self.instrument.id}"
+                )
 
 
 @dataclass(frozen=True, slots=True)
