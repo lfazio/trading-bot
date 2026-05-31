@@ -725,9 +725,22 @@ stdlib `webui/` fallback still has placeholders.
       Operators run them on-demand via
       `pytest -m wallclock tests/integration/test_multi_year_regime_crossing.py`.
       CI workflow updated to exclude the wallclock marker.
-- [ ] **Multi-account live-runtime drill** — Phase-8 C8 covers
-      the gate semantics; the runtime fan-out under a 3-account
-      live tick is desk-pinned.
+- [x] **Multi-account live-runtime drill** ✅ DONE 2026-05-31 @
+      `<this commit>`. `tests/integration/test_multi_account_live_runtime.py`
+      drives three `PaperTradingRuntime` instances
+      (`paper-alpha-2026` / `paper-beta-2026` / `paper-gamma-2026`
+      at 1 k / 5 k / 20 k EUR) through a shared `RuntimeRegistry`
+      across 10 ticks with distinct stub bar trajectories. Four
+      tests cover: (1) registry partitioning + duplicate-id
+      rejection (REQ_F_PAP_005), (2) independent equity curves
+      per account (no cross-account bleed), (3) per-account stop
+      semantics (stopping `beta` leaves `alpha` + `gamma`
+      alive + ticking), (4) paired-replay determinism — building
+      + ticking the 3-account household twice produces
+      byte-identical equity-point sequences per account
+      (REQ_NF_DET_001 / REQ_NF_REP_001). Runs in ~1 s, included
+      in the default CI matrix. Builds on Phase-8 C8's gate
+      semantics (`tests/integration/test_multi_account_drill.py`).
 - [ ] **Hard-floor MC gate per phase / regime** — single global
       drawdown floor today; per-phase / per-regime tuning is a
       future CR.

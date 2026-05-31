@@ -110,7 +110,9 @@ def scan_refs(roots: list[Path], extensions: tuple[str, ...]) -> dict[str, list[
         files = (
             [root]
             if root.is_file()
-            else [p for p in root.rglob("*") if p.is_file() and p.suffix in extensions]
+            else sorted(
+                p for p in root.rglob("*") if p.is_file() and p.suffix in extensions
+            )
         )
         for f in files:
             try:
