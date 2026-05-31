@@ -22,6 +22,7 @@ Per REQ_SDS_MOD_014 the runtime SHALL NOT import this module.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -35,16 +36,21 @@ from trading_system.backtesting.monte_carlo.result import (
 from trading_system.backtesting.walk_forward import WFResult, detect_oos_collapse
 from trading_system.models.identifiers import StrategyId
 from trading_system.models.meta import ImprovementReport
+from trading_system.models.phase import MarketRegime, Phase
+from trading_system.observability.logger import structured_log
 from trading_system.result import Err, Nothing, Ok, Result, Some
 from trading_system.strategy_lab.backtester import LabBacktester, LabBacktestResult
 from trading_system.strategy_lab.candidate import StrategyCandidate
 from trading_system.strategy_lab.evaluator import Evaluator
 from trading_system.strategy_lab.generator import Generator
+from trading_system.strategy_lab.mc_drawdown_floor import MCDrawdownFloor
 from trading_system.strategy_lab.metrics import StrategyMetrics
 from trading_system.strategy_lab.optimizer import Optimizer, OptimizerDecision
 from trading_system.strategy_lab.registry import Registry, RegistryEntry
 from trading_system.strategy_lab.risk_guard import RiskGuard
 from trading_system.strategy_lab.scoring import score_metrics
+
+_LOG = logging.getLogger(__name__)
 
 WalkForwardRunner = Callable[[StrategyCandidate], WFResult]
 MCRunStep = Callable[[StrategyCandidate], Result[MonteCarloResult, MonteCarloError]]
@@ -70,7 +76,18 @@ class LoopController:
     # ``"mc:p5_drawdown_exceeds_phase_floor"``. None ⇒ MC step bypassed
     # entirely (REQ_F_MCS_005, TC_MCS_008).
     mc_run_step: MCRunStep | None = None
-    mc_drawdown_floor: Decimal | None = None
+    # CR-031 (REQ_F_MCS_007 / REQ_SDD_MCS_008) — widened from
+    # ``Decimal | None`` to also accept ``MCDrawdownFloor``;
+    # the matrix path consults the cycle's ``phase`` + ``regime``
+    # context fields, the legacy ``Decimal`` path compares
+    # directly against ``p5_drawdown`` (back-compat).
+    mc_drawdown_floor: Decimal | MCDrawdownFloor | None = None
+    # CR-031 (REQ_SDD_MCS_008) — optional cycle context. Only
+    # consulted by the matrix-path MC gate. Default sentinels
+    # apply when the operator wires an ``MCDrawdownFloor`` but
+    # leaves these unset.
+    phase: Phase | None = None
+    regime: MarketRegime | None = None
     # CR-001 Phase B step 2 — optional AnomalyAlert emitter
     # (REQ_F_NOT_007 / REQ_SDD_NOT_006). When wired, every
     # rejected candidate triggers one AnomalyAlert through the
@@ -123,7 +140,38 @@ class LoopController:
                             p5_drawdown = mc_result.drawdown_percentiles[
                                 QUINTILE_KEYS[0]  # 0.05
                             ]
-                            if p5_drawdown > self.mc_drawdown_floor:
+                            # CR-031 (REQ_SDD_MCS_008) — matrix
+                            # dispatch. When ``mc_drawdown_floor``
+                            # is an ``MCDrawdownFloor``, the
+                            # applicable floor is the matrix
+                            # lookup for the cycle's (phase,
+                            # regime); else the legacy single-
+                            # value Decimal path runs unchanged.
+                            if isinstance(self.mc_drawdown_floor, MCDrawdownFloor):
+                                applied_floor = self.mc_drawdown_floor.floor_for(
+                                    self.phase or Phase.ONE,
+                                    self.regime or MarketRegime.SIDEWAYS,
+                                )
+                                if p5_drawdown > applied_floor:
+                                    rejected[c.id] = "mc:p5_drawdown_exceeds_phase_floor"
+                                    # REQ_SDD_MCS_009 — matrix-path
+                                    # rejection emits the audit
+                                    # envelope; legacy path stays
+                                    # silent for additive contract.
+                                    structured_log(
+                                        _LOG,
+                                        logging.INFO,
+                                        "improvement_report",
+                                        "mc_gate_reject",
+                                        strategy_id=str(c.id),
+                                        phase=str(self.phase or Phase.ONE),
+                                        regime=(self.regime or MarketRegime.SIDEWAYS).value,
+                                        applied_floor=str(applied_floor),
+                                        p5_drawdown=str(p5_drawdown),
+                                        category="mc:p5_drawdown_exceeds_phase_floor",
+                                    )
+                                    continue
+                            elif p5_drawdown > self.mc_drawdown_floor:
                                 rejected[c.id] = "mc:p5_drawdown_exceeds_phase_floor"
                                 continue
             metrics = self.evaluator.compute(lr.result, lr.capital_flow, wf=wf)

@@ -1,0 +1,105 @@
+# CR-031 (REQ_F_MCS_007 / REQ_SDD_MCS_007) — Hard-floor MC gate per
+# phase × regime. Loaded by `MCDrawdownFloor.from_yaml(...)`.
+#
+# The meta-loop's MC integration consults this matrix when the
+# operator wires a `LoopController` with both `phase` and `regime`
+# context. Looking up `floor_for(phase, regime)` returns the
+# matching matrix entry; missing tuples fall back to `default`.
+#
+# Initial grid pinned to the CLAUDE.md phase scaling table.
+# Per-phase, per-regime tail tolerance:
+#
+# - Phase 1..3 carry wider floors in BEAR / HIGH_VOL (routine
+#   regime-conditional tail tolerance). BULL / SIDEWAYS stay
+#   close to the per-phase max drawdown ceiling.
+# - Phase 5+ ratchet tighter across every regime (Wealth
+#   Preservation discipline).
+#
+# Operators tune by editing this file + restarting the meta-loop.
+
+mc_drawdown_floor:
+  default: "0.20"
+  matrix:
+    # Phase 1 — Capital Builder (max DD 15%).
+    - phase: ONE
+      regime: bull
+      value: "0.15"
+    - phase: ONE
+      regime: sideways
+      value: "0.15"
+    - phase: ONE
+      regime: bear
+      value: "0.18"
+    - phase: ONE
+      regime: high_vol
+      value: "0.20"
+
+    # Phase 2 — Stability (max DD 15%).
+    - phase: TWO
+      regime: bull
+      value: "0.15"
+    - phase: TWO
+      regime: sideways
+      value: "0.15"
+    - phase: TWO
+      regime: bear
+      value: "0.18"
+    - phase: TWO
+      regime: high_vol
+      value: "0.20"
+
+    # Phase 3 — Systematic (max DD 20%).
+    - phase: THREE
+      regime: bull
+      value: "0.18"
+    - phase: THREE
+      regime: sideways
+      value: "0.18"
+    - phase: THREE
+      regime: bear
+      value: "0.22"
+    - phase: THREE
+      regime: high_vol
+      value: "0.25"
+
+    # Phase 4 — Capital Acceleration (max DD 20%).
+    - phase: FOUR
+      regime: bull
+      value: "0.18"
+    - phase: FOUR
+      regime: sideways
+      value: "0.18"
+    - phase: FOUR
+      regime: bear
+      value: "0.22"
+    - phase: FOUR
+      regime: high_vol
+      value: "0.25"
+
+    # Phase 5 — Wealth Preservation (max DD 15%). Ratchet tight.
+    - phase: FIVE
+      regime: bull
+      value: "0.12"
+    - phase: FIVE
+      regime: sideways
+      value: "0.12"
+    - phase: FIVE
+      regime: bear
+      value: "0.15"
+    - phase: FIVE
+      regime: high_vol
+      value: "0.18"
+
+    # Phase 6 — Scale / Institutional (max DD 12%). Tightest.
+    - phase: SIX
+      regime: bull
+      value: "0.10"
+    - phase: SIX
+      regime: sideways
+      value: "0.10"
+    - phase: SIX
+      regime: bear
+      value: "0.12"
+    - phase: SIX
+      regime: high_vol
+      value: "0.15"

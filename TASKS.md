@@ -741,9 +741,44 @@ stdlib `webui/` fallback still has placeholders.
       (REQ_NF_DET_001 / REQ_NF_REP_001). Runs in ~1 s, included
       in the default CI matrix. Builds on Phase-8 C8's gate
       semantics (`tests/integration/test_multi_account_drill.py`).
-- [ ] **Hard-floor MC gate per phase / regime** — single global
-      drawdown floor today; per-phase / per-regime tuning is a
-      future CR.
+- [x] **Hard-floor MC gate per phase / regime** ✅ DONE 2026-05-31 @
+      `<this commit>`. CR-031 cascade landed (SRS §3.27 REQ_F_MCS_005
+      amendment + REQ_F_MCS_007 + REQ_NF_MCS_002; SDS §3.32
+      amendment with `MCDrawdownFloor` value-object surface +
+      `LoopController` context binding; SDD §13.37
+      REQ_SDD_MCS_007..009; Test Plan §3.15l.1 TC_MCS_011..014).
+      Implementation:
+      `trading_system/strategy_lab/mc_drawdown_floor.py` ships
+      `MCDrawdownFloor` (`@dataclass(frozen=True, slots=True)`
+      with `matrix: frozenset[tuple[Phase, MarketRegime, Decimal]]`
+      + `default: Decimal`; constructors `.fixed(value)` /
+      `.from_matrix(matrix, *, default)` / `.from_yaml(path)`;
+      `floor_for(phase, regime)` lookup; `__post_init__`
+      rejects negative defaults + negative matrix entries).
+      `LoopController` gains `phase: Phase | None` + `regime:
+      MarketRegime | None` optional fields; `mc_drawdown_floor`
+      widened to `Decimal | MCDrawdownFloor | None`; isinstance
+      dispatch routes matrix vs legacy path; matrix-path
+      rejection emits a `LogCategory.IMPROVEMENT_REPORT`
+      structured-log envelope with `{strategy_id, phase, regime,
+      applied_floor, p5_drawdown, category}` payload (all
+      Decimals via `str(...)` for canonical-decimal stability).
+      Rejection category string preserved
+      (`mc:p5_drawdown_exceeds_phase_floor`) so downstream
+      consumers stay schema-stable. New
+      `config/mc_drawdown_floor.yaml` (11th typed-config YAML)
+      ships the initial grid pinned to CLAUDE.md's phase
+      scaling table — Phase 1..3 carry wider floors in BEAR /
+      HIGH_VOL, Phase 5+ ratchet tighter. 25 new tests across
+      `tests/strategy_lab/test_mc_drawdown_floor.py` (17 tests
+      — matrix lookup, determinism, fallback, fixed
+      constructor, invariants, YAML loader happy + 7 Err
+      paths, bundled-grid smoke) +
+      `tests/strategy_lab/test_loop_controller_mc.py`
+      (4 new — matrix reject, matrix pass-through,
+      legacy-decimal back-compat, structured-log envelope
+      shape). All 5 new REQs at TEST (642 → 647 REQs).
+      Validation.md §5 third known-limitation closed.
 
 ### 9. CI / infrastructure
 

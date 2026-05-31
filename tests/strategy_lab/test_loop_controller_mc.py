@@ -127,7 +127,13 @@ def _candidate(idx: int) -> StrategyCandidate:
     )
 
 
-def _build_controller(*, mc_run_step=None, mc_drawdown_floor=None):
+def _build_controller(
+    *,
+    mc_run_step=None,
+    mc_drawdown_floor=None,
+    phase=None,
+    regime=None,
+):
     s = _stock()
     data = MockMarketDataProvider(seed=1)
     risk = RiskEngine(cfg=RiskConfig(), safety=_StubSafety())
@@ -158,6 +164,8 @@ def _build_controller(*, mc_run_step=None, mc_drawdown_floor=None):
         git_sha="test-sha",
         mc_run_step=mc_run_step,
         mc_drawdown_floor=mc_drawdown_floor,
+        phase=phase,
+        regime=regime,
     )
     return controller, registry
 
@@ -255,3 +263,172 @@ def test_mc_step_passes_when_p5_drawdown_below_floor() -> None:
         assert not reason.startswith("mc:"), (
             f"unexpected MC rejection when P5 below floor: {reason}"
         )
+
+
+# ---------------------------------------------------------------------------
+# TC_MCS_012 — Matrix-path gate dispatch
+# ---------------------------------------------------------------------------
+
+
+def test_matrix_path_rejects_when_p5_exceeds_matrix_floor() -> None:
+    """REQ_F_MCS_005 (CR-031 amendment) / REQ_SDD_MCS_008 — wire
+    a ``LoopController`` with both ``MCDrawdownFloor`` and phase
+    + regime context; p5 > matrix floor SHALL reject with the
+    legacy category string."""
+    from trading_system.models.phase import Phase
+    from trading_system.strategy_lab.mc_drawdown_floor import MCDrawdownFloor
+
+    floor = MCDrawdownFloor.from_matrix(
+        {(Phase.FIVE, MarketRegime.SIDEWAYS): Decimal("0.15")},
+        default=Decimal("0.20"),
+    )
+
+    def _step(_c: StrategyCandidate):
+        # P5 drawdown 0.18 > matrix floor 0.15 ⇒ reject.
+        return Ok(_mc_result(Decimal("0.18")))
+
+    controller, _registry = _build_controller(
+        mc_run_step=_step,
+        mc_drawdown_floor=floor,
+        phase=Phase.FIVE,
+        regime=MarketRegime.SIDEWAYS,
+    )
+    report = controller.cycle(cycle_id="reject-mc-matrix", at=_ts(2026, 5, 17))
+    assert report.rejection_reasons, "expected matrix-path rejections"
+    for reason in report.rejection_reasons.values():
+        # Category string preserved across CR-031 — downstream
+        # consumers see the same shape.
+        assert reason == "mc:p5_drawdown_exceeds_phase_floor"
+
+
+def test_matrix_path_passes_when_p5_below_matrix_floor() -> None:
+    from trading_system.models.phase import Phase
+    from trading_system.strategy_lab.mc_drawdown_floor import MCDrawdownFloor
+
+    floor = MCDrawdownFloor.from_matrix(
+        {(Phase.FIVE, MarketRegime.SIDEWAYS): Decimal("0.15")},
+        default=Decimal("0.20"),
+    )
+
+    def _step(_c: StrategyCandidate):
+        # P5 drawdown 0.10 < matrix floor 0.15 ⇒ pass.
+        return Ok(_mc_result(Decimal("0.10")))
+
+    controller, _registry = _build_controller(
+        mc_run_step=_step,
+        mc_drawdown_floor=floor,
+        phase=Phase.FIVE,
+        regime=MarketRegime.SIDEWAYS,
+    )
+    report = controller.cycle(cycle_id="pass-mc-matrix", at=_ts(2026, 5, 17))
+    for reason in report.rejection_reasons.values():
+        assert not reason.startswith("mc:"), (
+            f"unexpected MC rejection when matrix p5 below floor: {reason}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# TC_MCS_014 — Backwards-compat + structured-log envelope
+# ---------------------------------------------------------------------------
+
+
+def test_legacy_decimal_floor_still_rejects_with_same_category() -> None:
+    """REQ_F_MCS_005 (CR-031 amendment) — legacy callers passing
+    ``Decimal`` (no phase + no regime) SHALL still see the
+    pre-CR-031 behaviour: same rejection category, no
+    structured-log envelope (additive contract)."""
+    import logging
+
+    def _step(_c: StrategyCandidate):
+        return Ok(_mc_result(Decimal("0.18")))
+
+    controller, _registry = _build_controller(
+        mc_run_step=_step,
+        mc_drawdown_floor=Decimal("0.15"),
+        # Explicitly no phase / regime — the legacy path doesn't need them.
+    )
+    captured = []
+
+    class _Handler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            captured.append(record)
+
+    target = logging.getLogger("trading_system.strategy_lab.loop_controller")
+    handler = _Handler()
+    handler.setLevel(logging.DEBUG)
+    target.addHandler(handler)
+    prior_level = target.level
+    target.setLevel(logging.DEBUG)
+    try:
+        report = controller.cycle(cycle_id="reject-mc-legacy", at=_ts(2026, 5, 17))
+    finally:
+        target.removeHandler(handler)
+        target.setLevel(prior_level)
+
+    assert report.rejection_reasons
+    for reason in report.rejection_reasons.values():
+        assert reason == "mc:p5_drawdown_exceeds_phase_floor"
+    # Legacy path SHALL NOT emit the matrix-path envelope.
+    envelopes = [
+        r
+        for r in captured
+        if getattr(r, "category", None) == "improvement_report"
+        and r.getMessage() == "mc_gate_reject"
+    ]
+    assert envelopes == [], (
+        f"legacy path emitted matrix-only envelope: {envelopes}"
+    )
+
+
+def test_matrix_path_emits_structured_log_envelope_on_rejection() -> None:
+    """REQ_SDD_MCS_009 — matrix-path rejection SHALL emit a
+    ``LogCategory.IMPROVEMENT_REPORT`` envelope with the
+    documented payload shape; all Decimals serialise as
+    canonical-decimal strings per REQ_NF_MCS_002."""
+    import logging
+
+    from trading_system.models.phase import Phase
+    from trading_system.strategy_lab.mc_drawdown_floor import MCDrawdownFloor
+
+    floor = MCDrawdownFloor.fixed(Decimal("0.15"))
+
+    def _step(_c: StrategyCandidate):
+        return Ok(_mc_result(Decimal("0.18")))
+
+    controller, _registry = _build_controller(
+        mc_run_step=_step,
+        mc_drawdown_floor=floor,
+        phase=Phase.THREE,
+        regime=MarketRegime.BULL,
+    )
+    captured = []
+
+    class _Handler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            captured.append(record)
+
+    target = logging.getLogger("trading_system.strategy_lab.loop_controller")
+    handler = _Handler()
+    handler.setLevel(logging.DEBUG)
+    target.addHandler(handler)
+    prior_level = target.level
+    target.setLevel(logging.DEBUG)
+    try:
+        controller.cycle(cycle_id="reject-mc-matrix-envelope", at=_ts(2026, 5, 17))
+    finally:
+        target.removeHandler(handler)
+        target.setLevel(prior_level)
+
+    envelopes = [
+        r
+        for r in captured
+        if getattr(r, "category", None) == "improvement_report"
+        and r.getMessage() == "mc_gate_reject"
+    ]
+    assert envelopes, "expected at least one matrix-path envelope on rejection"
+    payload = envelopes[0].payload  # type: ignore[attr-defined]
+    assert payload["phase"] == str(Phase.THREE)
+    assert payload["regime"] == "bull"
+    assert payload["applied_floor"] == "0.15"
+    assert payload["p5_drawdown"] == "0.18"
+    assert payload["category"] == "mc:p5_drawdown_exceeds_phase_floor"
