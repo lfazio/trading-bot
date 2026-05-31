@@ -374,9 +374,127 @@ class PromoteResponse:
         return canonical_json_line(self)
 
 
-# Phase-B follow-ups will add SummaryResponse, BacktestArchiveResponse,
-# ImprovementReportHistoryResponse, JobStatusResponse. Each follows
-# the same shape: frozen dataclass + canonical_response wrapper.
+# ---------------------------------------------------------------------------
+# Phase-B read response schemas — REQ_F_WEB_002 (b/c/d/e)
+# ---------------------------------------------------------------------------
+#
+# Four response shapes mirroring the FastAPI surface's coverage of
+# REQ_F_WEB_002 (b) financial summary, (c) strategy registry,
+# (d) backtest archive, (e) ImprovementReport history. Each frozen
+# dataclass routes through ``canonical_json_line`` so the read
+# endpoints satisfy REQ_NF_WEB_002 byte-determinism.
+
+
+@dataclass(frozen=True, slots=True)
+class SummaryResponse:
+    """REQ_F_WEB_002 (b) — financial summary read endpoint.
+
+    Captures the operator-visible after-tax equity snapshot plus
+    the realised / unrealised PnL split + max drawdown observed
+    so far. The full equity curve lives behind a separate
+    paginated endpoint when the dataset grows; v1 ships the
+    summary point + ``as_of`` so the operator can chart deltas
+    between polls.
+    """
+
+    account_id: AccountId
+    as_of: datetime
+    equity_after_tax: Decimal
+    realized_pnl: Decimal
+    unrealized_pnl: Decimal
+    dividend_income_ytd: Decimal
+    max_drawdown_pct: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class RegistryEntryLine:
+    """One row of ``RegistryListResponse.entries``.
+
+    Mirrors the persistence-layer ``RegistryEntry`` shape without
+    the heavy metric vectors — the dashboard fetches per-entry
+    detail through a separate endpoint when the operator drills
+    in.
+    """
+
+    strategy_id: StrategyId
+    git_sha: str
+    config_hash: str
+    validated: bool
+    promoted_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class RegistryListResponse:
+    """REQ_F_WEB_002 (c) — strategy registry read endpoint.
+
+    Lists every registry entry visible to the operator. Sorted
+    by ``(promoted_at desc, strategy_id asc)`` for stable
+    pagination; the ``validated`` field surfaces the
+    operator-promotion gate (REQ_F_PER_006).
+    """
+
+    account_id: AccountId
+    as_of: datetime
+    entries: tuple[RegistryEntryLine, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class BacktestArchiveLine:
+    """One row of ``BacktestsArchiveResponse.entries``."""
+
+    strategy_id: StrategyId
+    git_sha: str
+    config_hash: str
+    seed: int
+    final_equity_after_tax: Decimal
+    max_drawdown_pct: Decimal
+    sharpe: Decimal
+    completed_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class BacktestsArchiveResponse:
+    """REQ_F_WEB_002 (d) — backtest archive read endpoint.
+
+    Every ``BacktestResult`` archived through the CR-008
+    ``BacktestResultRepository`` keyed on
+    ``(strategy_id, git_sha, config_hash, seed)``. The
+    paginated v1 returns the most-recent ``per_page`` rows;
+    the operator drills into a single row through a separate
+    endpoint when needed.
+    """
+
+    account_id: AccountId
+    as_of: datetime
+    entries: tuple[BacktestArchiveLine, ...]
+    per_page: int
+    page: int
+
+
+@dataclass(frozen=True, slots=True)
+class ImprovementReportLine:
+    """One row of ``ImprovementReportsHistoryResponse.reports``."""
+
+    cycle_id: str
+    created_at: datetime
+    git_sha: str
+    accepted_count: int
+    rejected_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class ImprovementReportsHistoryResponse:
+    """REQ_F_WEB_002 (e) — meta-loop ImprovementReport history.
+
+    Lists every report emitted by ``LoopController.cycle`` ordered
+    by ``created_at`` descending. v1 returns the summary line
+    (counts + cycle id); the operator drills in for the full
+    accepted / rejected detail through a separate endpoint.
+    """
+
+    account_id: AccountId
+    as_of: datetime
+    reports: tuple[ImprovementReportLine, ...]
 
 
 # Avoid an unused-import warning for ``Any`` — the type is kept

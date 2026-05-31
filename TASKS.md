@@ -457,10 +457,38 @@ expected effort + dependency.
 The FastAPI surface (CR-017) covers most operator paths; the
 stdlib `webui/` fallback still has placeholders.
 
-- [ ] Concrete `routes/summary.py` body.
-- [ ] Concrete `routes/registry_list.py` body.
-- [ ] Concrete `routes/backtests_archive.py` body.
-- [ ] Concrete `routes/improvement_reports_history.py` body.
+- [x] Concrete `routes/summary.py` body. ✅ DONE 2026-05-31 @
+      `<this commit>`. REQ_F_WEB_002 (b) financial summary read
+      endpoint. Handler factory + `SummaryReader` Protocol; path
+      shape `/accounts/<aid>/summary`; household-claim auth gate;
+      canonical JSON response via the existing `SummaryResponse`
+      schema. 5 tests (happy path / per-account token reject /
+      method reject / malformed path / byte-identical replay).
+- [x] Concrete `routes/registry_list.py` body. ✅ DONE 2026-05-31
+      @ `<this commit>`. REQ_F_WEB_002 (c) strategy-registry read
+      endpoint. `RegistryListReader` Protocol + new
+      `RegistryListResponse` schema carrying `RegistryEntryLine`
+      tuples. Path shape `/accounts/<aid>/registry`. 3 tests.
+- [x] Concrete `routes/backtests_archive.py` body. ✅ DONE
+      2026-05-31 @ `<this commit>`. REQ_F_WEB_002 (d) backtest-
+      archive paginated read endpoint. Path shape
+      `/accounts/<aid>/backtests` with `?per_page=<n>&page=<n>`
+      query params (default 25/1; per_page capped at 100;
+      negative values rejected as `webui:per_page_out_of_bounds:*`
+      / `webui:page_out_of_bounds:*`). New `BacktestsArchiveResponse`
+      schema. 5 tests (default pagination / explicit pagination /
+      per_page bounds reject / page bounds reject / byte-identical
+      replay).
+- [x] Concrete `routes/improvement_reports_history.py` body. ✅
+      DONE 2026-05-31 @ `<this commit>`. REQ_F_WEB_002 (e)
+      ImprovementReport history read endpoint. Path shape
+      `/accounts/<aid>/improvement-reports`. New
+      `ImprovementReportsHistoryResponse` schema. 3 tests.
+      All four routes follow the live_state.py reference shape
+      (Reader Protocol + handler factory + canonical JSON +
+      household-claim auth + REQ_NF_WEB_002 byte-identical
+      replay). 16 new tests at `tests/webui/test_phase_b_routes.py`.
+      Routes registered in `webui/routes/__init__.py` exports.
 
 ### 4b. CR-025 — `PaperBrokerAdapter` (paper trading as a broker adapter)
 
