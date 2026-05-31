@@ -22,6 +22,52 @@ _SRDDirection = Literal["LONG", "SHORT"]
 
 
 @dataclass(frozen=True, slots=True)
+class SRDSettlement:
+    """One booked SRD-settlement row (CR-030 / REQ_F_SRD_007 /
+    REQ_SDD_SRD_008).
+
+    Emitted by ``SRDSettlementScheduler.tick(at)`` on the
+    settlement day or by ``Portfolio.apply_srd_close`` on early
+    liquidation. Tagged ``source="srd_settlement"`` to separate
+    SRD-realised gains from cash-equity rows in the year-end tax
+    summary; tax engine applies the 30% PFU to ``net_pnl`` when
+    positive (losses pass through gross).
+    """
+
+    instrument: Instrument
+    direction: _SRDDirection
+    quantity: Decimal
+    entry_price: Decimal
+    settlement_price: Decimal
+    settlement_at: datetime
+    gross_pnl: Decimal
+    crd_fee: Decimal
+    rollover_fee: Decimal
+    net_pnl: Decimal
+    tax: Decimal
+    source: str = "srd_settlement"
+    rolled_over: bool = False
+
+    def __post_init__(self) -> None:
+        if self.quantity <= 0:
+            raise ValueError(
+                f"SRDSettlement.quantity must be > 0, got {self.quantity}"
+            )
+        if self.settlement_price <= 0:
+            raise ValueError(
+                f"SRDSettlement.settlement_price must be > 0, got {self.settlement_price}"
+            )
+        if self.crd_fee < 0:
+            raise ValueError(
+                f"SRDSettlement.crd_fee must be >= 0, got {self.crd_fee}"
+            )
+        if self.rollover_fee < 0:
+            raise ValueError(
+                f"SRDSettlement.rollover_fee must be >= 0, got {self.rollover_fee}"
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class SRDPosition:
     """One open SRD position (CR-030 / REQ_F_SRD_003).
 

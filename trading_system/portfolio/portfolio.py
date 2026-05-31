@@ -41,7 +41,8 @@ from trading_system.models.instrument import (
 )
 from trading_system.models.money import Currency, Money
 from trading_system.models.phase import AllocationBucket
-from trading_system.models.trading import Order, Position, Side, Trade
+from trading_system.models.trading import Order, OrderType, Position, Side, Trade
+from trading_system.portfolio.srd_position import SRDPosition, SRDSettlement
 from trading_system.result import Nothing, Option, Some
 from trading_system.tax.config import TaxConfig
 from trading_system.tax.engine import net_dividend, net_gain
@@ -128,6 +129,15 @@ class Portfolio:
     _last_prices: dict[InstrumentId, Decimal] = field(default_factory=dict)
     _realizations: list[RealizationEvent] = field(default_factory=list)
     _dividend_events: list[DividendEvent] = field(default_factory=list)
+    # CR-030 (REQ_F_SRD_003 / REQ_SDD_SRD_004) — SRD positions
+    # parallel to cash positions. Cash exchange only happens on
+    # settlement_cycle; the unrealized PnL flows through
+    # equity_after_tax via the marked-to-market path.
+    _srd_positions: dict[InstrumentId, SRDPosition] = field(default_factory=dict)
+    # CR-030 (REQ_F_SRD_007 / REQ_SDD_SRD_008) — settlement audit
+    # rows tagged source="srd_settlement" so the year-end tax
+    # summary can separate SRD vs cash-equity realisations.
+    _srd_settlement_rows: list[SRDSettlement] = field(default_factory=list)
     equity_curve: list[EquityPoint] = field(default_factory=list)
 
     # ------------------------------------------------------------------
@@ -185,7 +195,13 @@ class Portfolio:
         tax_owed = (self._realized_gross - self._realized_after_tax) + (
             self._dividends_gross - self._dividends_after_tax
         )
-        return self._cash + marked - tax_owed
+        # CR-030 — surface SRD mark-to-market unrealized PnL so the
+        # operator's equity curve reflects mid-month SRD movements
+        # (REQ_F_SRD_006 / REQ_SDD_SRD_004). Cash exchange happens
+        # only at settlement; the unrealized component flows
+        # through equity until then.
+        srd_unrealized = Money(self._srd_marked_pnl(), self.currency)
+        return self._cash + marked + srd_unrealized - tax_owed
 
     def equity_gross(self) -> Money:
         """Pre-tax equity = cash + marked. Realized and dividends are
@@ -243,6 +259,147 @@ class Portfolio:
 
     def positions(self) -> dict[InstrumentId, Position]:
         return dict(self._positions)
+
+    # ------------------------------------------------------------------
+    # SRD positions — CR-030 (REQ_F_SRD_003 / REQ_SDD_SRD_004)
+    # ------------------------------------------------------------------
+
+    def srd_positions(self) -> dict[InstrumentId, SRDPosition]:
+        """Read-only snapshot of every open SRD position."""
+        return dict(self._srd_positions)
+
+    def srd_settlement_rows(self) -> list[SRDSettlement]:
+        """Read-only snapshot of every booked SRD settlement."""
+        return list(self._srd_settlement_rows)
+
+    def srd_notional(self) -> Decimal:
+        """REQ_F_SRD_008 / REQ_SDD_SRD_009 — total SRD notional at
+        the last marked prices. Used by the phase-cap accounting
+        + the coverage gate. Open SRD positions without a recorded
+        mark price contribute zero (defensive — a fresh position
+        on its open day before the next tick's mark)."""
+        total = Decimal(0)
+        for iid, pos in self._srd_positions.items():
+            price = self._last_prices.get(iid)
+            if price is None:
+                continue
+            total += pos.quantity * price
+        return total
+
+    def apply_srd_open(self, order: Order, trade: Trade) -> None:
+        """REQ_F_SRD_003 / REQ_SDD_SRD_004 — open a new SRDPosition
+        from an SRD_LONG / SRD_SHORT fill.
+
+        Cash balance UNCHANGED at open (deferred settlement). The
+        position is keyed by instrument.id; opening a second SRD
+        position on the same instrument raises (operators close +
+        re-open if they want to change the quantity)."""
+        if order.type not in (OrderType.SRD_LONG, OrderType.SRD_SHORT):
+            raise ValueError(
+                f"apply_srd_open: order.type must be SRD_LONG / SRD_SHORT, "
+                f"got {order.type}"
+            )
+        iid = order.instrument.id
+        if iid in self._srd_positions:
+            raise ValueError(
+                f"apply_srd_open: SRD position already open on {iid}; "
+                "close before re-opening"
+            )
+        from trading_system.portfolio.srd_position import (
+            last_business_day_of_month,
+        )
+
+        direction = "LONG" if order.type is OrderType.SRD_LONG else "SHORT"
+        position = SRDPosition(
+            instrument=order.instrument,
+            direction=direction,  # type: ignore[arg-type]
+            quantity=trade.quantity_filled,
+            entry_price=trade.price,
+            entry_at=trade.executed_at,
+            settlement_cycle=last_business_day_of_month(trade.executed_at),
+        )
+        self._srd_positions[order.instrument.id] = position
+        # Track the mark price seed so the very first equity-after-tax
+        # read after open sees the entry price.
+        self._last_prices.setdefault(order.instrument.id, trade.price)
+
+    def apply_srd_close(
+        self,
+        instrument_id: InstrumentId,
+        settlement_price: Decimal,
+        *,
+        crd_fee: Decimal = Decimal(0),
+        rollover_fee: Decimal = Decimal(0),
+        settlement_at: datetime,
+        tax: TaxConfig,
+        rolled_over: bool = False,
+    ) -> SRDSettlement:
+        """REQ_F_SRD_003 / REQ_F_SRD_007 / REQ_SDD_SRD_004 / 008 —
+        close an open SRDPosition at ``settlement_price``.
+
+        Computes ``gross_pnl`` ((settlement_price - entry_price)
+        × quantity, negated for SHORT); subtracts fees; applies the
+        France-CTO 30% PFU to positive net_pnl (losses pass
+        through gross — same discipline as cash-equity gains).
+        Returns the audit-ready SRDSettlement row + appends it to
+        the internal ledger. Cash balance is debited/credited by
+        ``net_pnl - tax``.
+        """
+        pos = self._srd_positions.pop(instrument_id, None)
+        if pos is None:
+            raise ValueError(
+                f"apply_srd_close: no SRD position open on {instrument_id}"
+            )
+        delta = settlement_price - pos.entry_price
+        if pos.direction == "SHORT":
+            delta = -delta
+        gross_pnl = delta * pos.quantity
+        net_pnl = gross_pnl - crd_fee - rollover_fee
+        if net_pnl > 0:
+            net_after_tax = net_gain(tax, Money(net_pnl, self.currency))
+            tax_due = net_pnl - net_after_tax.amount
+        else:
+            tax_due = Decimal(0)
+        # Cash settles by net_pnl − tax (the PFU is paid at year-end
+        # under REQ_C_TAX_001; the cash balance reflects the
+        # post-tax amount for the same reason the cash-equity path
+        # subtracts the implicit liability via equity_after_tax).
+        self._cash = self._cash + Money(net_pnl - tax_due, self.currency)
+        settlement = SRDSettlement(
+            instrument=pos.instrument,
+            direction=pos.direction,
+            quantity=pos.quantity,
+            entry_price=pos.entry_price,
+            settlement_price=settlement_price,
+            settlement_at=settlement_at,
+            gross_pnl=gross_pnl,
+            crd_fee=crd_fee,
+            rollover_fee=rollover_fee,
+            net_pnl=net_pnl,
+            tax=tax_due,
+            rolled_over=rolled_over,
+        )
+        self._srd_settlement_rows.append(settlement)
+        # Drop the mark price if it's no longer needed (no cash
+        # position remains on this instrument).
+        if instrument_id not in self._positions:
+            self._last_prices.pop(instrument_id, None)
+        return settlement
+
+    def _srd_marked_pnl(self) -> Decimal:
+        """Sum of mark-to-market unrealized PnL for every open SRD
+        position. Flows into ``equity_after_tax`` so mid-month SRD
+        movements surface in the equity-curve series."""
+        total = Decimal(0)
+        for iid, pos in self._srd_positions.items():
+            price = self._last_prices.get(iid)
+            if price is None:
+                continue
+            delta = price - pos.entry_price
+            if pos.direction == "SHORT":
+                delta = -delta
+            total += delta * pos.quantity
+        return total
 
     def has_turbo_on(self, underlying: InstrumentId) -> bool:
         """``True`` iff a turbo position is open on ``underlying``.
