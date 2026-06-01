@@ -1,0 +1,226 @@
+{% extends parent_template|default("base.html") %}
+{% set active_nav = 'operator' %}
+{% block title %}Settings &mdash; Notifications{% endblock %}
+{% block content %}
+<h1>Settings &mdash; Notifications</h1>
+<p class="subhead">
+  Edit <code>config/notifications.yaml</code>. Env-var NAMES
+  only &mdash; the secret values stay in the deployment's
+  environment per REQ_NF_NOT_003.
+</p>
+
+{% if error_field %}
+<section class="card" role="alert" aria-live="polite"
+         style="border-left:4px solid #c0392b">
+  <h2>Save failed</h2>
+  <p>
+    <strong>{{ error_field }}</strong>: {{ error_message }}
+  </p>
+  <p class="muted">
+    The on-disk YAML was NOT modified. Fix the field below
+    and resubmit.
+  </p>
+</section>
+{% endif %}
+
+<form method="post"
+      action="/operator/settings/notifications"
+      hx-post="/operator/settings/notifications"
+      hx-target="body"
+      hx-swap="outerHTML">
+
+  <section class="card" id="settings-channels"
+           aria-labelledby="channels-heading">
+    <h2 id="channels-heading">Channels</h2>
+    <p class="subhead">Select every channel the fan-out
+      should broadcast to. Local-log is the always-on
+      baseline.</p>
+    <div class="card-grid">
+      <label>
+        <input type="checkbox" name="channels" value="local_log"
+               {% if 'local_log' in cfg.channels %}checked{% endif %}>
+        local_log
+      </label>
+      <label>
+        <input type="checkbox" name="channels" value="slack"
+               {% if 'slack' in cfg.channels %}checked{% endif %}>
+        slack
+      </label>
+      <label>
+        <input type="checkbox" name="channels" value="email"
+               {% if 'email' in cfg.channels %}checked{% endif %}>
+        email
+      </label>
+    </div>
+  </section>
+
+  <section class="card" id="settings-retry"
+           aria-labelledby="retry-heading">
+    <h2 id="retry-heading">Retry policy</h2>
+    <div class="card-grid">
+      <label>
+        max_attempts
+        <input type="number" name="retry.max_attempts"
+               value="{{ cfg.retry.max_attempts }}"
+               min="1" step="1" required>
+      </label>
+      <label>
+        base_delay_seconds
+        <input type="number" step="0.001"
+               name="retry.base_delay_seconds"
+               value="{{ cfg.retry.base_delay_seconds }}"
+               min="0" required>
+      </label>
+      <label>
+        growth_factor
+        <input type="number" step="0.1"
+               name="retry.growth_factor"
+               value="{{ cfg.retry.growth_factor }}"
+               min="1.0" required>
+      </label>
+    </div>
+  </section>
+
+  <section class="card" id="settings-approval"
+           aria-labelledby="approval-heading">
+    <h2 id="approval-heading">Approval gate</h2>
+    <div class="card-grid">
+      <label>
+        timeout_seconds
+        <input type="number" name="approval.timeout_seconds"
+               value="{{ cfg.approval.timeout_seconds }}"
+               min="1" step="1" required>
+      </label>
+      <label>
+        threshold_amount
+        <input type="text" name="approval.threshold_amount"
+               value="{{ cfg.approval.threshold_amount }}"
+               required>
+      </label>
+      <label>
+        threshold_currency
+        <input type="text" name="approval.threshold_currency"
+               value="{{ cfg.approval.threshold_currency }}"
+               pattern="[A-Z]{3}" required>
+      </label>
+    </div>
+  </section>
+
+  <section class="card" id="settings-local-log"
+           aria-labelledby="local-log-heading">
+    <h2 id="local-log-heading">Local-log path</h2>
+    <label>
+      local_log_path
+      <input type="text" name="local_log_path"
+             value="{{ cfg.local_log_path }}"
+             style="width:100%" required>
+    </label>
+  </section>
+
+  <section class="card" id="settings-slack"
+           aria-labelledby="slack-heading">
+    <h2 id="slack-heading">Slack channel (optional)</h2>
+    <p class="muted">
+      Webhook URL env-var NAME only &mdash; the value lives
+      in the deployment env (REQ_NF_SET_001).
+    </p>
+    <div class="card-grid">
+      <label>
+        webhook_url_env
+        <input type="text" name="slack.webhook_url_env"
+               value="{{ cfg.slack.webhook_url_env if cfg.slack else 'TRADING_BOT_SLACK_WEBHOOK_URL' }}">
+      </label>
+      <label>
+        timeout_seconds
+        <input type="number" step="0.1"
+               name="slack.timeout_seconds"
+               value="{{ cfg.slack.timeout_seconds if cfg.slack else 5.0 }}"
+               min="0.1">
+      </label>
+    </div>
+  </section>
+
+  <section class="card" id="settings-email"
+           aria-labelledby="email-heading">
+    <h2 id="email-heading">Email channel (optional)</h2>
+    <p class="muted">
+      SMTP password env-var NAME only &mdash; the password
+      itself lives in the deployment env.
+    </p>
+    <div class="card-grid">
+      <label>
+        smtp_host
+        <input type="text" name="email.smtp_host"
+               value="{{ cfg.email.smtp_host if cfg.email else '' }}">
+      </label>
+      <label>
+        smtp_port
+        <input type="number" name="email.smtp_port"
+               value="{{ cfg.email.smtp_port if cfg.email else 587 }}"
+               min="1" max="65535">
+      </label>
+      <label>
+        user
+        <input type="text" name="email.user"
+               value="{{ cfg.email.user if cfg.email else '' }}">
+      </label>
+      <label>
+        from_addr
+        <input type="text" name="email.from_addr"
+               value="{{ cfg.email.from_addr if cfg.email else '' }}">
+      </label>
+      <label>
+        recipients (one per line)
+        <textarea name="email.recipients" rows="4"
+                  style="width:100%">{% if cfg.email %}{{ '\n'.join(cfg.email.recipients) }}{% endif %}</textarea>
+      </label>
+      <label>
+        password_env
+        <input type="text" name="email.password_env"
+               value="{{ cfg.email.password_env if cfg.email else 'TRADING_BOT_SMTP_PASSWORD' }}">
+      </label>
+      <label>
+        <input type="checkbox" name="email.use_starttls" value="1"
+               {% if cfg.email is none or cfg.email.use_starttls %}checked{% endif %}>
+        use_starttls
+      </label>
+      <label>
+        timeout_seconds
+        <input type="number" step="0.1"
+               name="email.timeout_seconds"
+               value="{{ cfg.email.timeout_seconds if cfg.email else 10.0 }}"
+               min="0.1">
+      </label>
+    </div>
+  </section>
+
+  {% if env_states %}
+  <section class="card" aria-labelledby="env-heading">
+    <h2 id="env-heading">Env-var status</h2>
+    <p class="muted">
+      Server-side check against the running process's
+      environment. Values are NEVER displayed.
+    </p>
+    <ul>
+      {% for entry in env_states %}
+      <li>
+        <code>{{ entry.name }}</code>:
+        {% if entry.set %}<span class="badge accent" aria-label="environment variable is set">set</span>
+        {% else %}<span class="badge" style="background:#c0392b;color:#fff" aria-label="environment variable is unset">unset</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <section class="card">
+    <button type="submit" class="primary">Save notifications</button>
+    <p class="muted">
+      Settings take effect after the next container /
+      runtime restart. The dashboard chrome surfaces a
+      reload-pending banner so the operator can verify the
+      env-vars are exported first.
+    </p>
+  </section>
+</form>
+{% endblock %}

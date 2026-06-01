@@ -46,6 +46,7 @@ from trading_system.observability import (
 )
 from trading_system.webapp.health import router as health_router
 from trading_system.webapp.metrics import router as metrics_router
+from trading_system.webapp.routers.views.settings import router as settings_view_router
 from trading_system.webapp.job_queue import InProcessJobQueue, JobQueue
 from trading_system.webapp.routers.api.bars import router as bars_api_router
 from trading_system.webapp.routers.api.operator_tokens import (
@@ -149,6 +150,11 @@ class WebappState:
     # (notifications stay in the inbox only, via the existing
     # boot breadcrumb path).
     notification_fanout: Any | None = None
+    # CR-032 — operator settings reload-pending state. ``None``
+    # after a fresh boot; set by the settings view's save handler
+    # to a ``ReloadPending`` dataclass when the YAML is rewritten.
+    # NOT persisted across restarts — restart IS the reload.
+    reload_pending: Any | None = None
     templates: Jinja2Templates = field(init=False)
 
     def __post_init__(self) -> None:
@@ -249,10 +255,16 @@ def create_app(state: WebappState) -> FastAPI:
     # retry policy + inbox subscription). ``None`` ⇒ no
     # broadcast; tests inject a stub or skip wiring.
     app.state.notification_fanout = state.notification_fanout
+    # CR-032 — operator settings reload-pending slot. Default
+    # is whatever WebappState was constructed with (typically
+    # None); the settings view's save handler mutates this
+    # directly via `request.app.state.reload_pending = ...`.
+    app.state.reload_pending = state.reload_pending
 
     # Routers.
     app.include_router(health_router)
     app.include_router(metrics_router)
+    app.include_router(settings_view_router)
     app.include_router(live_mode_router)
     app.include_router(live_state_router)
     app.include_router(paper_state_router)

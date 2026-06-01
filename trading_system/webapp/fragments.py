@@ -39,7 +39,26 @@ def fragment_context(request: Request) -> dict:
     to the chrome-less fragment base when the request asks for
     fragment rendering. Splat into the existing
     ``TemplateResponse(..., context={...})``.
+
+    Also exposes the CR-032 ``reload_pending`` slot to every
+    chrome render so ``base.html`` can decide whether to show
+    the operator's "reload pending" banner. The slot is read
+    from ``request.app.state.reload_pending`` lazily — None when
+    no save has landed since the last process start.
     """
+    # Defensive: tests + isolated callers may pass a bare
+    # ``Request`` without an associated ``app`` (no
+    # ``scope["app"]``). Treat that as "no reload pending"
+    # rather than blowing up.
+    try:
+        reload_pending = getattr(
+            request.app.state, "reload_pending", None
+        )
+    except KeyError:
+        reload_pending = None
+    ctx: dict = {"reload_pending": reload_pending}
     if is_fragment_request(request):
-        return {"parent_template": "fragment_base.html"}
-    return {"parent_template": "base.html"}
+        ctx["parent_template"] = "fragment_base.html"
+    else:
+        ctx["parent_template"] = "base.html"
+    return ctx

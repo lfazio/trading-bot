@@ -102,9 +102,16 @@ def test_fragment_context_returns_dynamic_parent_template() -> None:
             }
         )
 
-    assert fragment_context(_make(b"")) == {"parent_template": "base.html"}
+    # CR-032 added a `reload_pending` slot to the context so the
+    # base template's banner can render. Defaults to None when
+    # the request carries no associated app (test fixture path).
+    assert fragment_context(_make(b"")) == {
+        "parent_template": "base.html",
+        "reload_pending": None,
+    }
     assert fragment_context(_make(b"fragment=1")) == {
-        "parent_template": "fragment_base.html"
+        "parent_template": "fragment_base.html",
+        "reload_pending": None,
     }
 
 

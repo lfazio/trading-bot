@@ -1485,6 +1485,61 @@
         "summary": "Operator-Recovery-Submit"
       }
     },
+    "/operator/settings": {
+      "get": {
+        "description": "Landing page: left-nav + the active sub-page rendered\ninline. v1 redirects to the notifications sub-page since\nit's the only available editor.",
+        "operationId": "operator_settings_operator_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Operator-Settings"
+      }
+    },
+    "/operator/settings/notifications": {
+      "get": {
+        "description": "Render the notifications settings form pre-filled from\nthe on-disk YAML. Validation errors from a prior save are\nsurfaced via the ``error_field`` / ``error_message`` query\nparams (the POST handler redirects back here on failure).",
+        "operationId": "operator_settings_notifications_operator_settings_notifications_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Operator-Settings-Notifications"
+      },
+      "post": {
+        "description": "Save the operator's edits to ``notifications.yaml``.\n\nOn validation failure \u21d2 303-redirect back to the form\nwith ``?error_field=<name>&error_message=<reason>`` query\nparams so the operator sees the error in context (HTMX\nswap mode renders the form fragment with the error inline).\n\nOn success \u21d2 303-redirect to the form (operator sees the\nnew values pre-filled + the reload-pending banner in the\nchrome).",
+        "operationId": "operator_settings_notifications_save_operator_settings_notifications_post",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Operator-Settings-Notifications-Save"
+      }
+    },
     "/operator/tokens": {
       "get": {
         "description": "Render the operator-token management panel.\n\nTwo sub-sections:\n- **Rotate secret** \u2014 household-only POST control; rotating\n  generates a fresh secret server-side + displays it ONCE.\n- **Revoked tokens** \u2014 per-account table of jti's the\n  revocation list carries. The \"Revoke\" form takes a fresh\n  jti + posts to the JSON API.",

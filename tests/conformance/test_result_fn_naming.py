@@ -83,6 +83,11 @@ _ALLOWED_BOUNDARY_OPS: frozenset[str] = frozenset({
     # verb matches REQ_F_RPT_001's "SHALL emit a report directory"
     # vocabulary and is the canonical operator-tooling call site.
     "analytics/report.py:write_report",
+    # CR-032 settings writer — atomic YAML write at a filesystem
+    # boundary; the "write" verb matches REQ_SDD_SET_002's
+    # "atomic writer" vocabulary + the operator-facing settings
+    # surface (user expects "save" → "write" semantics).
+    "webapp/settings_writer.py:write_notifications_yaml",
     # CR-002 / strategy_lab registry — stateful in-memory registry
     # of validated strategies. ``mark_validated`` / ``set_baseline``
     # are the documented state-transition operations on the

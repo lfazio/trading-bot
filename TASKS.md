@@ -1077,6 +1077,66 @@ stdlib `webui/` fallback still has placeholders.
       (operator-maintained; every entry SHALL carry a
       justification + re-review date).
 
+### 9c. CR-032 — Operator settings UI
+
+- [x] **CR-032 cascade Phase 1..4 (design)** ✅ DONE
+      2026-06-01 @ `<prior commit>`. Wiki cascade stamped
+      2026-06-01 — SRS §3.20 adds REQ_F_SET_001..005 +
+      REQ_NF_SET_001; SDS §3.46 documents the settings view
+      module + atomic YAML writer; SDD §13.38 adds
+      REQ_SDD_SET_001..004; Test Plan §3.15q adds
+      TC_SET_001..006.
+- [x] **CR-032 cascade Phase 5 (implementation)** ✅ DONE
+      2026-06-01 @ `<this commit>`.
+      `trading_system/webapp/settings_state.py` ships the
+      `ReloadPending` frozen dataclass (in-memory slot on
+      `app.state.reload_pending`; not persisted across
+      restarts per CR-032 question 4).
+      `trading_system/webapp/settings_writer.py` ships
+      `write_notifications_yaml(config_dir, cfg) ->
+      Result[None, str]` using `ruamel.yaml.YAML(typ='rt')`
+      for comment-preserving round-trip (CR-032 question 2)
+      + write-tempfile-fsync-rename atomicity + categorised
+      `webapp:settings:{io,invariant}:<details>` Err set +
+      `env_vars_referenced(cfg)` helper.
+      `trading_system/webapp/routers/views/settings.py` ships
+      three endpoints: `GET /operator/settings` (redirects to
+      notifications sub-page), `GET /operator/settings/
+      notifications` (HTMX form pre-filled from the on-disk
+      YAML), `POST /operator/settings/notifications`
+      (validates → writes → updates `app.state.reload_pending`
+      → redirects back with error_field/error_message query
+      params on failure). Household-claim accepted per
+      REQ_F_SET_001; per-account tokens also accepted on read.
+      `trading_system/webapp/templates/settings_notifications.html`
+      ships the form template with channels / retry / approval
+      / paths / Slack / Email sub-sections + env-var status
+      indicators (set/unset only; REQ_NF_SET_001 secret
+      discipline — never leaks the resolved value).
+      `trading_system/webapp/templates/base.html` chrome gains
+      the user-menu dropdown (Settings / Log out / About per
+      CR-032 question 3 — Logout is no-op + tooltip) +
+      reload-pending banner rendered when
+      `app.state.reload_pending` is non-None (lists every
+      env-var the saved config depends on so the operator
+      verifies the secrets pre-restart, per CR-032 question 1).
+      `trading_system/webapp/fragments.py::fragment_context`
+      extended to surface `reload_pending` to every chrome
+      render. New `[settings]` install extra in pyproject.toml
+      for the `ruamel.yaml` soft dependency.
+      Tests: 11 new at `tests/webapp/test_settings_view.py`
+      cover TC_SET_001..006: landing redirect / form pre-fill /
+      household + per-account token acceptance / save round-
+      trip / validation failure preserves YAML / reload_pending
+      populated + not surviving fresh `create_app()` /
+      user-menu chrome HTML structure / aria-label / env-var
+      NAMES only in the YAML + HTML. OpenAPI snapshot
+      regenerated to include the new routes. Conformance
+      audit (REQ_SDD_NAM_004) allow-list extended to permit
+      `webapp/settings_writer.py:write_notifications_yaml`.
+      Full webapp + conformance suite stays green at 617
+      passing.
+
 ### 10. Deferred (re-triage after live trading lands)
 
 - [ ] **CR-003 — News-feed secondary signal** (🔴 Deferred

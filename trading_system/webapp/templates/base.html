@@ -24,9 +24,43 @@
     <div class="topbar-actions">
       {% if account_id %}<span class="badge accent"
             aria-label="Current account {{ account_id }}">{{ account_id }}</span>{% endif %}
-      <button type="button" class="secondary" onclick="fetch('/api/session',{method:'DELETE',credentials:'same-origin'}).then(()=>window.location='/login')">Log out</button>
+      <details class="user-menu" data-user-menu>
+        <summary aria-haspopup="menu" aria-label="Open user menu">⋯ Menu</summary>
+        <div role="menu" class="user-menu-panel">
+          <a role="menuitem" href="/operator/settings">Settings</a>
+          <button role="menuitem" type="button" class="secondary"
+                  aria-label="logout requires clearing the browser cookie for this site"
+                  title="logout requires clearing the browser cookie for this site">
+            Log out
+          </button>
+          <button role="menuitem" type="button" class="secondary"
+                  onclick="alert('trading-bot ' + (window.TRADING_BOT_VERSION || 'dev'))"
+                  aria-label="About this build">
+            About
+          </button>
+        </div>
+      </details>
     </div>
   </header>
+  {% if reload_pending %}
+  <div class="reload-pending-banner" role="status"
+       aria-live="polite">
+    <strong>Settings reload pending</strong> &mdash;
+    saved {{ reload_pending.modified_at.isoformat() }}.
+    Sections edited:
+    {% for section in reload_pending.sections_changed %}<code>{{ section }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.
+    {% if reload_pending.env_vars_referenced %}
+    Env-vars the saved config depends on (verify these are
+    exported before the container restart):
+    <ul style="margin:0.3em 0">
+      {% for name in reload_pending.env_vars_referenced %}
+      <li><code>{{ name }}</code></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    Restart the container to apply.
+  </div>
+  {% endif %}
   {% endif %}
   <main class="page">{% block content %}{% endblock %}</main>
 
