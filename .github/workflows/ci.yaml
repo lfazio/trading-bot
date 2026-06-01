@@ -59,9 +59,20 @@ jobs:
       - name: Install dependencies from requirements.lock
         run: |
           python -m pip install --upgrade pip
-          # The lock pins the full webapp + dev extra surface.
+          # The lock pins the runtime + webapp extra surfaces with
+          # cryptographic hashes for byte-deterministic CI runs.
           pip install --require-hashes -r requirements.lock
+          # Runtime + extras the lock pins (no-deps so the install
+          # doesn't try to resolve transitive deps the lock already
+          # pinned).
           pip install -e . --no-deps
+          # Test-only deps (hypothesis / pytest-bdd / pytest-benchmark)
+          # + reports extras (plotly / kaleido) live in pyproject's
+          # optional extras. Install them un-pinned for CI so the
+          # property + BDD + analytics-report tests can collect
+          # without ImportError. The runtime + webapp lock remains
+          # the hash-pinned production target; these are CI-only.
+          pip install -e ".[dev,reports]"
 
       - name: Structural audits
         run: |

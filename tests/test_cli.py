@@ -40,6 +40,55 @@ def test_validate_config_bad_dir_returns_nonzero(
     assert "config: FAILED" in captured.err
 
 
+def test_validate_config_rich_errors_flag_clean(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """C3 — `--rich-errors` runs the Pydantic v2 schemas
+    alongside the existing typed loaders. Clean config dir ⇒
+    both reports print OK."""
+    exit_code = main(["validate-config", "--rich-errors"])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "config: OK" in captured.out
+    assert "config (rich): OK" in captured.out
+
+
+def test_validate_config_rich_errors_flag_surfaces_field_tree(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C3 — `--rich-errors` against a broken notifications.yaml
+    prints every field-level violation in a single tree-shaped
+    report. Single Pydantic pass collects multiple field errors."""
+    # Copy the bundled config + clobber notifications.yaml with a
+    # broken version so the rest of the loaders still pass.
+    import shutil
+
+    repo_root = Path(__file__).resolve().parent.parent
+    bundled = repo_root / "config"
+    dst = tmp_path / "config"
+    shutil.copytree(bundled, dst)
+    (dst / "notifications.yaml").write_text(
+        """
+notifications:
+  channels: [unknown_channel]
+  retry:
+    max_attempts: 0
+    base_delay_seconds: -1
+""",
+        encoding="utf-8",
+    )
+    exit_code = main(
+        ["validate-config", "--config-dir", str(dst), "--rich-errors"]
+    )
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    # Tree shape: file header followed by indented field lines.
+    assert "notifications.yaml:" in captured.err
+    assert "notifications.retry.max_attempts" in captured.err
+    assert "notifications.retry.base_delay_seconds" in captured.err
+    assert "notifications.channels" in captured.err
+
+
 # ---------------------------------------------------------------------------
 # TC_CLI_002 — backtest argparse
 # ---------------------------------------------------------------------------

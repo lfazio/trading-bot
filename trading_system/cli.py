@@ -148,6 +148,17 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Also print successfully-validated and skipped filenames.",
     )
+    vc.add_argument(
+        "--rich-errors",
+        action="store_true",
+        help=(
+            "C3 — additionally run Pydantic v2 schemas against the YAMLs "
+            "that opt in (see trading_system.config.pydantic_schemas) and "
+            "print every field-level error in a single tree-shaped report. "
+            "v1 ships the schema for notifications.yaml only; other YAMLs "
+            "stay on the existing typed-loader path."
+        ),
+    )
     vc.set_defaults(func=_run_validate_config)
 
     # ----- issue-token (CR-024 / REQ_F_TOK_005) ----------------------------
@@ -311,9 +322,10 @@ def _run_record_data(args: argparse.Namespace) -> int:
 
 def _run_validate_config(args: argparse.Namespace) -> int:
     """``trading-bot validate-config`` — delegate to
-    ``config.validate_all``. Same shape as ``python -m
-    trading_system.config --validate-all``."""
+    ``config.validate_all`` + optionally to the C3 Pydantic
+    schemas via ``--rich-errors``."""
     result = validate_all(args.config_dir)
+    exit_code = 0
     if isinstance(result, Ok):
         report = result.value
         if args.verbose:
@@ -328,15 +340,29 @@ def _run_validate_config(args: argparse.Namespace) -> int:
         sys.stdout.write(
             f"config: OK ({len(report.validated_files)} files validated)\n"
         )
-        return 0
-    err_report = result.error
-    for line in err_report.errors:
-        sys.stderr.write(f"{line}\n")
-    sys.stderr.write(
-        f"config: FAILED ({len(err_report.errors)} error(s)); "
-        f"{len(err_report.validated_files)} file(s) validated\n"
-    )
-    return 1
+    else:
+        err_report = result.error
+        for line in err_report.errors:
+            sys.stderr.write(f"{line}\n")
+        sys.stderr.write(
+            f"config: FAILED ({len(err_report.errors)} error(s)); "
+            f"{len(err_report.validated_files)} file(s) validated\n"
+        )
+        exit_code = 1
+
+    if args.rich_errors:
+        from trading_system.config.pydantic_schemas import (
+            render_rich_report,
+            validate_with_pydantic_schemas,
+        )
+
+        rich_result = validate_with_pydantic_schemas(args.config_dir)
+        if isinstance(rich_result, Ok):
+            sys.stdout.write(render_rich_report(rich_result.value))
+        else:
+            sys.stderr.write(render_rich_report(rich_result.error))
+            exit_code = 1
+    return exit_code
 
 
 def _run_live_preflight(args: argparse.Namespace) -> int:
