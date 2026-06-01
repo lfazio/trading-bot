@@ -45,6 +45,7 @@ from trading_system.observability import (
     structured_log,
 )
 from trading_system.webapp.health import router as health_router
+from trading_system.webapp.metrics import router as metrics_router
 from trading_system.webapp.job_queue import InProcessJobQueue, JobQueue
 from trading_system.webapp.routers.api.bars import router as bars_api_router
 from trading_system.webapp.routers.api.operator_tokens import (
@@ -251,6 +252,7 @@ def create_app(state: WebappState) -> FastAPI:
 
     # Routers.
     app.include_router(health_router)
+    app.include_router(metrics_router)
     app.include_router(live_mode_router)
     app.include_router(live_state_router)
     app.include_router(paper_state_router)

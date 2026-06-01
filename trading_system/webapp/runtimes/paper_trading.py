@@ -579,7 +579,13 @@ class PaperTradingRuntime:
         live_bar = bar.value if isinstance(bar, Ok) else None
         if live_bar is None:  # safety: should not occur given the branch above
             return Ok(Nothing())
-        return self._apply_bar(live_bar)
+        # C12 — record tick latency for operator-visible
+        # observability. No-op when the prometheus_client soft
+        # dep isn't installed.
+        from trading_system.webapp.metrics import time_paper_tick
+
+        with time_paper_tick(account_id=str(self.session.account_id)):
+            return self._apply_bar(live_bar)
 
     # ------------------------------------------------------------------
     # Bar-resolution helpers

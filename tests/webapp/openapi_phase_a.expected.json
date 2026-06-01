@@ -1268,6 +1268,18 @@
         "summary": "Login"
       }
     },
+    "/metrics": {
+      "get": {
+        "description": "Prometheus exposition endpoint (Phase-8 Part C C12).\n\nReturns ``200 text/plain; version=0.0.4`` with the current\nmetric values on success; ``503`` when the soft dep\n``prometheus_client`` isn't installed so the scrape\ntarget's downtime alerting fires.\n\nNo authentication \u2014 the convention is for operators to\nexpose this endpoint on an internal-only network or\nbehind a reverse proxy. The webapp's existing\nauth-gated panels handle the operator UI; ``/metrics``\nis for machine scraping.",
+        "operationId": "metrics_endpoint_metrics_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Metrics-Endpoint"
+      }
+    },
     "/notifications": {
       "get": {
         "description": "Render the inbox panel. Auth: any valid claim.",

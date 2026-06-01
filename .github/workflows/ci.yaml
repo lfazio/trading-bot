@@ -72,12 +72,13 @@ jobs:
           # pinned).
           pip install -e . --no-deps
           # Test-only deps (hypothesis / pytest-bdd / pytest-benchmark)
-          # + reports extras (plotly / kaleido) live in pyproject's
-          # optional extras. Install them un-pinned for CI so the
-          # property + BDD + analytics-report tests can collect
+          # + reports extras (plotly / kaleido) + metrics extras
+          # (prometheus_client) live in pyproject's optional
+          # extras. Install them un-pinned for CI so the property +
+          # BDD + analytics-report + metrics tests can collect
           # without ImportError. The runtime + webapp lock remains
           # the hash-pinned production target; these are CI-only.
-          pip install -e ".[dev,reports]"
+          pip install -e ".[dev,reports,metrics]"
 
       - name: Structural audits
         run: |

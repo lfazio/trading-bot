@@ -351,7 +351,32 @@ Sprint scoreboard at session close (2026-05-26):
         14 new tests (6 repo + 8 CLI) cover happy paths +
         filter AND-ing + invalid expressions + account
         isolation + since cutoff + archived_at DESC ordering.
-      - **C12** /metrics Prometheus endpoint — not shipped.
+      - **C12** /metrics Prometheus endpoint ✅ DONE 2026-06-01
+        @ `<this commit>`. New `trading_system/webapp/metrics.py`
+        module: 5 metric series (paper-tick / broker-submit /
+        persistence-write Histograms + trades-emitted /
+        ks-transitions Counters) registered as module-level
+        singletons against the default registry. Engine-facing
+        helpers (`time_paper_tick` / `time_broker_submit` /
+        `time_persistence_write` context managers +
+        `record_trade` / `record_ks_transition` counter
+        bumps) so engine modules never import prometheus_client
+        directly. `GET /metrics` returns the standard Prometheus
+        exposition format (`text/plain; version=0.0.4`); no
+        auth (the convention is for operators to expose this
+        endpoint on an internal-only network or behind a
+        reverse proxy). Paper-trading runtime's `tick_once`
+        wraps `_apply_bar` in `time_paper_tick` — additional
+        instrumentation sites land as a follow-up slice.
+        prometheus_client is a SOFT dependency: when not
+        installed the module degrades to no-op stubs + the
+        endpoint returns 503. New `pip install -e .[metrics]`
+        extra; CI install step extended to include it. 10
+        new tests at `tests/webapp/test_metrics.py` cover
+        endpoint Content-Type / metric series rendering /
+        each `time_*` context manager / each `record_*`
+        counter / dep-absent 503 path. OpenAPI snapshot
+        regenerated to include the new route.
       - **C13** /reports/compare view route ✅ DONE 2026-06-01
         @ `<this commit>`. New `GET /reports/compare?a=<job_a>
         &b=<job_b>` route in `webapp/routers/views/reports.py`
