@@ -31,9 +31,11 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from threading import Lock
-from typing import Literal
+from typing import Any, Literal
+
+from trading_system.result import Ok, Result
 
 
 # Closed set — adding a category is a deliberate change here +
@@ -108,3 +110,96 @@ class InboxChannel:
     def __len__(self) -> int:
         with self._lock:
             return len(self._buffer)
+
+    def deliver(self, payload: Any) -> Result[None, str]:
+        """CR-001 ``NotificationChannel`` Protocol surface.
+
+        Adapts every ``NotificationPayload`` variant
+        (``KillSwitchEvent`` / ``AnomalyAlert`` / ``Summary`` /
+        ``TradeApprovalRequest`` / ``ApprovalResponse`` /
+        ``Error``) into an ``InboxEntry`` and appends it to the
+        ring buffer. Returns ``Ok(None)`` unconditionally —
+        the inbox is a best-effort visibility surface; an
+        evicted older entry isn't an Err. The fan-out's retry
+        contract therefore never kicks in for this channel
+        (REQ_F_WEB2_009 — operator-visible event log, NOT a
+        durable audit trail).
+        """
+        entry = _payload_to_inbox_entry(payload)
+        self.append(entry)
+        return Ok(None)
+
+
+_PAYLOAD_SEVERITY: dict[str, InboxSeverity] = {
+    "INFO": "info",
+    "WARN": "warn",
+    "URGENT": "error",
+    "KILL": "error",
+    "DEGRADE": "warn",
+    "RECOVERY": "info",
+}
+
+
+def _payload_to_inbox_entry(payload: Any) -> InboxEntry:
+    """Translate any ``NotificationPayload`` variant into an
+    ``InboxEntry``. The mapping covers the closed payload union
+    via duck-typed attribute access — adding a new payload type
+    SHALL extend this helper + the test surface.
+
+    Common fields the helper reads (where present):
+    - ``at: datetime`` — entry timestamp; falls back to now.
+    - ``code: str`` — InboxEntry.code.
+    - ``severity: str`` — mapped to InboxEntry severity via
+      ``_PAYLOAD_SEVERITY``; unknown values land as "info".
+    - ``account_id`` — InboxEntry.account_id; empty string when
+      the payload is household-scoped.
+    - ``message: str`` — human-readable body; falls back to the
+      type name.
+    """
+    at = getattr(payload, "at", None)
+    if not isinstance(at, datetime):
+        at = datetime.now(tz=UTC)
+
+    code_raw = getattr(payload, "code", None)
+    code = str(code_raw).strip() if code_raw else type(payload).__name__
+
+    severity_raw = getattr(payload, "severity", None)
+    severity_key = str(severity_raw).upper() if severity_raw is not None else "INFO"
+    severity = _PAYLOAD_SEVERITY.get(severity_key, "info")
+
+    account_id_raw = getattr(payload, "account_id", None)
+    account_id = str(account_id_raw) if account_id_raw is not None else ""
+
+    message_raw = getattr(payload, "message", None)
+    message = str(message_raw) if message_raw else type(payload).__name__
+
+    category = _payload_category(payload)
+
+    return InboxEntry(
+        at=at,
+        category=category,
+        code=code,
+        severity=severity,
+        message=message,
+        account_id=account_id,
+    )
+
+
+def _payload_category(payload: Any) -> str:
+    """Map payload type → InboxEntry.category. The set is closed
+    over the NotificationPayload union; unknown types land under
+    'notification'."""
+    name = type(payload).__name__
+    if name == "KillSwitchEvent":
+        return "ks"
+    if name == "AnomalyAlert":
+        return "anomaly"
+    if name == "Summary":
+        return "summary"
+    if name == "TradeApprovalRequest":
+        return "approval"
+    if name == "ApprovalResponse":
+        return "approval"
+    if name == "Error":
+        return "error"
+    return "notification"

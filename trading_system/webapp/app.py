@@ -27,6 +27,8 @@ Phase B follow-ups (deferred):
 
 from __future__ import annotations
 
+import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -138,6 +140,14 @@ class WebappState:
     # adds a row to the revocation list + the verifier consults
     # it BEFORE the TTL check.
     operator_token_revocation_repo: Any | None = None
+    # CR-001 Phase B — notification fan-out slot. When wired,
+    # safety/alert_system + meta-loop rejections / KS events
+    # broadcast a payload to every configured channel
+    # (inbox + Slack + email + local_log per the operator's
+    # `config/notifications.yaml`). ``None`` ⇒ no broadcast
+    # (notifications stay in the inbox only, via the existing
+    # boot breadcrumb path).
+    notification_fanout: Any | None = None
     templates: Jinja2Templates = field(init=False)
 
     def __post_init__(self) -> None:
@@ -234,6 +244,10 @@ def create_app(state: WebappState) -> FastAPI:
     app.state.operator_token_revocation_repo = (
         state.operator_token_revocation_repo
     )
+    # CR-001 Phase B — notification fan-out slot (channels +
+    # retry policy + inbox subscription). ``None`` ⇒ no
+    # broadcast; tests inject a stub or skip wiring.
+    app.state.notification_fanout = state.notification_fanout
 
     # Routers.
     app.include_router(health_router)
@@ -405,6 +419,13 @@ def default_app() -> FastAPI:
     # function so the verifier could be wired with it; reuse the
     # same instance here so the rotation/revocation route + the
     # auth-check share one repo (one Connection per process).
+    # CR-001 Phase B — build the notification fan-out around the
+    # configured channels + the runtime-owned inbox. Dashboard
+    # alerts (KS events, meta-loop rejections, anomalies) now
+    # broadcast to every channel the operator opted into via
+    # `config/notifications.yaml` AND land in the inbox so the
+    # in-process recovery surface always shows them.
+    notification_fanout = build_notification_fanout(inbox=inbox)
     return create_app(
         WebappState(
             token_verifier=verifier,
@@ -417,6 +438,7 @@ def default_app() -> FastAPI:
             instrument_bar_repository=instrument_bar_repository,
             paper_session_repository=paper_session_repository,
             operator_token_revocation_repo=operator_token_revocation_repo,
+            notification_fanout=notification_fanout,
         )
     )
 
@@ -579,5 +601,86 @@ def _operator_token_revocation_repo_for_default_app():  # type: ignore[no-untype
     if conn is None:
         return None
     return OperatorTokenRevocationRepository(conn=conn)
+
+
+def _default_config_dir() -> Path:
+    """Resolve the config directory ``default_app()`` reads YAMLs from.
+
+    Honours ``TRADING_BOT_CONFIG_DIR`` when set; otherwise falls
+    back to the repo-bundled ``config/`` directory next to
+    ``trading_system/``. The bundled directory ships sample
+    YAMLs (notifications, risk, phases, etc.) so a vanilla
+    `python -m trading_system` boot picks up a working set
+    of defaults.
+    """
+    env_dir = os.environ.get("TRADING_BOT_CONFIG_DIR", "").strip()
+    if env_dir:
+        return Path(env_dir)
+    return Path(__file__).resolve().parent.parent.parent / "config"
+
+
+def build_notification_fanout(
+    *, inbox: Any, config_dir: Path | None = None
+) -> Any:
+    """CR-001 Phase B — assemble the ``NotificationFanOut`` for the
+    webapp's boot path.
+
+    The fanout subscribes ALL channels declared in
+    ``config/notifications.yaml`` (local_log + optional slack +
+    optional email) PLUS the runtime-owned ``inbox`` channel so
+    dashboard alerts always land in the operator's inbox AND on
+    their configured external channels simultaneously.
+
+    Behaviour on config errors / missing YAML:
+    - Missing file ⇒ defaults from ``NotificationsConfig()`` —
+      local_log channel only. Webapp keeps booting.
+    - Schema / invariant Err on present file ⇒ falls back to
+      defaults + emits a structured-log envelope so the
+      operator notices on the next dashboard paint. Webapp
+      still boots; the inbox channel is always subscribed via
+      ``extra``.
+    """
+    from trading_system.notifications.fanout import (
+        NotificationFanOut,
+        RetryPolicy,
+    )
+    from trading_system.notifications.loader import (
+        NotificationsConfig,
+        build_channels,
+        load_notifications_config,
+    )
+
+    cd = config_dir or _default_config_dir()
+    yaml_path = Path(cd) / "notifications.yaml"
+    cfg: NotificationsConfig
+    if yaml_path.exists():
+        load_result = load_notifications_config(yaml_path)
+        if hasattr(load_result, "is_ok") and load_result.is_ok():
+            cfg = load_result.value
+        else:
+            # Categorised Err on a present-but-broken YAML. Fall
+            # back to defaults rather than crashing the webapp;
+            # the structured-log envelope surfaces the issue.
+            structured_log(
+                logging.getLogger(__name__),
+                logging.WARNING,
+                "config",
+                "notifications_yaml_invalid_falling_back_to_defaults",
+                path=str(yaml_path),
+                reason=getattr(load_result, "error", "<unknown>"),
+            )
+            cfg = NotificationsConfig()
+    else:
+        cfg = NotificationsConfig()
+
+    channels = build_channels(cfg, extra=(inbox,))
+    retry = RetryPolicy(
+        max_attempts=cfg.retry.max_attempts,
+        base_delay_seconds=cfg.retry.base_delay_seconds,
+        growth_factor=cfg.retry.growth_factor,
+    )
+    return NotificationFanOut(
+        channels=tuple(channels), retry_policy=retry
+    )
 
 

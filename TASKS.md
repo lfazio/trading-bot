@@ -446,15 +446,49 @@ expected effort + dependency.
       examples (commented out by default; operators uncomment
       the channels they want). Env-var-only secret discipline
       preserved in the comments per REQ_NF_NOT_003.
-- [ ] **Webapp inbox panel wire-up** — the FastAPI `webapp/inbox`
-      panel already exists + persists Phase-1 boot breadcrumbs;
-      wiring a `NotificationFanOut(channels=build_channels(cfg,
-      extra=(inbox,)))` into `default_app()` so dashboard alerts
-      land both in the operator's inbox AND on their configured
-      external channels (Slack / email) is the remaining slice.
-      The factory + schema gates ship in this commit; the
-      runtime composition needs a follow-up with broader webapp
-      smoke coverage.
+- [x] **Webapp inbox panel wire-up** ✅ DONE 2026-06-01 @
+      `<this commit>`. The FastAPI `webapp/inbox` panel now
+      receives every payload broadcast through the runtime
+      fan-out — dashboard alerts land in both the inbox AND
+      the operator's configured external channels (Slack /
+      email) simultaneously.
+      Implementation:
+      - `trading_system/webapp/inbox.py` — `InboxChannel`
+        gains a `deliver(payload) -> Result[None, str]`
+        method satisfying the CR-001 `NotificationChannel`
+        Protocol. A new `_payload_to_inbox_entry(payload)`
+        helper adapts every `NotificationPayload` variant
+        (KillSwitchEvent / AnomalyAlert / Summary /
+        TradeApprovalRequest / ApprovalResponse / Error)
+        into an `InboxEntry` with the documented severity +
+        category mapping. The helper is duck-typed over the
+        payload union so adding a new payload type extends
+        this surface in one place.
+      - `trading_system/webapp/app.py` — new
+        `build_notification_fanout(*, inbox, config_dir=None)`
+        helper loads `config/notifications.yaml` via the
+        existing `load_notifications_config` + builds channels
+        via `build_channels(cfg, extra=(inbox,))` + wraps in
+        a `NotificationFanOut` whose retry policy mirrors the
+        YAML's `retry:` sub-section. Defensive fallback:
+        missing YAML ⇒ `NotificationsConfig()` defaults;
+        present-but-broken YAML ⇒ structured-log envelope +
+        defaults (webapp keeps booting). `default_app()`
+        calls the helper after constructing the inbox + adds
+        the fanout to `WebappState` (new `notification_fanout`
+        slot) which lifts onto `app.state.notification_fanout`
+        for routes / safety-layer to consume.
+      - `_default_config_dir()` helper resolves the config
+        directory: honours `TRADING_BOT_CONFIG_DIR` env var;
+        defaults to the repo-bundled `config/` directory.
+      Tests: 5 new at
+      `tests/webapp/test_notification_fanout_composition.py`
+      cover bundled-default behaviour, slack-opt-in, invalid-
+      YAML fallback, retry-policy override, and end-to-end
+      dispatch landing in the inbox. The existing
+      `tests/webapp/test_inbox.py` 17-test surface stays
+      green; full webapp + notifications suite at 715 passing
+      (one CVE-scanner test skipped).
 
 ### 3. Operator hypothesis surface (CR-002 Phase B / CR-027)
 
