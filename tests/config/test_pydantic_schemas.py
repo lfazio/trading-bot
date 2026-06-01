@@ -14,11 +14,14 @@ from pathlib import Path
 import pytest
 
 from trading_system.config.pydantic_schemas import (
+    AccountsYAML,
     FieldValidationOutcome,
     KillSwitchYAML,
     LoggingYAML,
     MCDrawdownFloorYAML,
     NotificationsYAML,
+    PhasesYAML,
+    QuantYAML,
     RichValidationReport,
     RiskYAML,
     SystemYAML,
@@ -52,7 +55,13 @@ def seeded_config_dir(tmp_path: Path) -> Path:
     them under the file under test so absent / empty / invalid
     cases are clean inputs.
     """
-    for required in ("risk.yaml", "kill_switch.yaml", "system.yaml", "turbos.yaml"):
+    for required in (
+        "risk.yaml",
+        "kill_switch.yaml",
+        "system.yaml",
+        "turbos.yaml",
+        "phases.yaml",
+    ):
         shutil.copy(_BUNDLED_CONFIG_DIR / required, tmp_path / required)
     return tmp_path
 
@@ -504,8 +513,8 @@ mc_drawdown_floor:
 
 
 def test_required_files_missing_surfaces_field_err(tmp_path: Path) -> None:
-    """risk + kill_switch + system + turbos are required per
-    RICH_SCHEMAS; absent files SHALL surface a
+    """risk + kill_switch + system + turbos + phases are required
+    per RICH_SCHEMAS; absent files SHALL surface a
     FieldValidationOutcome with `type=config_io`."""
     result = validate_with_pydantic_schemas(tmp_path)
     assert isinstance(result, Err)
@@ -517,6 +526,7 @@ def test_required_files_missing_surfaces_field_err(tmp_path: Path) -> None:
     assert "kill_switch.yaml" in files_with_io_errs
     assert "system.yaml" in files_with_io_errs
     assert "turbos.yaml" in files_with_io_errs
+    assert "phases.yaml" in files_with_io_errs
 
 
 # ---------------------------------------------------------------------------
@@ -763,3 +773,418 @@ def test_logging_yaml_rejects_empty_file_path(seeded_config_dir: Path) -> None:
     assert isinstance(result, Err)
     log_errors = [e for e in result.error.errors if e.file == "logging.yaml"]
     assert any(e.location == "logging.file_path" for e in log_errors)
+
+
+# ---------------------------------------------------------------------------
+# phases.yaml — PhasesYAML schema
+# ---------------------------------------------------------------------------
+
+
+def _valid_phase_row(**overrides) -> dict:
+    """A minimally-valid per-phase constraint dict; overlay overrides."""
+    base = {
+        "max_positions": 3,
+        "max_trades_per_month": 4,
+        "allocation_targets": {
+            "stock": "0.90",
+            "tactical": "0.10",
+            "structured": "0.0",
+            "turbo": "0.0",
+            "cash": "0.0",
+        },
+        "turbo_exposure_max": "0.0",
+        "risk_per_trade_band": ["0.01", "0.02"],
+        "max_drawdown": "0.15",
+    }
+    base.update(overrides)
+    return base
+
+
+def _valid_phases_yaml(phase_overrides: dict[int, dict] | None = None) -> str:
+    """Render a full phases.yaml string for tests. ``phase_overrides``
+    maps phase numbers (1..6) to per-phase override dicts."""
+    import yaml as _yaml
+
+    overrides = phase_overrides or {}
+    constraints = {n: _valid_phase_row() for n in range(1, 7)}
+    for n, row_overrides in overrides.items():
+        constraints[n].update(row_overrides)
+    payload = {
+        "phases": {
+            "bounds": [3000, 10000, 50000, 200000, 1000000],
+            "hysteresis": "0.10",
+            "constraints": constraints,
+        }
+    }
+    return _yaml.safe_dump(payload, sort_keys=False)
+
+
+def test_phases_yaml_bundled_config_validates(tmp_path: Path) -> None:
+    """The repo's bundled phases.yaml validates cleanly."""
+    shutil.copy(_BUNDLED_CONFIG_DIR / "phases.yaml", tmp_path / "phases.yaml")
+    result = validate_with_pydantic_schemas(tmp_path)
+    errors = result.error.errors if isinstance(result, Err) else result.value.errors
+    phase_errors = [e for e in errors if e.file == "phases.yaml"]
+    assert phase_errors == [], phase_errors
+
+
+def _phases_yaml_with_bounds(bounds: list) -> str:
+    """Render a phases.yaml string with an arbitrary bounds list."""
+    import yaml as _yaml
+
+    payload = {
+        "phases": {
+            "bounds": bounds,
+            "hysteresis": "0.10",
+            "constraints": {n: _valid_phase_row() for n in range(1, 7)},
+        }
+    }
+    return _yaml.safe_dump(payload, sort_keys=False)
+
+
+def test_phases_yaml_rejects_wrong_bounds_count(seeded_config_dir: Path) -> None:
+    """bounds must list exactly 5 thresholds (6 phases)."""
+    (seeded_config_dir / "phases.yaml").write_text(
+        _phases_yaml_with_bounds([3000, 10000, 50000]),
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    assert isinstance(result, Err)
+    phase_errors = [e for e in result.error.errors if e.file == "phases.yaml"]
+    assert any(
+        e.location == "phases.bounds" and "5" in e.msg for e in phase_errors
+    )
+
+
+def test_phases_yaml_rejects_non_monotonic_bounds(seeded_config_dir: Path) -> None:
+    (seeded_config_dir / "phases.yaml").write_text(
+        _phases_yaml_with_bounds([10000, 3000, 50000, 200000, 1000000]),
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    assert isinstance(result, Err)
+    phase_errors = [e for e in result.error.errors if e.file == "phases.yaml"]
+    assert any(
+        "increasing" in e.msg for e in phase_errors
+    )
+
+
+def test_phases_yaml_rejects_missing_phase_row(seeded_config_dir: Path) -> None:
+    """All six phase rows must be present."""
+    import yaml as _yaml
+
+    payload = {
+        "phases": {
+            "bounds": [3000, 10000, 50000, 200000, 1000000],
+            "hysteresis": "0.10",
+            "constraints": {
+                n: _valid_phase_row() for n in range(1, 6)
+            },  # missing phase 6
+        }
+    }
+    (seeded_config_dir / "phases.yaml").write_text(
+        _yaml.safe_dump(payload, sort_keys=False), encoding="utf-8"
+    )
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    assert isinstance(result, Err)
+    phase_errors = [e for e in result.error.errors if e.file == "phases.yaml"]
+    assert any("missing phase" in e.msg for e in phase_errors)
+
+
+def test_phases_yaml_rejects_allocation_targets_not_summing_to_one(
+    seeded_config_dir: Path,
+) -> None:
+    (seeded_config_dir / "phases.yaml").write_text(
+        _valid_phases_yaml(
+            {
+                1: {
+                    "allocation_targets": {
+                        "stock": "0.50",
+                        "tactical": "0.20",
+                        "structured": "0.0",
+                        "turbo": "0.0",
+                        "cash": "0.0",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    assert isinstance(result, Err)
+    phase_errors = [e for e in result.error.errors if e.file == "phases.yaml"]
+    assert any(
+        "allocation_targets" in e.location and "sum" in e.msg
+        for e in phase_errors
+    )
+
+
+def test_phases_yaml_rejects_unknown_allocation_bucket(
+    seeded_config_dir: Path,
+) -> None:
+    (seeded_config_dir / "phases.yaml").write_text(
+        _valid_phases_yaml(
+            {
+                1: {
+                    "allocation_targets": {
+                        "stock": "0.50",
+                        "crypto": "0.50",  # unknown bucket
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    assert isinstance(result, Err)
+    phase_errors = [e for e in result.error.errors if e.file == "phases.yaml"]
+    assert any(
+        "crypto" in e.msg or "allocation_targets" in e.location
+        for e in phase_errors
+    )
+
+
+def test_phases_yaml_rejects_invalid_risk_band(seeded_config_dir: Path) -> None:
+    """risk_per_trade_band must be [lo, hi] with lo < hi."""
+    (seeded_config_dir / "phases.yaml").write_text(
+        _valid_phases_yaml({1: {"risk_per_trade_band": ["0.05", "0.01"]}}),
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    assert isinstance(result, Err)
+    phase_errors = [e for e in result.error.errors if e.file == "phases.yaml"]
+    assert any(
+        "risk_per_trade_band" in e.location for e in phase_errors
+    )
+
+
+def test_phases_yaml_rejects_invalid_max_drawdown(seeded_config_dir: Path) -> None:
+    (seeded_config_dir / "phases.yaml").write_text(
+        _valid_phases_yaml({1: {"max_drawdown": "1.5"}}),
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    assert isinstance(result, Err)
+    phase_errors = [e for e in result.error.errors if e.file == "phases.yaml"]
+    assert any(
+        e.location.endswith("max_drawdown") for e in phase_errors
+    )
+
+
+def test_phases_yaml_accepts_portfolio_vol_cap(seeded_config_dir: Path) -> None:
+    """Phase 5+ rows set `portfolio_vol_cap`; null is also valid."""
+    (seeded_config_dir / "phases.yaml").write_text(
+        _valid_phases_yaml(
+            {
+                5: {"portfolio_vol_cap": "0.12"},
+                6: {"portfolio_vol_cap": None},
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    errors = result.error.errors if isinstance(result, Err) else result.value.errors
+    phase_errors = [e for e in errors if e.file == "phases.yaml"]
+    assert phase_errors == [], phase_errors
+
+
+def test_phases_yaml_rejects_out_of_range_portfolio_vol_cap(
+    seeded_config_dir: Path,
+) -> None:
+    (seeded_config_dir / "phases.yaml").write_text(
+        _valid_phases_yaml({5: {"portfolio_vol_cap": "1.5"}}),
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    assert isinstance(result, Err)
+    phase_errors = [e for e in result.error.errors if e.file == "phases.yaml"]
+    assert any(
+        e.location.endswith("portfolio_vol_cap") for e in phase_errors
+    )
+
+
+# ---------------------------------------------------------------------------
+# quant.yaml — QuantYAML schema
+# ---------------------------------------------------------------------------
+
+
+def test_quant_yaml_default_construction() -> None:
+    model = QuantYAML()
+    assert model.quant.validator.min_duration_days_for_1d == 30
+    assert model.quant.overfitting.ratio_max == Decimal("0.10")
+    assert model.quant.overfitting.ic_floor == Decimal("0.30")
+
+
+def test_quant_yaml_bundled_config_validates(seeded_config_dir: Path) -> None:
+    bundled = _BUNDLED_CONFIG_DIR / "quant.yaml"
+    if bundled.exists():
+        shutil.copy(bundled, seeded_config_dir / "quant.yaml")
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    errors = result.error.errors if isinstance(result, Err) else result.value.errors
+    quant_errors = [e for e in errors if e.file == "quant.yaml"]
+    assert quant_errors == [], quant_errors
+
+
+def test_quant_yaml_rejects_ratio_max_out_of_range(seeded_config_dir: Path) -> None:
+    (seeded_config_dir / "quant.yaml").write_text(
+        """
+quant:
+  overfitting:
+    ratio_max: "1.5"
+    ic_floor: "0.30"
+""",
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    assert isinstance(result, Err)
+    quant_errors = [e for e in result.error.errors if e.file == "quant.yaml"]
+    assert any(
+        e.location == "quant.overfitting.ratio_max" for e in quant_errors
+    )
+
+
+def test_quant_yaml_rejects_ic_floor_out_of_range(seeded_config_dir: Path) -> None:
+    (seeded_config_dir / "quant.yaml").write_text(
+        """
+quant:
+  overfitting:
+    ratio_max: "0.10"
+    ic_floor: "2.0"
+""",
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    assert isinstance(result, Err)
+    quant_errors = [e for e in result.error.errors if e.file == "quant.yaml"]
+    assert any(
+        e.location == "quant.overfitting.ic_floor" for e in quant_errors
+    )
+
+
+def test_quant_yaml_rejects_bounds_with_hi_below_lo(seeded_config_dir: Path) -> None:
+    (seeded_config_dir / "quant.yaml").write_text(
+        """
+quant:
+  validator:
+    bounds_table:
+      sharpe:
+        lo: 5
+        hi: -3
+""",
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    assert isinstance(result, Err)
+    quant_errors = [e for e in result.error.errors if e.file == "quant.yaml"]
+    assert any(
+        "lo" in e.msg or "bounds_table" in e.location for e in quant_errors
+    )
+
+
+def test_quant_yaml_rejects_invalid_min_duration(seeded_config_dir: Path) -> None:
+    (seeded_config_dir / "quant.yaml").write_text(
+        """
+quant:
+  validator:
+    min_duration_days_for_1d: 0
+""",
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    assert isinstance(result, Err)
+    quant_errors = [e for e in result.error.errors if e.file == "quant.yaml"]
+    assert any(
+        e.location == "quant.validator.min_duration_days_for_1d"
+        for e in quant_errors
+    )
+
+
+# ---------------------------------------------------------------------------
+# accounts.yaml — AccountsYAML schema
+# ---------------------------------------------------------------------------
+
+
+def test_accounts_yaml_default_construction() -> None:
+    """Empty model ⇒ no accounts (caller falls back to default registry)."""
+    model = AccountsYAML()
+    assert model.accounts == []
+
+
+def test_accounts_yaml_full_valid_list(seeded_config_dir: Path) -> None:
+    (seeded_config_dir / "accounts.yaml").write_text(
+        """
+accounts:
+  - id: alpha
+    tax_model: france_cto
+    operator_token_account_id: alpha
+  - id: beta
+    tax_model: france_cto
+    operator_token_account_id: beta
+""",
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    errors = result.error.errors if isinstance(result, Err) else result.value.errors
+    acc_errors = [e for e in errors if e.file == "accounts.yaml"]
+    assert acc_errors == [], acc_errors
+
+
+def test_accounts_yaml_rejects_duplicate_ids(seeded_config_dir: Path) -> None:
+    (seeded_config_dir / "accounts.yaml").write_text(
+        """
+accounts:
+  - id: alpha
+    tax_model: france_cto
+    operator_token_account_id: alpha
+  - id: alpha
+    tax_model: france_cto
+    operator_token_account_id: alpha2
+""",
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    assert isinstance(result, Err)
+    acc_errors = [e for e in result.error.errors if e.file == "accounts.yaml"]
+    assert any("duplicate" in e.msg for e in acc_errors)
+
+
+def test_accounts_yaml_rejects_unknown_tax_model(seeded_config_dir: Path) -> None:
+    (seeded_config_dir / "accounts.yaml").write_text(
+        """
+accounts:
+  - id: alpha
+    tax_model: belgium_pfu
+    operator_token_account_id: alpha
+""",
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    assert isinstance(result, Err)
+    acc_errors = [e for e in result.error.errors if e.file == "accounts.yaml"]
+    assert any(
+        e.location.endswith("tax_model") for e in acc_errors
+    )
+
+
+def test_accounts_yaml_rejects_empty_id(seeded_config_dir: Path) -> None:
+    (seeded_config_dir / "accounts.yaml").write_text(
+        """
+accounts:
+  - id: ""
+    tax_model: france_cto
+    operator_token_account_id: x
+""",
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    assert isinstance(result, Err)
+    acc_errors = [e for e in result.error.errors if e.file == "accounts.yaml"]
+    assert any(e.location.endswith(".id") for e in acc_errors)
+
+
+def test_accounts_yaml_absent_skipped(seeded_config_dir: Path) -> None:
+    """accounts.yaml is optional — absent ⇒ skipped, no error."""
+    # Don't write accounts.yaml.
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    assert isinstance(result, Ok), result
+    assert "accounts.yaml" in result.value.skipped_files

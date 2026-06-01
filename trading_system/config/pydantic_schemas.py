@@ -818,6 +818,398 @@ class LoggingYAML(BaseModel):
     logging: _LoggingTop = Field(default_factory=_LoggingTop)
 
 
+# ---------------------------------------------------------------------------
+# Phases schema — mirrors `phase_engine/loader.py` + the AllocationBucket
+# enum from `models/phase.py`.
+# ---------------------------------------------------------------------------
+
+
+_VALID_ALLOCATION_BUCKETS: frozenset[str] = frozenset(
+    {"stock", "tactical", "structured", "turbo", "cash"}
+)
+
+
+class _PhaseConstraintRow(BaseModel):
+    """One per-phase constraint row under `phases.constraints[N]`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_positions: Annotated[int, Field(gt=0)]
+    max_trades_per_month: Annotated[int, Field(gt=0)]
+    allocation_targets: dict[str, Decimal]
+    turbo_exposure_max: Decimal
+    risk_per_trade_band: list[Decimal]
+    max_drawdown: Decimal
+    portfolio_vol_cap: Decimal | None = None
+
+    @field_validator("allocation_targets", mode="before")
+    @classmethod
+    def _coerce_alloc_targets(cls, v: Any) -> dict[str, Decimal]:
+        if not isinstance(v, dict):
+            raise ValueError(
+                f"allocation_targets must be a mapping, got {type(v).__name__}"
+            )
+        out: dict[str, Decimal] = {}
+        for key, value in v.items():
+            try:
+                out[str(key)] = Decimal(str(value))
+            except (InvalidOperation, ValueError, TypeError) as e:
+                raise ValueError(
+                    f"allocation_targets[{key!r}] not parseable as Decimal: {e}"
+                ) from e
+        return out
+
+    @field_validator("allocation_targets")
+    @classmethod
+    def _validate_alloc_targets(cls, v: dict[str, Decimal]) -> dict[str, Decimal]:
+        # Closed bucket set membership.
+        for key in v:
+            if key not in _VALID_ALLOCATION_BUCKETS:
+                raise ValueError(
+                    f"allocation_targets key {key!r} not in "
+                    f"{sorted(_VALID_ALLOCATION_BUCKETS)}"
+                )
+        # Sum ~1.0 ± 1e-9 (REQ_SDD_ALG_020).
+        total = sum(v.values(), Decimal("0"))
+        if abs(total - Decimal("1")) > Decimal("0.000000001"):
+            raise ValueError(
+                f"allocation_targets must sum to 1, got {total}"
+            )
+        return v
+
+    @field_validator(
+        "turbo_exposure_max", "max_drawdown", mode="before"
+    )
+    @classmethod
+    def _coerce_decimal(cls, v: Any) -> Decimal:
+        try:
+            return Decimal(str(v))
+        except (InvalidOperation, ValueError, TypeError) as e:
+            raise ValueError(f"value not parseable as Decimal: {e}") from e
+
+    @field_validator("turbo_exposure_max")
+    @classmethod
+    def _turbo_range(cls, v: Decimal) -> Decimal:
+        if not (Decimal("0") <= v <= Decimal("1")):
+            raise ValueError(
+                f"turbo_exposure_max must lie in [0, 1], got {v}"
+            )
+        return v
+
+    @field_validator("max_drawdown")
+    @classmethod
+    def _max_drawdown_range(cls, v: Decimal) -> Decimal:
+        if not (Decimal("0") < v <= Decimal("1")):
+            raise ValueError(
+                f"max_drawdown must lie in (0, 1], got {v}"
+            )
+        return v
+
+    @field_validator("risk_per_trade_band", mode="before")
+    @classmethod
+    def _coerce_band(cls, v: Any) -> list[Decimal]:
+        if not isinstance(v, list):
+            raise ValueError(
+                f"risk_per_trade_band must be a list, got {type(v).__name__}"
+            )
+        try:
+            return [Decimal(str(x)) for x in v]
+        except (InvalidOperation, ValueError, TypeError) as e:
+            raise ValueError(
+                f"risk_per_trade_band entries not parseable as Decimal: {e}"
+            ) from e
+
+    @field_validator("risk_per_trade_band")
+    @classmethod
+    def _validate_band(cls, v: list[Decimal]) -> list[Decimal]:
+        if len(v) != 2:
+            raise ValueError(
+                f"risk_per_trade_band must be [lo, hi]; got {len(v)} entries"
+            )
+        lo, hi = v
+        if lo < Decimal("0"):
+            raise ValueError(f"risk_per_trade_band[lo] must be >= 0, got {lo}")
+        if hi <= lo:
+            raise ValueError(
+                f"risk_per_trade_band[hi] must be > lo; got lo={lo}, hi={hi}"
+            )
+        if hi > Decimal("1"):
+            raise ValueError(
+                f"risk_per_trade_band[hi] must be <= 1, got {hi}"
+            )
+        return v
+
+    @field_validator("portfolio_vol_cap", mode="before")
+    @classmethod
+    def _coerce_optional_decimal(cls, v: Any) -> Decimal | None:
+        if v is None:
+            return None
+        try:
+            return Decimal(str(v))
+        except (InvalidOperation, ValueError, TypeError) as e:
+            raise ValueError(f"portfolio_vol_cap not parseable as Decimal: {e}") from e
+
+    @field_validator("portfolio_vol_cap")
+    @classmethod
+    def _vol_cap_range(cls, v: Decimal | None) -> Decimal | None:
+        if v is None:
+            return v
+        if not (Decimal("0") < v <= Decimal("1")):
+            raise ValueError(
+                f"portfolio_vol_cap must lie in (0, 1] when set, got {v}"
+            )
+        return v
+
+
+class _PhasesTop(BaseModel):
+    """`phases:` sub-section."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    bounds: list[Decimal] = Field(default_factory=list)
+    hysteresis: Decimal = Decimal("0.10")
+    constraints: dict[int, _PhaseConstraintRow] = Field(default_factory=dict)
+
+    @field_validator("bounds", mode="before")
+    @classmethod
+    def _coerce_bounds(cls, v: Any) -> list[Decimal]:
+        if not isinstance(v, list):
+            raise ValueError(
+                f"bounds must be a list, got {type(v).__name__}"
+            )
+        try:
+            return [Decimal(str(x)) for x in v]
+        except (InvalidOperation, ValueError, TypeError) as e:
+            raise ValueError(
+                f"bounds entries not parseable as Decimal: {e}"
+            ) from e
+
+    @field_validator("bounds")
+    @classmethod
+    def _bounds_shape(cls, v: list[Decimal]) -> list[Decimal]:
+        # 5 bounds ⇒ 6 phases. Monotonically increasing.
+        if len(v) != 5:
+            raise ValueError(
+                f"bounds must list exactly 5 capital thresholds (6 phases); "
+                f"got {len(v)}"
+            )
+        for prev, current in zip(v, v[1:], strict=False):
+            if current <= prev:
+                raise ValueError(
+                    f"bounds must be strictly increasing; "
+                    f"saw {prev} >= {current}"
+                )
+        if v[0] <= Decimal("0"):
+            raise ValueError(
+                f"bounds[0] must be > 0, got {v[0]}"
+            )
+        return v
+
+    @field_validator("hysteresis", mode="before")
+    @classmethod
+    def _coerce_hysteresis(cls, v: Any) -> Decimal:
+        try:
+            return Decimal(str(v))
+        except (InvalidOperation, ValueError, TypeError) as e:
+            raise ValueError(f"hysteresis not parseable as Decimal: {e}") from e
+
+    @field_validator("hysteresis")
+    @classmethod
+    def _hysteresis_range(cls, v: Decimal) -> Decimal:
+        if not (Decimal("0") <= v < Decimal("1")):
+            raise ValueError(
+                f"hysteresis must lie in [0, 1), got {v}"
+            )
+        return v
+
+    @field_validator("constraints", mode="before")
+    @classmethod
+    def _coerce_constraint_keys(cls, v: Any) -> dict[int, Any]:
+        """YAML's `1:` keys parse as ints; tolerate string keys too."""
+        if not isinstance(v, dict):
+            raise ValueError(
+                f"constraints must be a mapping, got {type(v).__name__}"
+            )
+        out: dict[int, Any] = {}
+        for key, value in v.items():
+            try:
+                k = int(key)
+            except (TypeError, ValueError) as e:
+                raise ValueError(
+                    f"constraints key {key!r} not an int: {e}"
+                ) from e
+            out[k] = value
+        return out
+
+    @field_validator("constraints")
+    @classmethod
+    def _all_six_phases_present(
+        cls, v: dict[int, _PhaseConstraintRow]
+    ) -> dict[int, _PhaseConstraintRow]:
+        expected = {1, 2, 3, 4, 5, 6}
+        missing = expected - set(v)
+        if missing:
+            raise ValueError(
+                f"constraints missing phase rows for {sorted(missing)}"
+            )
+        unknown = set(v) - expected
+        if unknown:
+            raise ValueError(
+                f"constraints carry unknown phase rows for {sorted(unknown)}"
+            )
+        return v
+
+
+class PhasesYAML(BaseModel):
+    """Top-level YAML wrapper for `config/phases.yaml`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    phases: _PhasesTop = Field(default_factory=_PhasesTop)
+
+
+# ---------------------------------------------------------------------------
+# Quant schema — mirrors `strategy_lab/quant/loader.py::QuantConfig`.
+# ---------------------------------------------------------------------------
+
+
+class _QuantBoundsRow(BaseModel):
+    """One row in `quant.validator.bounds_table` — `{lo, hi}` Decimal."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    lo: Decimal
+    hi: Decimal
+
+    @field_validator("lo", "hi", mode="before")
+    @classmethod
+    def _coerce(cls, v: Any) -> Decimal:
+        try:
+            return Decimal(str(v))
+        except (InvalidOperation, ValueError, TypeError) as e:
+            raise ValueError(f"bound not parseable as Decimal: {e}") from e
+
+    @field_validator("hi")
+    @classmethod
+    def _hi_above_lo(cls, v: Decimal, info) -> Decimal:
+        lo = info.data.get("lo")
+        if lo is not None and v < lo:
+            raise ValueError(
+                f"hi must be >= lo; got lo={lo}, hi={v}"
+            )
+        return v
+
+
+class _QuantValidator(BaseModel):
+    """`quant.validator` sub-section."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    bounds_table: dict[str, _QuantBoundsRow] = Field(default_factory=dict)
+    metric_vocabulary: list[str] = Field(default_factory=list)
+    min_duration_days_for_1d: Annotated[int, Field(gt=0)] = 30
+    min_window_for_intraday_days: Annotated[int, Field(gt=0)] = 1
+
+
+class _QuantOverfitting(BaseModel):
+    """`quant.overfitting` sub-section."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ratio_max: Decimal = Decimal("0.10")
+    ic_floor: Decimal = Decimal("0.30")
+
+    @field_validator("ratio_max", "ic_floor", mode="before")
+    @classmethod
+    def _coerce(cls, v: Any) -> Decimal:
+        try:
+            return Decimal(str(v))
+        except (InvalidOperation, ValueError, TypeError) as e:
+            raise ValueError(f"value not parseable as Decimal: {e}") from e
+
+    @field_validator("ratio_max")
+    @classmethod
+    def _ratio_range(cls, v: Decimal) -> Decimal:
+        if not (Decimal("0") < v <= Decimal("1")):
+            raise ValueError(f"ratio_max must lie in (0, 1], got {v}")
+        return v
+
+    @field_validator("ic_floor")
+    @classmethod
+    def _ic_range(cls, v: Decimal) -> Decimal:
+        if not (Decimal("-1") <= v <= Decimal("1")):
+            raise ValueError(f"ic_floor must lie in [-1, 1], got {v}")
+        return v
+
+
+class _QuantTop(BaseModel):
+    """`quant:` sub-section."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    validator: _QuantValidator = Field(default_factory=_QuantValidator)
+    overfitting: _QuantOverfitting = Field(default_factory=_QuantOverfitting)
+
+
+class QuantYAML(BaseModel):
+    """Top-level YAML wrapper for `config/quant.yaml`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    quant: _QuantTop = Field(default_factory=_QuantTop)
+
+
+# ---------------------------------------------------------------------------
+# Accounts schema — mirrors `accounts/yaml_loader.py::AccountSpec`.
+# ---------------------------------------------------------------------------
+
+
+_VALID_TAX_MODELS: frozenset[str] = frozenset({"france_cto"})
+
+
+class _AccountSpec(BaseModel):
+    """One row in `accounts:` list."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: Annotated[str, Field(min_length=1)]
+    tax_model: str
+    operator_token_account_id: Annotated[str, Field(min_length=1)]
+
+    @field_validator("tax_model")
+    @classmethod
+    def _known_tax_model(cls, v: str) -> str:
+        if v not in _VALID_TAX_MODELS:
+            raise ValueError(
+                f"tax_model must be one of {sorted(_VALID_TAX_MODELS)}, "
+                f"got {v!r}"
+            )
+        return v
+
+
+class AccountsYAML(BaseModel):
+    """Top-level YAML wrapper for `config/accounts.yaml`.
+
+    Multi-account list; v1 supports a single tax model
+    (`france_cto`). Absent file ⇒ no specs (caller falls back
+    to ``build_default_registry``).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    accounts: list[_AccountSpec] = Field(default_factory=list)
+
+    @field_validator("accounts")
+    @classmethod
+    def _no_duplicate_ids(cls, v: list[_AccountSpec]) -> list[_AccountSpec]:
+        ids: set[str] = set()
+        for spec in v:
+            if spec.id in ids:
+                raise ValueError(f"duplicate account id {spec.id!r}")
+            ids.add(spec.id)
+        return v
+
+
 # Per-file (filename, model_class, required) trio. Future loaders opt
 # in by adding their own row here.
 RICH_SCHEMAS: tuple[tuple[str, type[BaseModel], bool], ...] = (
@@ -829,6 +1221,9 @@ RICH_SCHEMAS: tuple[tuple[str, type[BaseModel], bool], ...] = (
     ("turbos.yaml", TurbosYAML, True),  # required by validate_all
     ("webui.yaml", WebUIYAML, False),  # absent ⇒ defaults
     ("logging.yaml", LoggingYAML, False),  # absent ⇒ defaults
+    ("phases.yaml", PhasesYAML, True),  # required — phase scaling table
+    ("quant.yaml", QuantYAML, False),  # absent ⇒ defaults
+    ("accounts.yaml", AccountsYAML, False),  # absent ⇒ single-account default
 )
 
 
