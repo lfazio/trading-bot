@@ -447,13 +447,14 @@ def test_list_archived_filters_by_since(tmp_path: Path) -> None:
 
 
 def test_list_archived_orders_by_archived_at_desc(tmp_path: Path) -> None:
-    """Most-recent rows surface first."""
+    """Most-recent rows surface first.
+
+    Uses a SQL UPDATE to manipulate archived_at directly so the
+    test doesn't depend on the wall clock (REQ_TP_FIX_001 —
+    no `time.sleep` in non-wallclock tests).
+    """
     conn = _migrated_conn(tmp_path)
     repo = BacktestResultRepository(conn=conn)
-    # Archive two rows back-to-back; sleep briefly to ensure the
-    # archived_at timestamps differ.
-    import time
-
     repo.archive(
         _result(),
         strategy_id=StrategyId("a-first"),
@@ -461,7 +462,6 @@ def test_list_archived_orders_by_archived_at_desc(tmp_path: Path) -> None:
         config_hash="cfg1",
         seed=1,
     )
-    time.sleep(0.01)
     repo.archive(
         _result(),
         strategy_id=StrategyId("b-second"),
@@ -469,6 +469,23 @@ def test_list_archived_orders_by_archived_at_desc(tmp_path: Path) -> None:
         config_hash="cfg1",
         seed=2,
     )
+    # Manually set distinct archived_at timestamps via SQL — the
+    # second row gets the later timestamp so it lands first in
+    # the DESC sort.
+    earlier = datetime(2026, 1, 1, 10, 0, tzinfo=UTC).isoformat()
+    later = datetime(2026, 1, 1, 10, 5, tzinfo=UTC).isoformat()
+    conn.begin_immediate()
+    conn.execute(
+        "UPDATE backtest_results SET archived_at = ? "
+        "WHERE strategy_id = 'a-first'",
+        (earlier,),
+    )
+    conn.execute(
+        "UPDATE backtest_results SET archived_at = ? "
+        "WHERE strategy_id = 'b-second'",
+        (later,),
+    )
+    conn.commit()
     rows = repo.list_archived().unwrap()
     assert len(rows) == 2
     # archived_at DESC ⇒ b-second comes first.
