@@ -8,7 +8,10 @@
 #      traceability --check guard + the OpenAPI snapshot guard).
 #   3. test — pytest over the full suite excluding the docker /
 #      cve_scan markers (those run via the docker.yaml workflow on
-#      manual dispatch).
+#      manual dispatch). Coverage HTML is generated as part of this
+#      step + uploaded as a GitHub Pages artifact.
+#   4. deploy-pages — publishes the coverage HTML report to GitHub
+#      Pages. Only runs on push to main (skipped on PRs).
 #
 # Docker / CVE-scan tests are intentionally NOT part of the default
 # matrix — they need a docker daemon + a CVE scanner that GitHub's
@@ -35,6 +38,8 @@ concurrency:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
 
 jobs:
   validate-and-test:
@@ -101,20 +106,27 @@ jobs:
         run: |
           pytest tests/webapp/test_openapi_stability.py -q --no-header
 
-      - name: Full test suite
+      - name: Full test suite (with coverage)
         run: |
           # Skip the docker / CVE-scan markers — those run in the
           # dedicated `docker.yaml` workflow on `workflow_dispatch`.
           # Also skip the wallclock-marked tests (multi-year drill,
           # long-horizon walk-forward) — they're operator-on-demand
           # validation drills (Validation.md §5), not per-PR gates.
-          pytest \
+          #
+          # Coverage is collected against `trading_system/` (see
+          # `[tool.coverage.run] source` in pyproject.toml); the
+          # HTML report under `htmlcov/` becomes the GitHub Pages
+          # artefact below.
+          coverage run -m pytest \
             tests/ \
             --ignore=tests/webapp/test_container_runtime_smoke.py \
             --ignore=tests/webapp/test_container_cve_scan.py \
             --ignore=tests/webapp/test_container_reproducibility.py \
             -q --no-header --strict-markers \
             -m "not docker and not cve_scan and not wallclock"
+          coverage report --skip-covered --skip-empty
+          coverage html -d htmlcov
 
       - name: Upload pytest cache on failure
         if: failure()
@@ -123,3 +135,32 @@ jobs:
           name: pytest-cache
           path: .pytest_cache/
           retention-days: 7
+
+      - name: Upload coverage HTML as Pages artifact
+        # Only relevant on the main-branch push that actually
+        # deploys. PRs skip this step + the deploy-pages job
+        # because Pages publishes one URL per repo and racing
+        # PRs would otherwise stomp each other.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: htmlcov
+
+  deploy-pages:
+    name: deploy coverage to GitHub Pages
+    needs: validate-and-test
+    # Only push-to-main runs the deploy. PRs skip this job
+    # entirely — `needs:` triggers regardless, but the `if:`
+    # filter on `github.event_name` makes the job no-op-skip.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

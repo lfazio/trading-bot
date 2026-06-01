@@ -33,6 +33,9 @@ Lifecycle phases (gated; each is reviewed and approved before the next opens):
 
 **547 requirements** are tracked across SRS / SDS / SDD / Test Plan.
 Current cumulative coverage: **547 / 547 (100 %) reached TEST**, zero TP, zero CODE.
+
+Line-level coverage report (HTML) is published to GitHub Pages on every
+push to `main`: [coverage.html](https://lfazio.github.io/trading-bot/).
 The operator-grade webapp (CR-019 step 1 — paper-trading mode +
 dashboard + onboarding + recovery + strategy registry + reports +
 notifications inbox + accessibility audits) is feature-complete;
