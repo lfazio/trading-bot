@@ -264,6 +264,48 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     lb.set_defaults(func=_run_list_backtests)
 
+    # ----- ks-incident (C9 / gap-analysis Part C) -------------------------
+    ki = subparsers.add_parser(
+        "ks-incident",
+        help="Export a kill-switch incident timeline (canonical "
+        "JSON or human-readable table) from the SQLite "
+        "ks_snapshots table.",
+    )
+    ki.add_argument(
+        "--account-id",
+        type=str,
+        default="default",
+        help="Account to query (default: 'default').",
+    )
+    ki.add_argument(
+        "--since",
+        type=str,
+        required=True,
+        help="Lower-bound ISO-8601 timestamp (inclusive).",
+    )
+    ki.add_argument(
+        "--until",
+        type=str,
+        default=None,
+        help="Upper-bound ISO-8601 timestamp (inclusive). "
+        "Default: now.",
+    )
+    ki.add_argument(
+        "--db",
+        type=Path,
+        default=Path("var/state.sqlite"),
+        help="Path to the persistence SQLite file "
+        "(default: var/state.sqlite).",
+    )
+    ki.add_argument(
+        "--table",
+        dest="table_output",
+        action="store_true",
+        help="Emit a human-readable table instead of canonical JSON "
+        "(default: JSON for operator scripting + ingestion).",
+    )
+    ki.set_defaults(func=_run_ks_incident)
+
     return parser
 
 
@@ -723,6 +765,105 @@ def _run_list_backtests(args: argparse.Namespace) -> int:
                 f"{r.trades_count:>6}\n"
             )
         sys.stdout.write(f"{len(filtered)} row(s) (of {len(rows)} archived)\n")
+    conn.close()
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# ks-incident — C9 (gap-analysis Part C)
+# ---------------------------------------------------------------------------
+
+
+def _run_ks_incident(args: argparse.Namespace) -> int:
+    """``trading-bot ks-incident`` — C9. Reads the
+    ``ks_snapshots`` table; exports a postmortem timeline."""
+    import json as _json
+    from datetime import datetime as _dt
+
+    from trading_system.models.identifiers import AccountId
+    from trading_system.persistence.connection import Connection
+    from trading_system.persistence.repositories.snapshot import (
+        KillSwitchSnapshotRepository,
+    )
+    from trading_system.result import Err, Ok
+
+    db_path = args.db
+    if not db_path.is_file():
+        sys.stderr.write(
+            f"trading-bot ks-incident: db not found at {db_path}\n"
+        )
+        return 1
+    try:
+        since_dt = _dt.fromisoformat(args.since)
+    except ValueError as e:
+        sys.stderr.write(
+            f"trading-bot ks-incident: invalid --since {args.since!r}: {e}\n"
+        )
+        return 1
+    until_dt: _dt | None = None
+    if args.until is not None:
+        try:
+            until_dt = _dt.fromisoformat(args.until)
+        except ValueError as e:
+            sys.stderr.write(
+                f"trading-bot ks-incident: invalid --until {args.until!r}: {e}\n"
+            )
+            return 1
+
+    conn_res = Connection.open(db_path)
+    if isinstance(conn_res, Err):
+        sys.stderr.write(
+            f"trading-bot ks-incident: cannot open db: {conn_res.error}\n"
+        )
+        return 1
+    conn = conn_res.value
+    repo = KillSwitchSnapshotRepository(
+        conn=conn,
+        account_id=AccountId(args.account_id),
+    )
+    list_res = repo.list_in_window(since=since_dt, until=until_dt)
+    if isinstance(list_res, Err):
+        sys.stderr.write(
+            f"trading-bot ks-incident: {list_res.error}\n"
+        )
+        conn.close()
+        return 1
+    snapshots = list_res.value
+
+    if args.table_output:
+        sys.stdout.write(
+            f"{'captured_at':<26}  {'snapshot_id':<24}  "
+            f"{'state':<22}  {'severity':<9}  trigger\n"
+        )
+        for s in snapshots:
+            transition = f"{s.state_from.value}->{s.state_to.value}"
+            sys.stdout.write(
+                f"{s.at.isoformat():<26}  {str(s.id):<24}  "
+                f"{transition:<22}  {s.severity:<9}  "
+                f"{s.trigger_code}: {s.trigger_message}\n"
+            )
+        sys.stdout.write(f"{len(snapshots)} snapshot(s)\n")
+    else:
+        # Canonical-JSON timeline — sorted keys; one object per
+        # row. The output is operator-scripting-friendly: pipe
+        # into `jq` or ingest into Grafana / Loki / Splunk via
+        # the standard JSON tooling.
+        payload = [
+            {
+                "id": str(s.id),
+                "at": s.at.isoformat(),
+                "account_id": args.account_id,
+                "state_from": s.state_from.value,
+                "state_to": s.state_to.value,
+                "severity": s.severity,
+                "trigger_code": s.trigger_code,
+                "trigger_message": s.trigger_message,
+                "payload": dict(s.payload),
+            }
+            for s in snapshots
+        ]
+        sys.stdout.write(_json.dumps(payload, sort_keys=True) + "\n")
+
     conn.close()
     return 0
 

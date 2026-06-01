@@ -15,6 +15,7 @@ remains available so existing operators can keep the JSON-lines export.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from trading_system.models.identifiers import (
     DEFAULT_ACCOUNT_ID,
@@ -95,6 +96,45 @@ class KillSwitchSnapshotRepository:
         if row is None:
             return Err(f"persistence:not_found:ks_snapshots:{snapshot_id}")
         return Ok(row_to_audit_snapshot(dict(row)))
+
+    def list_in_window(
+        self,
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> Result[tuple[AuditSnapshot, ...], str]:
+        """C9 — postmortem timeline query.
+
+        Returns every snapshot whose ``captured_at`` falls in the
+        closed ``[since, until]`` window, ordered by
+        ``captured_at ASC`` (timeline order — earliest first).
+        Both bounds are optional: ``since=None`` ⇒ no lower bound;
+        ``until=None`` ⇒ no upper bound.
+
+        The query is scoped to ``self.account_id`` (multi-account
+        isolation per REQ_F_PER_009). Operators querying a
+        different account construct a separate repository with
+        the right ``account_id``.
+        """
+        clauses = ["account_id = ?"]
+        params: list[object] = [str(self.account_id)]
+        if since is not None:
+            clauses.append("captured_at >= ?")
+            params.append(since.isoformat())
+        if until is not None:
+            clauses.append("captured_at <= ?")
+            params.append(until.isoformat())
+        sql = (
+            "SELECT * FROM ks_snapshots "
+            f"WHERE {' AND '.join(clauses)} "
+            "ORDER BY captured_at ASC, snapshot_id ASC"
+        )
+        try:
+            cursor = self.conn.execute(sql, tuple(params))
+            raw_rows = cursor.fetchall()
+        except DatabaseError as e:
+            return Err(f"persistence:corrupt:ks_snapshots:list:{e}")
+        return Ok(tuple(row_to_audit_snapshot(dict(r)) for r in raw_rows))
 
 
 def _safe_rollback(conn: Connection) -> None:

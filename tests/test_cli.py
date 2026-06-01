@@ -267,6 +267,183 @@ def test_list_backtests_unknown_metric_name(
     assert "unknown_name" in err
 
 
+def _seed_db_with_ks_snapshots(tmp_path: Path) -> Path:
+    """Build a SQLite db with three ks_snapshot rows + return the
+    db path. Used by the C9 ks-incident CLI tests."""
+    from datetime import UTC, datetime
+
+    from trading_system.models.identifiers import SnapshotId
+    from trading_system.models.safety import KillSwitchState
+    from trading_system.persistence.connection import Connection
+    from trading_system.persistence.migrations.runner import MigrationRunner
+    from trading_system.persistence.repositories.snapshot import (
+        KillSwitchSnapshotRepository,
+    )
+    from trading_system.safety.snapshot import AuditSnapshot
+
+    db_path = tmp_path / "state.sqlite"
+    conn = Connection.open(db_path).unwrap()
+    repo_root = Path(__file__).resolve().parent.parent
+    MigrationRunner(
+        conn=conn,
+        migrations_dir=repo_root / "trading_system" / "persistence" / "migrations",
+    ).run()
+    repo = KillSwitchSnapshotRepository(conn=conn)
+    base = datetime(2026, 5, 14, 10, 0, tzinfo=UTC)
+    for i, (sid, sev, code) in enumerate(
+        [
+            ("snap-1", "DEGRADE", "financial:drawdown"),
+            ("snap-2", "KILL", "execution:rejected"),
+            ("snap-3", "RECOVERY", "operator:recovered"),
+        ]
+    ):
+        from datetime import timedelta
+
+        repo.write(
+            AuditSnapshot(
+                id=SnapshotId(sid),
+                at=base + timedelta(minutes=i * 5),
+                state_from=KillSwitchState.ACTIVE,
+                state_to=KillSwitchState.DEGRADED
+                if sev != "RECOVERY"
+                else KillSwitchState.ACTIVE,
+                trigger_code=code,
+                trigger_message=f"event {sid}",
+                severity=sev,
+                payload={"equity": str(9000 + i * 100)},
+            )
+        )
+    conn.close()
+    return db_path
+
+
+def test_ks_incident_db_missing_returns_nonzero(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C9 — non-existent db ⇒ exit 1 + categorised error."""
+    fake_db = tmp_path / "no-such.sqlite"
+    exit_code = main(
+        [
+            "ks-incident",
+            "--db",
+            str(fake_db),
+            "--since",
+            "2026-01-01T00:00:00+00:00",
+        ]
+    )
+    assert exit_code == 1
+    assert "db not found" in capsys.readouterr().err
+
+
+def test_ks_incident_emits_canonical_json_by_default(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import json as _json
+
+    db = _seed_db_with_ks_snapshots(tmp_path)
+    exit_code = main(
+        [
+            "ks-incident",
+            "--db",
+            str(db),
+            "--since",
+            "2026-05-14T00:00:00+00:00",
+        ]
+    )
+    assert exit_code == 0
+    payload = _json.loads(capsys.readouterr().out)
+    assert len(payload) == 3
+    # Canonical JSON: sorted keys.
+    first = payload[0]
+    assert list(first.keys()) == sorted(first.keys())
+    # Timeline order — earliest first.
+    assert payload[0]["id"] == "snap-1"
+    assert payload[1]["id"] == "snap-2"
+    assert payload[2]["id"] == "snap-3"
+    # Severity surfaced.
+    assert payload[1]["severity"] == "KILL"
+
+
+def test_ks_incident_table_output(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db = _seed_db_with_ks_snapshots(tmp_path)
+    exit_code = main(
+        [
+            "ks-incident",
+            "--db",
+            str(db),
+            "--since",
+            "2026-05-14T00:00:00+00:00",
+            "--table",
+        ]
+    )
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "snap-1" in out and "snap-2" in out and "snap-3" in out
+    assert "3 snapshot(s)" in out
+
+
+def test_ks_incident_invalid_since_format(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db = _seed_db_with_ks_snapshots(tmp_path)
+    exit_code = main(
+        ["ks-incident", "--db", str(db), "--since", "not-a-date"]
+    )
+    assert exit_code == 1
+    assert "invalid --since" in capsys.readouterr().err
+
+
+def test_ks_incident_filters_by_until(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--until filters out snapshots after the cutoff."""
+    import json as _json
+
+    db = _seed_db_with_ks_snapshots(tmp_path)
+    # snap-1 is at 10:00; snap-2 at 10:05; snap-3 at 10:10.
+    # --until 10:07 excludes snap-3.
+    exit_code = main(
+        [
+            "ks-incident",
+            "--db",
+            str(db),
+            "--since",
+            "2026-05-14T00:00:00+00:00",
+            "--until",
+            "2026-05-14T10:07:00+00:00",
+        ]
+    )
+    assert exit_code == 0
+    payload = _json.loads(capsys.readouterr().out)
+    ids = [r["id"] for r in payload]
+    assert ids == ["snap-1", "snap-2"]
+
+
+def test_ks_incident_empty_window_returns_empty_list(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """No snapshots in the window ⇒ empty JSON array, exit 0."""
+    import json as _json
+
+    db = _seed_db_with_ks_snapshots(tmp_path)
+    # Window strictly before any seeded snapshot.
+    exit_code = main(
+        [
+            "ks-incident",
+            "--db",
+            str(db),
+            "--since",
+            "2024-01-01T00:00:00+00:00",
+            "--until",
+            "2024-12-31T00:00:00+00:00",
+        ]
+    )
+    assert exit_code == 0
+    assert _json.loads(capsys.readouterr().out) == []
+
+
 def test_list_backtests_filters_by_strategy(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

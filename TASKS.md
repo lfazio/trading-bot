@@ -319,7 +319,21 @@ Sprint scoreboard at session close (2026-05-26):
         reading `info.data`; Decimal coercion via
         `mode='before'` validators so YAML int/float/string
         literals all parse to canonical Decimals.
-      - **C9** ks-incident postmortem CLI — not shipped.
+      - **C9** ks-incident postmortem CLI ✅ DONE 2026-06-01 @
+        `<this commit>`. New `trading-bot ks-incident
+        --since <iso> [--until <iso>] [--account-id <id>]
+        [--db <path>] [--table]` CLI subcommand. New
+        `KillSwitchSnapshotRepository.list_in_window(*, since,
+        until)` returns ``Result[tuple[AuditSnapshot, ...], str]``
+        in `captured_at ASC` order (timeline shape). Bounds
+        closed; ``None`` on either side means open. CLI emits
+        canonical-JSON timeline by default (sorted keys; ready
+        for `jq` / Grafana / Splunk ingestion) or a
+        human-readable table via `--table`. Account-scoped via
+        the repo's `account_id` slot. 13 new tests (6 repo + 7
+        CLI; the CLI tests cover happy JSON output / table mode
+        / invalid --since / --until cutoff / empty window /
+        missing db / etc.).
       - **C10** list-backtests search DSL ✅ DONE 2026-06-01
         @ `<this commit>`. New `trading-bot list-backtests
         [--account-id <id>] [--strategy <id>] [--since <iso>]

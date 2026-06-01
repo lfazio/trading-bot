@@ -309,3 +309,116 @@ def test_safe_rollback_swallows_database_errors(
             assert reason.startswith("persistence:integrity:ks_snapshots:")
         case Ok(_):
             raise AssertionError("expected Err")
+
+
+# ---------------------------------------------------------------------------
+# C9 — list_in_window timeline query
+# ---------------------------------------------------------------------------
+
+
+def _snap_at(sid: str, at: datetime, severity: str = "DEGRADE") -> AuditSnapshot:
+    """A snapshot pinned to a specific `captured_at` time."""
+    return AuditSnapshot(
+        id=SnapshotId(sid),
+        at=at,
+        state_from=KillSwitchState.ACTIVE,
+        state_to=KillSwitchState.DEGRADED,
+        trigger_code="financial:drawdown",
+        trigger_message="dd breached threshold",
+        severity=severity,
+        payload={"equity": "9500"},
+    )
+
+
+def test_list_in_window_empty_returns_empty_tuple(tmp_path: Path) -> None:
+    conn = _migrated_conn(tmp_path)
+    repo = KillSwitchSnapshotRepository(conn=conn)
+    result = repo.list_in_window(
+        since=datetime(2026, 1, 1, tzinfo=UTC),
+        until=datetime(2026, 12, 31, tzinfo=UTC),
+    )
+    assert isinstance(result, Ok)
+    assert result.value == ()
+
+
+def test_list_in_window_returns_ascending_timeline(tmp_path: Path) -> None:
+    """Snapshots within the window SHALL surface in
+    captured_at ASC order — the postmortem timeline."""
+    conn = _migrated_conn(tmp_path)
+    repo = KillSwitchSnapshotRepository(conn=conn)
+    repo.write(_snap_at("c", datetime(2026, 5, 14, 12, 0, tzinfo=UTC)))
+    repo.write(_snap_at("a", datetime(2026, 5, 14, 10, 0, tzinfo=UTC)))
+    repo.write(_snap_at("b", datetime(2026, 5, 14, 11, 0, tzinfo=UTC)))
+    result = repo.list_in_window(
+        since=datetime(2026, 5, 14, tzinfo=UTC),
+        until=datetime(2026, 5, 15, tzinfo=UTC),
+    )
+    assert isinstance(result, Ok)
+    ids = [str(s.id) for s in result.value]
+    assert ids == ["a", "b", "c"]
+
+
+def test_list_in_window_inclusive_bounds(tmp_path: Path) -> None:
+    """``since`` + ``until`` are CLOSED bounds — snapshots
+    exactly at the edge are included."""
+    conn = _migrated_conn(tmp_path)
+    repo = KillSwitchSnapshotRepository(conn=conn)
+    edge = datetime(2026, 5, 14, 10, 0, tzinfo=UTC)
+    repo.write(_snap_at("edge", edge))
+    result = repo.list_in_window(since=edge, until=edge)
+    assert isinstance(result, Ok)
+    assert len(result.value) == 1
+
+
+def test_list_in_window_filters_outside_range(tmp_path: Path) -> None:
+    conn = _migrated_conn(tmp_path)
+    repo = KillSwitchSnapshotRepository(conn=conn)
+    repo.write(_snap_at("early", datetime(2026, 1, 1, tzinfo=UTC)))
+    repo.write(_snap_at("middle", datetime(2026, 5, 14, tzinfo=UTC)))
+    repo.write(_snap_at("late", datetime(2026, 12, 31, tzinfo=UTC)))
+    result = repo.list_in_window(
+        since=datetime(2026, 5, 1, tzinfo=UTC),
+        until=datetime(2026, 5, 31, tzinfo=UTC),
+    )
+    assert isinstance(result, Ok)
+    ids = [str(s.id) for s in result.value]
+    assert ids == ["middle"]
+
+
+def test_list_in_window_open_bounds(tmp_path: Path) -> None:
+    """``since=None`` ⇒ no lower bound; ``until=None`` ⇒ no
+    upper bound. Both ``None`` ⇒ every snapshot."""
+    conn = _migrated_conn(tmp_path)
+    repo = KillSwitchSnapshotRepository(conn=conn)
+    repo.write(_snap_at("a", datetime(2024, 1, 1, tzinfo=UTC)))
+    repo.write(_snap_at("b", datetime(2026, 6, 1, tzinfo=UTC)))
+    # No upper bound — both snapshots return.
+    full = repo.list_in_window(
+        since=datetime(2020, 1, 1, tzinfo=UTC)
+    ).unwrap()
+    assert {str(s.id) for s in full} == {"a", "b"}
+    # No lower bound — both return.
+    full = repo.list_in_window(
+        until=datetime(2030, 1, 1, tzinfo=UTC)
+    ).unwrap()
+    assert {str(s.id) for s in full} == {"a", "b"}
+    # Both None.
+    full = repo.list_in_window().unwrap()
+    assert {str(s.id) for s in full} == {"a", "b"}
+
+
+def test_list_in_window_account_isolation(tmp_path: Path) -> None:
+    conn = _migrated_conn(tmp_path)
+    default_repo = KillSwitchSnapshotRepository(conn=conn)
+    other = AccountId("alt")
+    other_repo = KillSwitchSnapshotRepository(conn=conn, account_id=other)
+    default_repo.write(_snap_at("d-1", datetime(2026, 5, 14, tzinfo=UTC)))
+    other_repo.write(_snap_at("o-1", datetime(2026, 5, 14, tzinfo=UTC)))
+    default_rows = default_repo.list_in_window(
+        since=datetime(2026, 1, 1, tzinfo=UTC)
+    ).unwrap()
+    other_rows = other_repo.list_in_window(
+        since=datetime(2026, 1, 1, tzinfo=UTC)
+    ).unwrap()
+    assert {str(s.id) for s in default_rows} == {"d-1"}
+    assert {str(s.id) for s in other_rows} == {"o-1"}
