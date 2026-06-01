@@ -26,7 +26,10 @@ from trading_system.models.money import Currency, Money
 from trading_system.models.trading import Trade
 from trading_system.persistence.connection import Connection
 from trading_system.persistence.migrations.runner import MigrationRunner
-from trading_system.persistence.repositories.backtest import BacktestResultRepository
+from trading_system.persistence.repositories.backtest import (
+    BacktestArchiveRow,
+    BacktestResultRepository,
+)
 from trading_system.result import Err, Ok
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -353,3 +356,149 @@ def test_safe_rollback_swallows_secondary_error(
             assert reason.startswith("persistence:integrity:backtest_results:")
         case Ok(_):
             raise AssertionError("expected Err")
+
+
+# ---------------------------------------------------------------------------
+# C10 — list_archived + BacktestArchiveRow
+# ---------------------------------------------------------------------------
+
+
+def test_list_archived_empty_returns_empty_tuple(tmp_path: Path) -> None:
+    conn = _migrated_conn(tmp_path)
+    repo = BacktestResultRepository(conn=conn)
+    result = repo.list_archived()
+    assert isinstance(result, Ok)
+    assert result.value == ()
+
+
+def test_list_archived_returns_row_with_extracted_metrics(tmp_path: Path) -> None:
+    conn = _migrated_conn(tmp_path)
+    repo = BacktestResultRepository(conn=conn)
+    repo.archive(
+        _result(),
+        strategy_id=StrategyId("alpha"),
+        git_sha="sha1",
+        config_hash="cfg1",
+        seed=7,
+    )
+    result = repo.list_archived()
+    assert isinstance(result, Ok)
+    rows = result.value
+    assert len(rows) == 1
+    row = rows[0]
+    assert isinstance(row, BacktestArchiveRow)
+    assert row.strategy_id == StrategyId("alpha")
+    assert row.git_sha == "sha1"
+    assert row.config_hash == "cfg1"
+    assert row.seed == 7
+    # final_equity_after_tax in _result is 10001.23456789 EUR.
+    assert row.final_equity == Decimal("10001.23456789")
+    assert row.final_equity_currency == "EUR"
+    # _result's equity_curve has drawdown_pct=0.01 for every point.
+    assert row.max_drawdown == Decimal("0.01")
+    assert row.realized_after_tax == Decimal("864.20")
+    assert row.trades_count == 2
+    assert row.knockouts == 1
+
+
+def test_list_archived_filters_by_strategy_id(tmp_path: Path) -> None:
+    conn = _migrated_conn(tmp_path)
+    repo = BacktestResultRepository(conn=conn)
+    repo.archive(
+        _result(),
+        strategy_id=StrategyId("alpha"),
+        git_sha="sha1",
+        config_hash="cfg1",
+        seed=7,
+    )
+    repo.archive(
+        _result(),
+        strategy_id=StrategyId("beta"),
+        git_sha="sha1",
+        config_hash="cfg1",
+        seed=8,
+    )
+    only_alpha = repo.list_archived(strategy_id=StrategyId("alpha")).unwrap()
+    assert len(only_alpha) == 1
+    assert only_alpha[0].strategy_id == StrategyId("alpha")
+    everything = repo.list_archived().unwrap()
+    assert len(everything) == 2
+
+
+def test_list_archived_filters_by_since(tmp_path: Path) -> None:
+    """Rows archived BEFORE ``since`` are filtered out."""
+    conn = _migrated_conn(tmp_path)
+    repo = BacktestResultRepository(conn=conn)
+    repo.archive(
+        _result(),
+        strategy_id=StrategyId("alpha"),
+        git_sha="sha1",
+        config_hash="cfg1",
+        seed=7,
+    )
+    # ``since`` set well into the future — nothing should match.
+    far_future = datetime(2099, 1, 1, tzinfo=UTC)
+    nothing = repo.list_archived(since=far_future).unwrap()
+    assert nothing == ()
+    # ``since`` in the past — the row appears.
+    past = datetime(2020, 1, 1, tzinfo=UTC)
+    found = repo.list_archived(since=past).unwrap()
+    assert len(found) == 1
+
+
+def test_list_archived_orders_by_archived_at_desc(tmp_path: Path) -> None:
+    """Most-recent rows surface first."""
+    conn = _migrated_conn(tmp_path)
+    repo = BacktestResultRepository(conn=conn)
+    # Archive two rows back-to-back; sleep briefly to ensure the
+    # archived_at timestamps differ.
+    import time
+
+    repo.archive(
+        _result(),
+        strategy_id=StrategyId("a-first"),
+        git_sha="sha1",
+        config_hash="cfg1",
+        seed=1,
+    )
+    time.sleep(0.01)
+    repo.archive(
+        _result(),
+        strategy_id=StrategyId("b-second"),
+        git_sha="sha1",
+        config_hash="cfg1",
+        seed=2,
+    )
+    rows = repo.list_archived().unwrap()
+    assert len(rows) == 2
+    # archived_at DESC ⇒ b-second comes first.
+    assert rows[0].strategy_id == StrategyId("b-second")
+    assert rows[1].strategy_id == StrategyId("a-first")
+
+
+def test_list_archived_account_isolation(tmp_path: Path) -> None:
+    conn = _migrated_conn(tmp_path)
+    repo = BacktestResultRepository(conn=conn)
+    other = AccountId("alt")
+    repo.archive(
+        _result(),
+        strategy_id=StrategyId("alpha"),
+        git_sha="sha1",
+        config_hash="cfg1",
+        seed=7,
+        account_id=DEFAULT_ACCOUNT_ID,
+    )
+    repo.archive(
+        _result(),
+        strategy_id=StrategyId("alpha"),
+        git_sha="sha1",
+        config_hash="cfg1",
+        seed=8,
+        account_id=other,
+    )
+    default_rows = repo.list_archived().unwrap()
+    other_rows = repo.list_archived(account_id=other).unwrap()
+    assert len(default_rows) == 1
+    assert len(other_rows) == 1
+    assert default_rows[0].seed == 7
+    assert other_rows[0].seed == 8

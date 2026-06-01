@@ -212,6 +212,58 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     lp.set_defaults(func=_run_live_preflight)
 
+    # ----- list-backtests (C10 / gap-analysis Part C) ---------------------
+    lb = subparsers.add_parser(
+        "list-backtests",
+        help="List archived backtests from the persistence repo. "
+        "Supports filtering by strategy / since / metric "
+        "expression (DSL: name<op>value).",
+    )
+    lb.add_argument(
+        "--account-id",
+        type=str,
+        default="default",
+        help="Account to query (default: 'default').",
+    )
+    lb.add_argument(
+        "--strategy",
+        type=str,
+        default=None,
+        help="Restrict to one strategy_id.",
+    )
+    lb.add_argument(
+        "--since",
+        type=str,
+        default=None,
+        help="ISO-8601 timestamp; only rows archived at-or-after.",
+    )
+    lb.add_argument(
+        "--metric",
+        action="append",
+        default=[],
+        help=(
+            "Metric filter expression: name<op>value. Multiple "
+            "--metric flags AND. Names: final_equity / max_drawdown / "
+            "realized_after_tax / trades_count / knockouts. Ops: "
+            ">, >=, <, <=, ==."
+        ),
+    )
+    lb.add_argument(
+        "--db",
+        type=Path,
+        default=Path("var/state.sqlite"),
+        help="Path to the persistence SQLite file "
+        "(default: var/state.sqlite).",
+    )
+    lb.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Emit machine-readable JSON instead of a "
+        "human-readable table.",
+    )
+    lb.set_defaults(func=_run_list_backtests)
+
     return parser
 
 
@@ -496,6 +548,182 @@ def _run_issue_token(args: argparse.Namespace) -> int:
     )
     token = verifier.issue(account_id=args.account_id, now=_dt.now(UTC))
     sys.stdout.write(token + "\n")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# list-backtests — C10 (gap-analysis Part C)
+# ---------------------------------------------------------------------------
+
+
+_METRIC_OPS: tuple[str, ...] = (">=", "<=", "==", ">", "<")
+_METRIC_NAMES: frozenset[str] = frozenset(
+    {
+        "final_equity",
+        "max_drawdown",
+        "realized_after_tax",
+        "trades_count",
+        "knockouts",
+    }
+)
+
+
+def _parse_metric_filter(expr: str) -> tuple[str, str, "Decimal"] | str:
+    """Parse a metric expression like ``"sharpe>1.0"``.
+
+    Returns either a ``(name, op, value)`` triple or a
+    categorised ``"cli:metric:<reason>"`` Err string. The closed
+    vocabulary for ``name`` matches ``_METRIC_NAMES``; ``op``
+    matches the documented operator set.
+    """
+    from decimal import Decimal, InvalidOperation
+
+    raw = expr.strip()
+    if not raw:
+        return "cli:metric:empty_expression"
+    # Two-char ops first so "<=" doesn't match "<" prematurely.
+    for op in _METRIC_OPS:
+        if op in raw:
+            name_str, _, value_str = raw.partition(op)
+            name = name_str.strip()
+            value_str = value_str.strip()
+            if name not in _METRIC_NAMES:
+                return f"cli:metric:unknown_name:{name}"
+            try:
+                value = Decimal(value_str)
+            except (InvalidOperation, ValueError):
+                return f"cli:metric:bad_value:{value_str}"
+            return (name, op, value)
+    return f"cli:metric:no_op:{raw}"
+
+
+def _row_matches_filter(row: object, name: str, op: str, value: object) -> bool:
+    """Apply one parsed filter triple against a ``BacktestArchiveRow``."""
+    field_value = getattr(row, name)
+    # ``trades_count`` and ``knockouts`` are ints; everything else
+    # Decimal. Cross-comparison via Python's <=>/== works because
+    # Decimal compares cleanly with int.
+    if op == ">":
+        return field_value > value  # type: ignore[operator]
+    if op == ">=":
+        return field_value >= value  # type: ignore[operator]
+    if op == "<":
+        return field_value < value  # type: ignore[operator]
+    if op == "<=":
+        return field_value <= value  # type: ignore[operator]
+    if op == "==":
+        return field_value == value
+    return False
+
+
+def _run_list_backtests(args: argparse.Namespace) -> int:
+    """``trading-bot list-backtests`` — C10. Reads the persistence
+    repo + applies operator-supplied filters; prints results as
+    a table (default) or JSON (--json)."""
+    import json as _json
+    from datetime import datetime as _dt
+    from trading_system.persistence.connection import Connection
+    from trading_system.persistence.repositories.backtest import (
+        BacktestResultRepository,
+    )
+    from trading_system.models.identifiers import AccountId, StrategyId
+    from trading_system.result import Err, Ok
+
+    db_path = args.db
+    if not db_path.is_file():
+        sys.stderr.write(
+            f"trading-bot list-backtests: db not found at {db_path}\n"
+        )
+        return 1
+    conn_res = Connection.open(db_path)
+    if isinstance(conn_res, Err):
+        sys.stderr.write(
+            f"trading-bot list-backtests: cannot open db: {conn_res.error}\n"
+        )
+        return 1
+    conn = conn_res.value
+
+    # Parse the metric filters BEFORE hitting the DB so bad
+    # expressions fail fast.
+    parsed_filters: list[tuple[str, str, object]] = []
+    for expr in args.metric:
+        parsed = _parse_metric_filter(expr)
+        if isinstance(parsed, str):
+            sys.stderr.write(
+                f"trading-bot list-backtests: invalid --metric {expr!r}: "
+                f"{parsed}\n"
+            )
+            conn.close()
+            return 1
+        parsed_filters.append(parsed)
+
+    since_dt: _dt | None = None
+    if args.since is not None:
+        try:
+            since_dt = _dt.fromisoformat(args.since)
+        except ValueError as e:
+            sys.stderr.write(
+                f"trading-bot list-backtests: invalid --since {args.since!r}: "
+                f"{e}\n"
+            )
+            conn.close()
+            return 1
+
+    repo = BacktestResultRepository(conn=conn)
+    list_res = repo.list_archived(
+        account_id=AccountId(args.account_id),
+        strategy_id=StrategyId(args.strategy) if args.strategy else None,
+        since=since_dt,
+    )
+    if isinstance(list_res, Err):
+        sys.stderr.write(
+            f"trading-bot list-backtests: {list_res.error}\n"
+        )
+        conn.close()
+        return 1
+    rows = list_res.value
+
+    # Apply metric filters (AND across filters).
+    filtered = [
+        r
+        for r in rows
+        if all(_row_matches_filter(r, n, op, v) for (n, op, v) in parsed_filters)
+    ]
+
+    if args.json_output:
+        payload = [
+            {
+                "strategy_id": str(r.strategy_id),
+                "git_sha": r.git_sha,
+                "config_hash": r.config_hash,
+                "seed": r.seed,
+                "archived_at": r.archived_at.isoformat(),
+                "final_equity": str(r.final_equity),
+                "final_equity_currency": r.final_equity_currency,
+                "max_drawdown": str(r.max_drawdown),
+                "realized_after_tax": str(r.realized_after_tax),
+                "trades_count": r.trades_count,
+                "knockouts": r.knockouts,
+            }
+            for r in filtered
+        ]
+        sys.stdout.write(_json.dumps(payload, sort_keys=True) + "\n")
+    else:
+        sys.stdout.write(
+            f"{'archived_at':<26}  {'strategy_id':<20}  {'seed':>10}  "
+            f"{'final_equity':>15}  {'max_dd':>8}  {'trades':>6}\n"
+        )
+        for r in filtered:
+            sys.stdout.write(
+                f"{r.archived_at.isoformat():<26}  "
+                f"{str(r.strategy_id):<20}  "
+                f"{r.seed:>10}  "
+                f"{r.final_equity_currency} {str(r.final_equity):>10}  "
+                f"{str(r.max_drawdown):>8}  "
+                f"{r.trades_count:>6}\n"
+            )
+        sys.stdout.write(f"{len(filtered)} row(s) (of {len(rows)} archived)\n")
+    conn.close()
     return 0
 
 

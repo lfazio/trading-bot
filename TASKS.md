@@ -320,7 +320,23 @@ Sprint scoreboard at session close (2026-05-26):
         `mode='before'` validators so YAML int/float/string
         literals all parse to canonical Decimals.
       - **C9** ks-incident postmortem CLI — not shipped.
-      - **C10** list-backtests search DSL — not shipped.
+      - **C10** list-backtests search DSL ✅ DONE 2026-06-01
+        @ `<this commit>`. New `trading-bot list-backtests
+        [--account-id <id>] [--strategy <id>] [--since <iso>]
+        [--metric "<expr>"...] [--db <path>] [--json]` CLI
+        subcommand. New `BacktestArchiveRow` dataclass +
+        `BacktestResultRepository.list_archived(*, account_id,
+        strategy_id=None, since=None)` method. Operator-facing
+        metric DSL: `name<op>value` with closed vocabulary
+        `{final_equity, max_drawdown, realized_after_tax,
+        trades_count, knockouts}` + ops `{>, >=, <, <=, ==}`.
+        Multiple `--metric` flags AND. Output: table by
+        default, machine-readable JSON via `--json`.
+        Categorised Errs on bad expressions
+        (`cli:metric:no_op|unknown_name|bad_value|empty_expression`).
+        14 new tests (6 repo + 8 CLI) cover happy paths +
+        filter AND-ing + invalid expressions + account
+        isolation + since cutoff + archived_at DESC ordering.
       - **C12** /metrics Prometheus endpoint — not shipped.
       - **C13** /reports/compare view route ✅ DONE 2026-06-01
         @ `<this commit>`. New `GET /reports/compare?a=<job_a>

@@ -53,6 +53,240 @@ def test_validate_config_rich_errors_flag_clean(
     assert "config (rich): OK" in captured.out
 
 
+def test_list_backtests_db_missing_returns_nonzero(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C10 — non-existent db path ⇒ exit 1 + categorised error."""
+    fake_db = tmp_path / "no-such.sqlite"
+    exit_code = main(["list-backtests", "--db", str(fake_db)])
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "db not found" in captured.err
+
+
+def _seed_db_with_backtest(tmp_path: Path) -> Path:
+    """Build a SQLite db with one archived backtest row + return the
+    db path. Used by the C10 CLI tests."""
+    from datetime import UTC, datetime
+    from decimal import Decimal
+
+    from trading_system.backtesting.result import BacktestResult
+    from trading_system.models.flow import EquityPoint
+    from trading_system.models.identifiers import OrderId, StrategyId, TradeId
+    from trading_system.models.money import Currency, Money
+    from trading_system.models.trading import Trade
+    from trading_system.persistence.connection import Connection
+    from trading_system.persistence.migrations.runner import MigrationRunner
+    from trading_system.persistence.repositories.backtest import (
+        BacktestResultRepository,
+    )
+
+    db_path = tmp_path / "state.sqlite"
+    conn = Connection.open(db_path).unwrap()
+    repo_root = Path(__file__).resolve().parent.parent
+    MigrationRunner(
+        conn=conn,
+        migrations_dir=repo_root / "trading_system" / "persistence" / "migrations",
+    ).run()
+    result = BacktestResult(
+        trades=(
+            Trade(
+                id=TradeId("t-1"),
+                order_id=OrderId("o-1"),
+                executed_at=datetime(2026, 5, 8, 10, 0, tzinfo=UTC),
+                price=Decimal("100"),
+                quantity_filled=Decimal("10"),
+                fees=Money(Decimal("1.00"), Currency.EUR),
+                slippage=Decimal("0"),
+            ),
+        ),
+        equity_curve=(
+            EquityPoint(
+                at=datetime(2026, 5, 8, tzinfo=UTC),
+                equity_gross=Money(Decimal("10100"), Currency.EUR),
+                equity_after_tax=Money(Decimal("10000"), Currency.EUR),
+                drawdown_pct=Decimal("0.05"),
+            ),
+        ),
+        equity_excl_injections=(Decimal("10000"),),
+        final_cash=Money(Decimal("500"), Currency.EUR),
+        final_equity_after_tax=Money(Decimal("11500"), Currency.EUR),
+        realized_gross=Money(Decimal("1000"), Currency.EUR),
+        realized_after_tax=Money(Decimal("700"), Currency.EUR),
+        dividends_gross=Money(Decimal("50"), Currency.EUR),
+        dividends_after_tax=Money(Decimal("35"), Currency.EUR),
+        knockouts=0,
+        injections_applied=0,
+    )
+    BacktestResultRepository(conn=conn).archive(
+        result,
+        strategy_id=StrategyId("alpha"),
+        git_sha="sha1",
+        config_hash="cfg1",
+        seed=42,
+    )
+    conn.close()
+    return db_path
+
+
+def test_list_backtests_emits_table(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db = _seed_db_with_backtest(tmp_path)
+    exit_code = main(["list-backtests", "--db", str(db)])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "alpha" in out
+    assert "11500" in out
+    assert "1 row(s) (of 1 archived)" in out
+
+
+def test_list_backtests_json_output(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import json as _json
+
+    db = _seed_db_with_backtest(tmp_path)
+    exit_code = main(["list-backtests", "--db", str(db), "--json"])
+    assert exit_code == 0
+    payload = _json.loads(capsys.readouterr().out)
+    assert isinstance(payload, list)
+    assert len(payload) == 1
+    assert payload[0]["strategy_id"] == "alpha"
+    assert payload[0]["seed"] == 42
+    assert payload[0]["final_equity"] == "11500"
+    assert payload[0]["trades_count"] == 1
+
+
+def test_list_backtests_metric_filter_passes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db = _seed_db_with_backtest(tmp_path)
+    exit_code = main(
+        [
+            "list-backtests",
+            "--db",
+            str(db),
+            "--metric",
+            "final_equity>10000",
+            "--json",
+        ]
+    )
+    assert exit_code == 0
+    import json as _json
+
+    rows = _json.loads(capsys.readouterr().out)
+    assert len(rows) == 1
+
+
+def test_list_backtests_metric_filter_excludes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Metric expression that doesn't match SHALL surface zero rows."""
+    db = _seed_db_with_backtest(tmp_path)
+    exit_code = main(
+        [
+            "list-backtests",
+            "--db",
+            str(db),
+            "--metric",
+            "final_equity<5000",
+            "--json",
+        ]
+    )
+    assert exit_code == 0
+    import json as _json
+
+    rows = _json.loads(capsys.readouterr().out)
+    assert rows == []
+
+
+def test_list_backtests_multiple_metric_filters_AND(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Multiple --metric flags AND together."""
+    db = _seed_db_with_backtest(tmp_path)
+    # Both pass: final_equity > 10000 AND max_drawdown < 0.1
+    exit_code = main(
+        [
+            "list-backtests",
+            "--db",
+            str(db),
+            "--metric",
+            "final_equity>10000",
+            "--metric",
+            "max_drawdown<0.1",
+            "--json",
+        ]
+    )
+    assert exit_code == 0
+    import json as _json
+
+    rows = _json.loads(capsys.readouterr().out)
+    assert len(rows) == 1
+    # One filter passes, one fails ⇒ row excluded.
+    exit_code = main(
+        [
+            "list-backtests",
+            "--db",
+            str(db),
+            "--metric",
+            "final_equity>10000",
+            "--metric",
+            "max_drawdown>1.0",
+            "--json",
+        ]
+    )
+    assert exit_code == 0
+    rows = _json.loads(capsys.readouterr().out)
+    assert rows == []
+
+
+def test_list_backtests_invalid_metric_expression(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db = _seed_db_with_backtest(tmp_path)
+    # No operator.
+    exit_code = main(
+        ["list-backtests", "--db", str(db), "--metric", "final_equity"]
+    )
+    assert exit_code == 1
+    err = capsys.readouterr().err
+    assert "no_op" in err
+
+
+def test_list_backtests_unknown_metric_name(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db = _seed_db_with_backtest(tmp_path)
+    exit_code = main(
+        ["list-backtests", "--db", str(db), "--metric", "sharpe>1.0"]
+    )
+    assert exit_code == 1
+    err = capsys.readouterr().err
+    assert "unknown_name" in err
+
+
+def test_list_backtests_filters_by_strategy(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db = _seed_db_with_backtest(tmp_path)
+    # Filter by 'alpha' (matches the seeded row).
+    exit_code = main(
+        ["list-backtests", "--db", str(db), "--strategy", "alpha", "--json"]
+    )
+    assert exit_code == 0
+    import json as _json
+
+    assert len(_json.loads(capsys.readouterr().out)) == 1
+    # Filter by 'beta' (no match).
+    exit_code = main(
+        ["list-backtests", "--db", str(db), "--strategy", "beta", "--json"]
+    )
+    assert exit_code == 0
+    assert _json.loads(capsys.readouterr().out) == []
+
+
 def test_validate_config_rich_errors_flag_surfaces_field_tree(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
