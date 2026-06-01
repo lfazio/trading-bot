@@ -16,10 +16,14 @@ import pytest
 from trading_system.config.pydantic_schemas import (
     FieldValidationOutcome,
     KillSwitchYAML,
+    LoggingYAML,
     MCDrawdownFloorYAML,
     NotificationsYAML,
     RichValidationReport,
     RiskYAML,
+    SystemYAML,
+    TurbosYAML,
+    WebUIYAML,
     render_rich_report,
     validate_with_pydantic_schemas,
 )
@@ -38,16 +42,17 @@ def _write(tmp_path: Path, name: str, text: str) -> Path:
 
 @pytest.fixture
 def seeded_config_dir(tmp_path: Path) -> Path:
-    """Copy the bundled required YAMLs (risk.yaml + kill_switch.yaml)
-    into ``tmp_path`` so notification-only tests don't accidentally
-    fail on missing-required-file errors.
+    """Copy the bundled required YAMLs into ``tmp_path`` so
+    per-YAML tests don't accidentally fail on missing-required-file
+    errors from OTHER schemas in `RICH_SCHEMAS`.
 
-    Optional YAMLs (notifications, mc_drawdown_floor) are NOT
-    copied — the per-test fixture writes them under the file
-    under test so absent / empty / invalid cases are clean
-    inputs.
+    Required YAMLs: risk.yaml, kill_switch.yaml, system.yaml,
+    turbos.yaml. Optional YAMLs (notifications, mc_drawdown_floor,
+    webui, logging) are NOT copied — the per-test fixture writes
+    them under the file under test so absent / empty / invalid
+    cases are clean inputs.
     """
-    for required in ("risk.yaml", "kill_switch.yaml"):
+    for required in ("risk.yaml", "kill_switch.yaml", "system.yaml", "turbos.yaml"):
         shutil.copy(_BUNDLED_CONFIG_DIR / required, tmp_path / required)
     return tmp_path
 
@@ -499,9 +504,9 @@ mc_drawdown_floor:
 
 
 def test_required_files_missing_surfaces_field_err(tmp_path: Path) -> None:
-    """risk.yaml + kill_switch.yaml are required per RICH_SCHEMAS;
-    absent files SHALL surface a FieldValidationOutcome with
-    `type=config_io`."""
+    """risk + kill_switch + system + turbos are required per
+    RICH_SCHEMAS; absent files SHALL surface a
+    FieldValidationOutcome with `type=config_io`."""
     result = validate_with_pydantic_schemas(tmp_path)
     assert isinstance(result, Err)
     errors = result.error.errors
@@ -510,3 +515,251 @@ def test_required_files_missing_surfaces_field_err(tmp_path: Path) -> None:
     }
     assert "risk.yaml" in files_with_io_errs
     assert "kill_switch.yaml" in files_with_io_errs
+    assert "system.yaml" in files_with_io_errs
+    assert "turbos.yaml" in files_with_io_errs
+
+
+# ---------------------------------------------------------------------------
+# system.yaml — SystemYAML schema
+# ---------------------------------------------------------------------------
+
+
+def test_system_yaml_default_construction() -> None:
+    model = SystemYAML()
+    assert model.system.mode == "backtest"
+    assert model.system.seed == 0
+    assert model.broker.adapter == "local"
+    assert model.data.provider == "mock"
+
+
+def test_system_yaml_bundled_config_validates(tmp_path: Path) -> None:
+    shutil.copy(_BUNDLED_CONFIG_DIR / "system.yaml", tmp_path / "system.yaml")
+    result = validate_with_pydantic_schemas(tmp_path)
+    errors = result.error.errors if isinstance(result, Err) else result.value.errors
+    sys_errors = [e for e in errors if e.file == "system.yaml"]
+    assert sys_errors == [], sys_errors
+
+
+def test_system_yaml_collects_invariant_violations(tmp_path: Path) -> None:
+    (tmp_path / "system.yaml").write_text(
+        """
+system:
+  starting_capital:
+    amount: -100
+    currency: ZZZ
+  mode: invalid_mode
+  seed: -1
+broker:
+  adapter: ""
+data:
+  provider: unknown_provider
+""",
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(tmp_path)
+    assert isinstance(result, Err)
+    sys_errors = [e for e in result.error.errors if e.file == "system.yaml"]
+    locations = {e.location for e in sys_errors}
+    assert "system.starting_capital.amount" in locations
+    assert "system.starting_capital.currency" in locations
+    assert "system.mode" in locations
+    assert "data.provider" in locations
+
+
+def test_system_yaml_accepts_hex_seed(tmp_path: Path) -> None:
+    """The bundled YAML uses ``seed: 0xCAFE`` — YAML parses that as
+    an int directly. The validator coerces string variants too."""
+    (tmp_path / "system.yaml").write_text(
+        """
+system:
+  starting_capital: {amount: 1000, currency: EUR}
+  seed: 0xCAFE
+  mode: backtest
+broker:
+  adapter: local
+data:
+  provider: mock
+""",
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(tmp_path)
+    sys_errors = (
+        [e for e in result.error.errors if e.file == "system.yaml"]
+        if isinstance(result, Err)
+        else []
+    )
+    assert sys_errors == [], sys_errors
+
+
+# ---------------------------------------------------------------------------
+# turbos.yaml — TurbosYAML schema
+# ---------------------------------------------------------------------------
+
+
+def test_turbos_yaml_default_construction() -> None:
+    model = TurbosYAML()
+    assert model.turbos.filter.knockout_min_distance == Decimal("0.05")
+    assert model.turbos.scoring.threshold == Decimal("0.50")
+    assert len(model.turbos.scoring.weights) == 4
+
+
+def test_turbos_yaml_bundled_config_validates(tmp_path: Path) -> None:
+    shutil.copy(_BUNDLED_CONFIG_DIR / "turbos.yaml", tmp_path / "turbos.yaml")
+    result = validate_with_pydantic_schemas(tmp_path)
+    errors = result.error.errors if isinstance(result, Err) else result.value.errors
+    turbo_errors = [e for e in errors if e.file == "turbos.yaml"]
+    assert turbo_errors == [], turbo_errors
+
+
+def test_turbos_yaml_rejects_weights_that_dont_sum_to_one(tmp_path: Path) -> None:
+    (tmp_path / "turbos.yaml").write_text(
+        """
+turbos:
+  filter:
+    knockout_min_distance: 0.05
+    spread_max: 0.015
+    min_liquidity: 100000
+    max_volatility: 0.50
+  scoring:
+    weights: [0.5, 0.5, 0.5, 0.5]
+    threshold: 0.50
+""",
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(tmp_path)
+    assert isinstance(result, Err)
+    turbo_errors = [e for e in result.error.errors if e.file == "turbos.yaml"]
+    assert any(
+        e.location == "turbos.scoring.weights" and "sum" in e.msg
+        for e in turbo_errors
+    )
+
+
+def test_turbos_yaml_rejects_wrong_weight_count(tmp_path: Path) -> None:
+    (tmp_path / "turbos.yaml").write_text(
+        """
+turbos:
+  scoring:
+    weights: [0.5, 0.5]
+    threshold: 0.5
+""",
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(tmp_path)
+    assert isinstance(result, Err)
+    turbo_errors = [e for e in result.error.errors if e.file == "turbos.yaml"]
+    assert any("4 entries" in e.msg for e in turbo_errors)
+
+
+# ---------------------------------------------------------------------------
+# webui.yaml — WebUIYAML schema
+# ---------------------------------------------------------------------------
+
+
+def test_webui_yaml_default_construction() -> None:
+    model = WebUIYAML()
+    assert model.webui.host == "127.0.0.1"
+    assert model.webui.port == 8080
+    assert model.webui.idempotency_backend == "memory"
+
+
+def test_webui_yaml_bundled_config_validates(seeded_config_dir: Path) -> None:
+    shutil.copy(_BUNDLED_CONFIG_DIR / "webui.yaml", seeded_config_dir / "webui.yaml")
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    errors = result.error.errors if isinstance(result, Err) else result.value.errors
+    webui_errors = [e for e in errors if e.file == "webui.yaml"]
+    assert webui_errors == [], webui_errors
+
+
+def test_webui_yaml_rejects_unknown_backend(seeded_config_dir: Path) -> None:
+    (seeded_config_dir / "webui.yaml").write_text(
+        """
+webui:
+  idempotency_backend: not_a_backend
+""",
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    assert isinstance(result, Err)
+    webui_errors = [e for e in result.error.errors if e.file == "webui.yaml"]
+    assert any(
+        e.location == "webui.idempotency_backend" for e in webui_errors
+    )
+
+
+def test_webui_yaml_rejects_port_out_of_range(seeded_config_dir: Path) -> None:
+    (seeded_config_dir / "webui.yaml").write_text(
+        "webui:\n  port: 99999\n",
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    assert isinstance(result, Err)
+    webui_errors = [e for e in result.error.errors if e.file == "webui.yaml"]
+    assert any(e.location == "webui.port" for e in webui_errors)
+
+
+# ---------------------------------------------------------------------------
+# logging.yaml — LoggingYAML schema
+# ---------------------------------------------------------------------------
+
+
+def test_logging_yaml_default_construction() -> None:
+    model = LoggingYAML()
+    assert model.logging.level == "INFO"
+    assert model.logging.format == "json"
+    assert model.logging.file_path is None
+
+
+def test_logging_yaml_bundled_config_validates(seeded_config_dir: Path) -> None:
+    """The repo's bundled logging.yaml validates cleanly."""
+    bundled = _BUNDLED_CONFIG_DIR / "logging.yaml"
+    if bundled.exists():
+        shutil.copy(bundled, seeded_config_dir / "logging.yaml")
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    errors = result.error.errors if isinstance(result, Err) else result.value.errors
+    log_errors = [e for e in errors if e.file == "logging.yaml"]
+    assert log_errors == [], log_errors
+
+
+def test_logging_yaml_rejects_unknown_level(seeded_config_dir: Path) -> None:
+    (seeded_config_dir / "logging.yaml").write_text(
+        "logging:\n  level: NOISY\n",
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    assert isinstance(result, Err)
+    log_errors = [e for e in result.error.errors if e.file == "logging.yaml"]
+    assert any(e.location == "logging.level" for e in log_errors)
+
+
+def test_logging_yaml_rejects_unknown_format(seeded_config_dir: Path) -> None:
+    (seeded_config_dir / "logging.yaml").write_text(
+        "logging:\n  format: yaml\n",
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    assert isinstance(result, Err)
+    log_errors = [e for e in result.error.errors if e.file == "logging.yaml"]
+    assert any(e.location == "logging.format" for e in log_errors)
+
+
+def test_logging_yaml_accepts_null_file_path(seeded_config_dir: Path) -> None:
+    (seeded_config_dir / "logging.yaml").write_text(
+        "logging:\n  level: INFO\n  format: json\n  file_path: null\n",
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    errors = result.error.errors if isinstance(result, Err) else result.value.errors
+    log_errors = [e for e in errors if e.file == "logging.yaml"]
+    assert log_errors == [], log_errors
+
+
+def test_logging_yaml_rejects_empty_file_path(seeded_config_dir: Path) -> None:
+    (seeded_config_dir / "logging.yaml").write_text(
+        "logging:\n  level: INFO\n  format: json\n  file_path: \"\"\n",
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    assert isinstance(result, Err)
+    log_errors = [e for e in result.error.errors if e.file == "logging.yaml"]
+    assert any(e.location == "logging.file_path" for e in log_errors)

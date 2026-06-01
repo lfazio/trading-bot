@@ -513,6 +513,311 @@ class MCDrawdownFloorYAML(BaseModel):
     mc_drawdown_floor: _MCDrawdownTop = Field(default_factory=_MCDrawdownTop)
 
 
+# ---------------------------------------------------------------------------
+# System schema — mirrors `trading_system/config/system.py::SystemConfig`.
+# ---------------------------------------------------------------------------
+
+
+class _SystemStartingCapital(BaseModel):
+    """`system.starting_capital` sub-mapping."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    amount: Decimal = Decimal("1000")
+    currency: str = "EUR"
+
+    @field_validator("amount", mode="before")
+    @classmethod
+    def _coerce(cls, v: Any) -> Decimal:
+        try:
+            return Decimal(str(v))
+        except (InvalidOperation, ValueError, TypeError) as e:
+            raise ValueError(f"amount not parseable as Decimal: {e}") from e
+
+    @field_validator("amount")
+    @classmethod
+    def _positive(cls, v: Decimal) -> Decimal:
+        if v <= Decimal("0"):
+            raise ValueError(f"amount must be > 0, got {v}")
+        return v
+
+    @field_validator("currency")
+    @classmethod
+    def _known_currency(cls, v: str) -> str:
+        if v not in _VALID_CURRENCIES:
+            raise ValueError(
+                f"currency must be one of {sorted(_VALID_CURRENCIES)}, got {v!r}"
+            )
+        return v
+
+
+class _SystemTop(BaseModel):
+    """`system:` sub-section."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    starting_capital: _SystemStartingCapital = Field(
+        default_factory=_SystemStartingCapital
+    )
+    log_level: str = "INFO"
+    seed: Annotated[int, Field(ge=0)] = 0
+    mode: str = "backtest"
+
+    @field_validator("mode")
+    @classmethod
+    def _known_mode(cls, v: str) -> str:
+        if v not in ("backtest", "live", "paper"):
+            raise ValueError(
+                f"mode must be one of ['backtest', 'live', 'paper'], got {v!r}"
+            )
+        return v
+
+    @field_validator("seed", mode="before")
+    @classmethod
+    def _coerce_seed(cls, v: Any) -> int:
+        # Accept hex string from YAML (e.g., 0xCAFE) — Python's YAML
+        # parser does the int conversion natively; this just guards
+        # against accidental string literals like "0xCAFE".
+        if isinstance(v, str):
+            try:
+                return int(v, 0)  # base=0 ⇒ honours 0x prefix
+            except ValueError as e:
+                raise ValueError(f"seed not parseable as int: {e}") from e
+        return v
+
+
+class _SystemBroker(BaseModel):
+    """`broker:` sub-section."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    adapter: Annotated[str, Field(min_length=1)] = "local"
+
+
+class _SystemData(BaseModel):
+    """`data:` sub-section."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str = "mock"
+    cache_root: Annotated[str, Field(min_length=1)] = ".cache/yfinance"
+    bundled_fixtures: bool = True
+    universe: str = ""
+
+    @field_validator("provider")
+    @classmethod
+    def _known_provider(cls, v: str) -> str:
+        if v not in ("mock", "yfinance"):
+            raise ValueError(
+                f"provider must be 'mock' or 'yfinance', got {v!r}"
+            )
+        return v
+
+
+class SystemYAML(BaseModel):
+    """Top-level YAML wrapper for `config/system.yaml`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    system: _SystemTop = Field(default_factory=_SystemTop)
+    broker: _SystemBroker = Field(default_factory=_SystemBroker)
+    data: _SystemData = Field(default_factory=_SystemData)
+
+
+# ---------------------------------------------------------------------------
+# Turbos schema — mirrors `trading_system/turbo_selector/loader.py`.
+# ---------------------------------------------------------------------------
+
+
+class _TurbosFilter(BaseModel):
+    """`turbos.filter` sub-mapping."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    knockout_min_distance: Decimal = Decimal("0.05")
+    spread_max: Decimal = Decimal("0.015")
+    min_liquidity: Annotated[int, Field(ge=0)] = 100_000
+    max_volatility: Decimal = Decimal("0.50")
+
+    @field_validator("knockout_min_distance", "spread_max", "max_volatility", mode="before")
+    @classmethod
+    def _coerce(cls, v: Any) -> Decimal:
+        try:
+            return Decimal(str(v))
+        except (InvalidOperation, ValueError, TypeError) as e:
+            raise ValueError(f"value not parseable as Decimal: {e}") from e
+
+    @field_validator("knockout_min_distance", "spread_max")
+    @classmethod
+    def _unit_range(cls, v: Decimal) -> Decimal:
+        if not (Decimal("0") <= v <= Decimal("1")):
+            raise ValueError(f"value must lie in [0, 1], got {v}")
+        return v
+
+    @field_validator("max_volatility")
+    @classmethod
+    def _non_negative(cls, v: Decimal) -> Decimal:
+        if v < Decimal("0"):
+            raise ValueError(f"max_volatility must be >= 0, got {v}")
+        return v
+
+
+class _TurbosScoring(BaseModel):
+    """`turbos.scoring` sub-mapping."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    weights: list[Decimal] = Field(
+        default_factory=lambda: [
+            Decimal("0.35"),
+            Decimal("0.25"),
+            Decimal("0.20"),
+            Decimal("0.20"),
+        ]
+    )
+    threshold: Decimal = Decimal("0.50")
+
+    @field_validator("weights", mode="before")
+    @classmethod
+    def _coerce_weights(cls, v: Any) -> list[Decimal]:
+        if not isinstance(v, list):
+            raise ValueError(f"weights must be a list, got {type(v).__name__}")
+        try:
+            return [Decimal(str(x)) for x in v]
+        except (InvalidOperation, ValueError, TypeError) as e:
+            raise ValueError(f"weights not parseable as Decimals: {e}") from e
+
+    @field_validator("weights")
+    @classmethod
+    def _four_weights_sum_to_one(cls, v: list[Decimal]) -> list[Decimal]:
+        if len(v) != 4:
+            raise ValueError(f"weights must contain exactly 4 entries, got {len(v)}")
+        total = sum(v, Decimal("0"))
+        if abs(total - Decimal("1")) > Decimal("0.001"):
+            raise ValueError(f"weights must sum to ~1, got {total}")
+        for x in v:
+            if x < Decimal("0"):
+                raise ValueError(f"weights entries must be >= 0, got {x}")
+        return v
+
+    @field_validator("threshold", mode="before")
+    @classmethod
+    def _coerce_threshold(cls, v: Any) -> Decimal:
+        try:
+            return Decimal(str(v))
+        except (InvalidOperation, ValueError, TypeError) as e:
+            raise ValueError(f"threshold not parseable as Decimal: {e}") from e
+
+    @field_validator("threshold")
+    @classmethod
+    def _threshold_range(cls, v: Decimal) -> Decimal:
+        if not (Decimal("0") <= v <= Decimal("1")):
+            raise ValueError(f"threshold must lie in [0, 1], got {v}")
+        return v
+
+
+class _TurbosTop(BaseModel):
+    """`turbos:` sub-section."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    filter: _TurbosFilter = Field(default_factory=_TurbosFilter)
+    scoring: _TurbosScoring = Field(default_factory=_TurbosScoring)
+
+
+class TurbosYAML(BaseModel):
+    """Top-level YAML wrapper for `config/turbos.yaml`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    turbos: _TurbosTop = Field(default_factory=_TurbosTop)
+
+
+# ---------------------------------------------------------------------------
+# Web UI schema — mirrors `trading_system/webui/loader.py::WebUIConfig`.
+# ---------------------------------------------------------------------------
+
+
+class _WebUITop(BaseModel):
+    """`webui:` sub-section."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    host: Annotated[str, Field(min_length=1)] = "127.0.0.1"
+    port: Annotated[int, Field(ge=0, le=65535)] = 8080
+    idempotency_backend: str = "memory"
+    idempotency_ttl_seconds: Annotated[int, Field(gt=0)] = 600
+    job_workers: Annotated[int, Field(ge=1)] = 2
+
+    @field_validator("idempotency_backend")
+    @classmethod
+    def _backend_value(cls, v: str) -> str:
+        if v not in ("memory", "persistence"):
+            raise ValueError(
+                f"idempotency_backend must be 'memory' or 'persistence', got {v!r}"
+            )
+        return v
+
+
+class WebUIYAML(BaseModel):
+    """Top-level YAML wrapper for `config/webui.yaml`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    webui: _WebUITop = Field(default_factory=_WebUITop)
+
+
+# ---------------------------------------------------------------------------
+# Logging schema — mirrors `trading_system/observability/loader.py`.
+# ---------------------------------------------------------------------------
+
+
+_VALID_LOG_LEVELS: frozenset[str] = frozenset(
+    {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+)
+
+
+class _LoggingTop(BaseModel):
+    """`logging:` sub-section."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    level: str = "INFO"
+    format: str = "json"
+    file_path: str | None = None
+
+    @field_validator("level")
+    @classmethod
+    def _known_level(cls, v: str) -> str:
+        if v not in _VALID_LOG_LEVELS:
+            raise ValueError(
+                f"level must be one of {sorted(_VALID_LOG_LEVELS)}, got {v!r}"
+            )
+        return v
+
+    @field_validator("format")
+    @classmethod
+    def _known_format(cls, v: str) -> str:
+        if v not in ("json", "text"):
+            raise ValueError(f"format must be 'json' or 'text', got {v!r}")
+        return v
+
+    @field_validator("file_path")
+    @classmethod
+    def _file_path_non_empty(cls, v: str | None) -> str | None:
+        if v is not None and not v.strip():
+            raise ValueError("file_path must be non-empty when set (or null to disable)")
+        return v
+
+
+class LoggingYAML(BaseModel):
+    """Top-level YAML wrapper for `config/logging.yaml`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    logging: _LoggingTop = Field(default_factory=_LoggingTop)
+
+
 # Per-file (filename, model_class, required) trio. Future loaders opt
 # in by adding their own row here.
 RICH_SCHEMAS: tuple[tuple[str, type[BaseModel], bool], ...] = (
@@ -520,6 +825,10 @@ RICH_SCHEMAS: tuple[tuple[str, type[BaseModel], bool], ...] = (
     ("risk.yaml", RiskYAML, True),  # required by validate_all
     ("kill_switch.yaml", KillSwitchYAML, True),  # required by validate_all
     ("mc_drawdown_floor.yaml", MCDrawdownFloorYAML, False),  # CR-031 optional
+    ("system.yaml", SystemYAML, True),  # required — broker + data provider
+    ("turbos.yaml", TurbosYAML, True),  # required by validate_all
+    ("webui.yaml", WebUIYAML, False),  # absent ⇒ defaults
+    ("logging.yaml", LoggingYAML, False),  # absent ⇒ defaults
 )
 
 
