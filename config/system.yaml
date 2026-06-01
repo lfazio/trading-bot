@@ -17,7 +17,21 @@ broker:
                           # Live-broker adapters are deferred (REQ_F_BRK_003).
 
 data:
-  provider: yfinance
-  cache_root: var/yfinance-cache    # your actual cache dir (default was .cache/yfinance)
-  bundled_fixtures: false           # cache is already populated; don't overwrite
-  universe: cac40                   # 40 stocks + ^FCHI
+  # Demo-friendly defaults: the mock provider emits deterministic
+  # synthetic bars + dividends for any requested date range so a
+  # vanilla checkout + `pip install -e .` runs the demo + CI
+  # without any external network, recorded cache, or fixture
+  # date-window concerns.
+  #
+  # Operators with a populated yfinance cache override these by
+  # editing this file locally (don't commit the override) or by
+  # setting ``TRADING_BOT_CONFIG_DIR=/path/to/local-config``
+  # (the webapp's ``_default_config_dir()`` honours the env var).
+  # A typical operator override: ``provider: yfinance`` +
+  # ``cache_root: var/yfinance-cache`` + ``universe: cac40`` +
+  # ``bundled_fixtures: false`` (cache already populated by
+  # ``tools/yfinance_recorder.py``).
+  provider: mock
+  cache_root: .cache/yfinance
+  bundled_fixtures: true
+  universe: ""
