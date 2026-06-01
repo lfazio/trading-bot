@@ -7,16 +7,27 @@ REQ_SDS_CFG_002 (absent file ⇒ defaults), REQ_SDD_ERR_002
 
 from __future__ import annotations
 
+import shutil
+from decimal import Decimal
 from pathlib import Path
+
+import pytest
 
 from trading_system.config.pydantic_schemas import (
     FieldValidationOutcome,
+    KillSwitchYAML,
+    MCDrawdownFloorYAML,
     NotificationsYAML,
     RichValidationReport,
+    RiskYAML,
     render_rich_report,
     validate_with_pydantic_schemas,
 )
 from trading_system.result import Err, Ok
+
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_BUNDLED_CONFIG_DIR = _REPO_ROOT / "config"
 
 
 def _write(tmp_path: Path, name: str, text: str) -> Path:
@@ -25,32 +36,48 @@ def _write(tmp_path: Path, name: str, text: str) -> Path:
     return p
 
 
+@pytest.fixture
+def seeded_config_dir(tmp_path: Path) -> Path:
+    """Copy the bundled required YAMLs (risk.yaml + kill_switch.yaml)
+    into ``tmp_path`` so notification-only tests don't accidentally
+    fail on missing-required-file errors.
+
+    Optional YAMLs (notifications, mc_drawdown_floor) are NOT
+    copied — the per-test fixture writes them under the file
+    under test so absent / empty / invalid cases are clean
+    inputs.
+    """
+    for required in ("risk.yaml", "kill_switch.yaml"):
+        shutil.copy(_BUNDLED_CONFIG_DIR / required, tmp_path / required)
+    return tmp_path
+
+
 # ---------------------------------------------------------------------------
 # Happy paths
 # ---------------------------------------------------------------------------
 
 
-def test_absent_notifications_yaml_skipped(tmp_path: Path) -> None:
-    """No file ⇒ skipped (optional). Report stays Ok."""
-    result = validate_with_pydantic_schemas(tmp_path)
-    assert isinstance(result, Ok)
+def test_absent_notifications_yaml_skipped(seeded_config_dir: Path) -> None:
+    """No notifications.yaml ⇒ skipped (optional). Report stays Ok."""
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    assert isinstance(result, Ok), result
     assert result.value.errors == ()
     assert "notifications.yaml" in result.value.skipped_files
 
 
-def test_empty_notifications_yaml_validates(tmp_path: Path) -> None:
+def test_empty_notifications_yaml_validates(seeded_config_dir: Path) -> None:
     """Empty file ⇒ Pydantic uses defaults (the documented
     absent-section-defaults behaviour)."""
-    _write(tmp_path, "notifications.yaml", "")
-    result = validate_with_pydantic_schemas(tmp_path)
-    assert isinstance(result, Ok)
+    _write(seeded_config_dir, "notifications.yaml", "")
+    result = validate_with_pydantic_schemas(seeded_config_dir)
+    assert isinstance(result, Ok), result
     assert result.value.errors == ()
     assert "notifications.yaml" in result.value.validated_files
 
 
-def test_full_valid_notifications_yaml(tmp_path: Path) -> None:
+def test_full_valid_notifications_yaml(seeded_config_dir: Path) -> None:
     _write(
-        tmp_path,
+        seeded_config_dir,
         "notifications.yaml",
         """
 notifications:
@@ -71,15 +98,15 @@ notifications:
     timeout_seconds: 3.0
 """,
     )
-    result = validate_with_pydantic_schemas(tmp_path)
+    result = validate_with_pydantic_schemas(seeded_config_dir)
     assert isinstance(result, Ok), result
     assert result.value.errors == ()
     assert "notifications.yaml" in result.value.validated_files
 
 
-def test_email_channel_with_full_settings(tmp_path: Path) -> None:
+def test_email_channel_with_full_settings(seeded_config_dir: Path) -> None:
     _write(
-        tmp_path,
+        seeded_config_dir,
         "notifications.yaml",
         """
 notifications:
@@ -93,7 +120,7 @@ notifications:
       - operator@example.com
 """,
     )
-    result = validate_with_pydantic_schemas(tmp_path)
+    result = validate_with_pydantic_schemas(seeded_config_dir)
     assert isinstance(result, Ok), result
 
 
@@ -284,3 +311,202 @@ def test_notifications_yaml_default_construction() -> None:
     assert model.notifications.slack is None
     assert model.notifications.email is None
     assert model.cross_field_errors() == []
+
+
+# ---------------------------------------------------------------------------
+# risk.yaml — RiskYAML schema
+# ---------------------------------------------------------------------------
+
+
+def test_risk_yaml_default_construction() -> None:
+    model = RiskYAML()
+    assert model.risk.single_asset_cap == Decimal("0.30")
+    assert model.risk.correlation_max == Decimal("0.85")
+    assert model.risk.correlation_window_days == 60
+
+
+def test_risk_yaml_bundled_config_validates(tmp_path: Path) -> None:
+    """The repo's bundled risk.yaml SHALL validate cleanly."""
+    import shutil
+
+    repo_root = Path(__file__).resolve().parents[2]
+    shutil.copy(repo_root / "config" / "risk.yaml", tmp_path / "risk.yaml")
+    result = validate_with_pydantic_schemas(tmp_path)
+    # risk.yaml validates; other schemas may surface "required file
+    # missing" for risk/kill_switch — they're required per RICH_SCHEMAS.
+    # Filter to risk.yaml's errors.
+    errors = result.error.errors if isinstance(result, Err) else result.value.errors
+    risk_errors = [e for e in errors if e.file == "risk.yaml"]
+    assert risk_errors == [], risk_errors
+
+
+def test_risk_yaml_collects_multiple_invariant_violations(tmp_path: Path) -> None:
+    (tmp_path / "risk.yaml").write_text(
+        """
+risk:
+  single_asset_cap: -0.5
+  correlation_max: 1.5
+  correlation_window_days: 0
+  forbidden_regimes_for:
+    unknown_class: [bull]
+""",
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(tmp_path)
+    assert isinstance(result, Err)
+    risk_errors = [e for e in result.error.errors if e.file == "risk.yaml"]
+    locations = {e.location for e in risk_errors}
+    assert "risk.single_asset_cap" in locations
+    assert "risk.correlation_max" in locations
+    assert "risk.correlation_window_days" in locations
+    assert "risk.forbidden_regimes_for" in locations
+
+
+def test_risk_yaml_extra_field_rejected(tmp_path: Path) -> None:
+    (tmp_path / "risk.yaml").write_text(
+        "risk:\n  single_asset_cap: 0.3\n  typo_field: oops\n",
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(tmp_path)
+    assert isinstance(result, Err)
+    risk_errors = [e for e in result.error.errors if e.file == "risk.yaml"]
+    assert any("typo_field" in e.location for e in risk_errors)
+
+
+# ---------------------------------------------------------------------------
+# kill_switch.yaml — KillSwitchYAML schema
+# ---------------------------------------------------------------------------
+
+
+def test_kill_switch_yaml_default_construction() -> None:
+    model = KillSwitchYAML()
+    assert model.kill_switch.financial.single_day_loss == Decimal("0.05")
+    assert model.kill_switch.financial.rapid_decline.pct == Decimal("0.10")
+    assert model.kill_switch.financial.rapid_decline.days == 5
+    assert model.kill_switch.execution.rejection_threshold == Decimal("0.20")
+    assert model.kill_switch.recovery.require_manual_token is True
+
+
+def test_kill_switch_yaml_bundled_config_validates(tmp_path: Path) -> None:
+    import shutil
+
+    repo_root = Path(__file__).resolve().parents[2]
+    shutil.copy(
+        repo_root / "config" / "kill_switch.yaml", tmp_path / "kill_switch.yaml"
+    )
+    result = validate_with_pydantic_schemas(tmp_path)
+    errors = result.error.errors if isinstance(result, Err) else result.value.errors
+    ks_errors = [e for e in errors if e.file == "kill_switch.yaml"]
+    assert ks_errors == [], ks_errors
+
+
+def test_kill_switch_yaml_collects_multiple_invariant_violations(tmp_path: Path) -> None:
+    (tmp_path / "kill_switch.yaml").write_text(
+        """
+kill_switch:
+  financial:
+    single_day_loss: 0
+    rapid_decline:
+      pct: 1.5
+      days: 0
+  execution:
+    rejection_threshold: 0
+    slippage_anomaly_sigma: -1
+""",
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(tmp_path)
+    assert isinstance(result, Err)
+    ks_errors = [e for e in result.error.errors if e.file == "kill_switch.yaml"]
+    locations = {e.location for e in ks_errors}
+    assert "kill_switch.financial.single_day_loss" in locations
+    assert "kill_switch.financial.rapid_decline.pct" in locations
+    assert "kill_switch.financial.rapid_decline.days" in locations
+    assert "kill_switch.execution.rejection_threshold" in locations
+    assert "kill_switch.execution.slippage_anomaly_sigma" in locations
+
+
+# ---------------------------------------------------------------------------
+# mc_drawdown_floor.yaml — MCDrawdownFloorYAML schema
+# ---------------------------------------------------------------------------
+
+
+def test_mc_drawdown_floor_yaml_default_construction() -> None:
+    model = MCDrawdownFloorYAML()
+    assert model.mc_drawdown_floor.default == Decimal("0.15")
+    assert model.mc_drawdown_floor.matrix == []
+
+
+def test_mc_drawdown_floor_yaml_bundled_config_validates(tmp_path: Path) -> None:
+    """The repo's bundled CR-031 mc_drawdown_floor.yaml SHALL validate."""
+    import shutil
+
+    repo_root = Path(__file__).resolve().parents[2]
+    shutil.copy(
+        repo_root / "config" / "mc_drawdown_floor.yaml",
+        tmp_path / "mc_drawdown_floor.yaml",
+    )
+    result = validate_with_pydantic_schemas(tmp_path)
+    errors = result.error.errors if isinstance(result, Err) else result.value.errors
+    mc_errors = [e for e in errors if e.file == "mc_drawdown_floor.yaml"]
+    assert mc_errors == [], mc_errors
+
+
+def test_mc_drawdown_floor_rejects_unknown_phase_or_regime(tmp_path: Path) -> None:
+    (tmp_path / "mc_drawdown_floor.yaml").write_text(
+        """
+mc_drawdown_floor:
+  default: 0.20
+  matrix:
+    - phase: NINE
+      regime: bull
+      value: 0.15
+    - phase: ONE
+      regime: euphoric
+      value: 0.12
+""",
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(tmp_path)
+    assert isinstance(result, Err)
+    mc_errors = [e for e in result.error.errors if e.file == "mc_drawdown_floor.yaml"]
+    locations = {e.location for e in mc_errors}
+    assert any("phase" in loc for loc in locations)
+    assert any("regime" in loc for loc in locations)
+
+
+def test_mc_drawdown_floor_rejects_negative_value(tmp_path: Path) -> None:
+    (tmp_path / "mc_drawdown_floor.yaml").write_text(
+        """
+mc_drawdown_floor:
+  default: -0.10
+  matrix: []
+""",
+        encoding="utf-8",
+    )
+    result = validate_with_pydantic_schemas(tmp_path)
+    assert isinstance(result, Err)
+    mc_errors = [e for e in result.error.errors if e.file == "mc_drawdown_floor.yaml"]
+    assert any(
+        e.location == "mc_drawdown_floor.default" and "must be >= 0" in e.msg
+        for e in mc_errors
+    )
+
+
+# ---------------------------------------------------------------------------
+# Required-file enforcement
+# ---------------------------------------------------------------------------
+
+
+def test_required_files_missing_surfaces_field_err(tmp_path: Path) -> None:
+    """risk.yaml + kill_switch.yaml are required per RICH_SCHEMAS;
+    absent files SHALL surface a FieldValidationOutcome with
+    `type=config_io`."""
+    result = validate_with_pydantic_schemas(tmp_path)
+    assert isinstance(result, Err)
+    errors = result.error.errors
+    files_with_io_errs = {
+        e.file for e in errors if e.type == "config_io"
+    }
+    assert "risk.yaml" in files_with_io_errs
+    assert "kill_switch.yaml" in files_with_io_errs

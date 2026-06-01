@@ -286,23 +286,33 @@ Sprint scoreboard at session close (2026-05-26):
 - [x] **C4 — Operator-token rotation + lifecycle (CR-024)** ✅ DONE 2026-05-26 @ `<this commit>`. Full lifecycle cascade landed in two commits: design (SRS / SDS / SDD / TP all stamped 2026-05-26) + implementation. SRS adds REQ_F_TOK_001..005 + REQ_NF_TOK_001 to §3.18 as a new "Operator-token lifecycle" sub-section. SDD adds REQ_SDD_TOK_001..005 to §13.17. Test Plan adds TC_TOK_001..010 + TC_OPS_001 to §3.15c. Implementation: (1) `trading_system/persistence/migrations/0007_token_revocations.sql` adds the `operator_token_revocations` table keyed on `(account_id, jti)`; (2) `trading_system/persistence/repositories/token_revocations.py` ships `OperatorTokenRevocationRepository` + `TokenRevocation` dataclass — write-once-append + idempotent re-revoke + `is_revoked` lookup + `list_all` deterministic iteration; (3) `trading_system/accounts/token_verifier.py` rewritten to support four-segment tokens `<iso>:<aid>:<jti>:<sig>` (legacy three-segment continues to verify, grandfathered — disambiguated by jti's 32-char hex shape vs signature's 64-char), `previous_secret` slot + `rotate_secret(new)` atomic flip, `revocation_lookup` field (duck-typed Protocol accepting either `bool` or `Result[bool, str]` returns), `seconds_until_expiry(token) -> Option[int]` read-only accessor that does NOT emit a SECURITY log, `_audit(...)` helper emitting structured-log entries under the new `LogCategory.SECURITY` value carrying `event`/`account_id`/`outcome`/`jti`/`token_hash` (sha256, never the raw token); (4) `trading_system/observability/logger.py` adds `"security"` to the `LogCategory` Literal; (5) `trading_system/cli.py` adds `trading-bot issue-token --account-id <id> [--ttl <s>] [--secret-env <name>]` subcommand — env-var-only secret discipline (no `--secret <hex>` argv flag); (6) `trading_system/webapp/auth_deps.py::verify_any_valid_claim` fixed to call the shared `_parse_token` helper (the legacy `rsplit(':', 2)` was mis-parsing four-segment tokens; the fix preserves browser-VIEW endpoint auth for both formats); (7) `Documentations/Operations.md` §6 fully rewritten — new CR-024 token format + `trading-bot issue-token` CLI + in-process `rotate_secret` rolling rotation (no restart needed) + new §6.4 "Token revocation" workflow + §6.5 "Token loss". 42 new tests across `tests/accounts/test_token_verifier_cr024.py` (27 tests covering format + back-compat + revocation precedence + multi-secret + seconds_until_expiry + structured audit + replay determinism + household-claim round-trip), `tests/persistence/test_token_revocations_repository.py` (10 tests — migration schema audit + round-trip + idempotent re-revoke + cross-account isolation + cross-restart durability + sorted-list-all + scoped-list + empty-jti rejection), `tests/test_cli.py::test_issue_token_*` (5 tests — happy path + missing env var exit-1 + no `--secret` argv flag introspection + custom env var + non-positive TTL rejection). All 11 new REQs (REQ_F_TOK_001..005, REQ_NF_TOK_001, REQ_SDD_TOK_001..005) at TEST. Full suite 2 694 → 2 724.
 - [~] **C3 / C9..C14** — Phase-8 Part C hardening; partial
       progress in this session:
-      - **C3** Pydantic v2 schema for `config/notifications.yaml`
-        ✅ DONE 2026-06-01 @ `<this commit>`. New module
-        `trading_system/config/pydantic_schemas.py` mirrors the
-        existing `NotificationsConfig` dataclass under
-        Pydantic v2 (per-section sub-models + `extra='forbid'`
-        + cross-field invariant via `cross_field_errors()`).
-        New `validate_with_pydantic_schemas(config_dir)`
-        helper aggregates EVERY field-level violation in one
-        pass (the existing dataclass loader stops at the
-        first miss). `trading-bot validate-config
-        --rich-errors` flag opts in to the tree-shaped
-        rendering for operator-facing output. 14 schema
-        tests + 2 CLI tests; the runtime path stays on the
-        existing dataclass loader (no churn). The Pydantic
-        pattern is documented; follow-up CRs opt additional
-        YAMLs in by adding rows to `RICH_SCHEMAS` + their
-        own model class.
+      - **C3** Pydantic v2 schemas for the high-value YAMLs ✅
+        DONE 2026-06-01 @ `<this commit>` (two-slice
+        delivery). New module
+        `trading_system/config/pydantic_schemas.py` ships
+        models for: `notifications.yaml` (channels + retry +
+        approval + Slack / Email sub-configs, with
+        cross-field invariant for email-without-settings),
+        `risk.yaml` (single_asset_cap + correlation + per-
+        InstrumentClass forbidden_regimes_for matrix),
+        `kill_switch.yaml` (financial + execution + recovery
+        sub-trees with full Decimal invariant ranges), and
+        `mc_drawdown_floor.yaml` (CR-031 matrix + default
+        with Phase-enum-name + MarketRegime-value
+        membership). `RICH_SCHEMAS` registry table drives
+        the validator; future YAMLs opt in by adding a row +
+        their own model class.
+        `validate_with_pydantic_schemas(config_dir)` collects
+        every field-level violation in one pass (the
+        existing dataclass loaders stop at the first miss).
+        `trading-bot validate-config --rich-errors` flag opts
+        in to the tree-shaped output. 26 schema tests + 2 CLI
+        tests; runtime path stays on the existing dataclass
+        loaders for back-compat. Documented pattern: extra
+        fields rejected via `extra='forbid'` (catches typos
+        the existing loaders silently ignored); cross-field
+        invariants via an optional `cross_field_errors()`
+        method on the top-level model.
       - **C9** ks-incident postmortem CLI — not shipped.
       - **C10** list-backtests search DSL — not shipped.
       - **C12** /metrics Prometheus endpoint — not shipped.

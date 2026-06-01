@@ -39,11 +39,16 @@ from typing import Annotated, Any
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from trading_system.models.instrument import InstrumentClass
 from trading_system.models.money import Currency
+from trading_system.models.phase import MarketRegime, Phase
 from trading_system.result import Err, Ok, Result
 
 
 _VALID_CURRENCIES: frozenset[str] = frozenset(c.value for c in Currency)
+_VALID_INSTRUMENT_CLASSES: frozenset[str] = frozenset(c.value for c in InstrumentClass)
+_VALID_MARKET_REGIMES: frozenset[str] = frozenset(r.value for r in MarketRegime)
+_VALID_PHASE_NAMES: frozenset[str] = frozenset(p.name for p in Phase)
 
 
 # ---------------------------------------------------------------------------
@@ -232,10 +237,289 @@ class RichValidationReport:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Risk schema — mirrors `trading_system/risk/config.py::RiskConfig`.
+# ---------------------------------------------------------------------------
+
+
+class _RiskTop(BaseModel):
+    """Pydantic mirror of ``risk.config.RiskConfig``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    single_asset_cap: Decimal = Decimal("0.30")
+    correlation_max: Decimal = Decimal("0.85")
+    correlation_window_days: Annotated[int, Field(gt=0)] = 60
+    # Mapping[InstrumentClass-value → list[MarketRegime-value]]. The
+    # YAML strings round-trip back to the enum at runtime; here we
+    # validate them as members of the documented value sets.
+    forbidden_regimes_for: dict[str, list[str]] = Field(default_factory=dict)
+
+    @field_validator("single_asset_cap", mode="before")
+    @classmethod
+    def _coerce_single_asset_cap(cls, v: Any) -> Decimal:
+        try:
+            return Decimal(str(v))
+        except (InvalidOperation, ValueError, TypeError) as e:
+            raise ValueError(f"single_asset_cap not parseable as Decimal: {e}") from e
+
+    @field_validator("single_asset_cap")
+    @classmethod
+    def _single_asset_cap_range(cls, v: Decimal) -> Decimal:
+        if not (Decimal("0") < v <= Decimal("1")):
+            raise ValueError(
+                f"single_asset_cap must lie in (0, 1], got {v}"
+            )
+        return v
+
+    @field_validator("correlation_max", mode="before")
+    @classmethod
+    def _coerce_correlation_max(cls, v: Any) -> Decimal:
+        try:
+            return Decimal(str(v))
+        except (InvalidOperation, ValueError, TypeError) as e:
+            raise ValueError(f"correlation_max not parseable as Decimal: {e}") from e
+
+    @field_validator("correlation_max")
+    @classmethod
+    def _correlation_max_range(cls, v: Decimal) -> Decimal:
+        if not (Decimal("0") <= v <= Decimal("1")):
+            raise ValueError(
+                f"correlation_max must lie in [0, 1], got {v}"
+            )
+        return v
+
+    @field_validator("forbidden_regimes_for")
+    @classmethod
+    def _validate_forbidden_regimes(cls, v: dict[str, list[str]]) -> dict[str, list[str]]:
+        for instrument_class, regimes in v.items():
+            if instrument_class not in _VALID_INSTRUMENT_CLASSES:
+                raise ValueError(
+                    f"forbidden_regimes_for key {instrument_class!r} "
+                    f"not in {sorted(_VALID_INSTRUMENT_CLASSES)}"
+                )
+            for regime in regimes:
+                if regime not in _VALID_MARKET_REGIMES:
+                    raise ValueError(
+                        f"forbidden_regimes_for[{instrument_class!r}] entry "
+                        f"{regime!r} not in {sorted(_VALID_MARKET_REGIMES)}"
+                    )
+        return v
+
+
+class RiskYAML(BaseModel):
+    """Top-level YAML wrapper carrying the ``risk:`` section."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    risk: _RiskTop = Field(default_factory=_RiskTop)
+
+
+# ---------------------------------------------------------------------------
+# Kill-switch schema — mirrors `trading_system/safety/loader.py`.
+# ---------------------------------------------------------------------------
+
+
+class _KSRapidDecline(BaseModel):
+    """Sub-mapping under `kill_switch.financial.rapid_decline`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    pct: Decimal = Decimal("0.10")
+    days: Annotated[int, Field(gt=0)] = 5
+
+    @field_validator("pct", mode="before")
+    @classmethod
+    def _coerce(cls, v: Any) -> Decimal:
+        try:
+            return Decimal(str(v))
+        except (InvalidOperation, ValueError, TypeError) as e:
+            raise ValueError(f"pct not parseable as Decimal: {e}") from e
+
+    @field_validator("pct")
+    @classmethod
+    def _range(cls, v: Decimal) -> Decimal:
+        if not (Decimal("0") < v <= Decimal("1")):
+            raise ValueError(f"rapid_decline.pct must lie in (0, 1], got {v}")
+        return v
+
+
+class _KSFinancial(BaseModel):
+    """Pydantic mirror of ``safety.loader.FinancialTriggerConfig``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    single_day_loss: Decimal = Decimal("0.05")
+    rapid_decline: _KSRapidDecline = Field(default_factory=_KSRapidDecline)
+
+    @field_validator("single_day_loss", mode="before")
+    @classmethod
+    def _coerce(cls, v: Any) -> Decimal:
+        try:
+            return Decimal(str(v))
+        except (InvalidOperation, ValueError, TypeError) as e:
+            raise ValueError(f"single_day_loss not parseable as Decimal: {e}") from e
+
+    @field_validator("single_day_loss")
+    @classmethod
+    def _range(cls, v: Decimal) -> Decimal:
+        if not (Decimal("0") < v <= Decimal("1")):
+            raise ValueError(f"single_day_loss must lie in (0, 1], got {v}")
+        return v
+
+
+class _KSExecution(BaseModel):
+    """Pydantic mirror of ``safety.loader.ExecutionTriggerConfig``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    rejection_threshold: Decimal = Decimal("0.20")
+    slippage_anomaly_sigma: Decimal = Decimal("3.0")
+
+    @field_validator("rejection_threshold", mode="before")
+    @classmethod
+    def _coerce_threshold(cls, v: Any) -> Decimal:
+        try:
+            return Decimal(str(v))
+        except (InvalidOperation, ValueError, TypeError) as e:
+            raise ValueError(f"rejection_threshold not parseable as Decimal: {e}") from e
+
+    @field_validator("rejection_threshold")
+    @classmethod
+    def _threshold_range(cls, v: Decimal) -> Decimal:
+        if not (Decimal("0") < v <= Decimal("1")):
+            raise ValueError(f"rejection_threshold must lie in (0, 1], got {v}")
+        return v
+
+    @field_validator("slippage_anomaly_sigma", mode="before")
+    @classmethod
+    def _coerce_sigma(cls, v: Any) -> Decimal:
+        try:
+            return Decimal(str(v))
+        except (InvalidOperation, ValueError, TypeError) as e:
+            raise ValueError(f"slippage_anomaly_sigma not parseable as Decimal: {e}") from e
+
+    @field_validator("slippage_anomaly_sigma")
+    @classmethod
+    def _sigma_positive(cls, v: Decimal) -> Decimal:
+        if v <= Decimal("0"):
+            raise ValueError(f"slippage_anomaly_sigma must be > 0, got {v}")
+        return v
+
+
+class _KSRecovery(BaseModel):
+    """Sub-mapping under `kill_switch.recovery`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    require_manual_token: bool = True
+
+
+class _KSTop(BaseModel):
+    """Top-level ``kill_switch:`` section."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    financial: _KSFinancial = Field(default_factory=_KSFinancial)
+    execution: _KSExecution = Field(default_factory=_KSExecution)
+    recovery: _KSRecovery = Field(default_factory=_KSRecovery)
+
+
+class KillSwitchYAML(BaseModel):
+    """Top-level YAML wrapper carrying the ``kill_switch:`` section."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kill_switch: _KSTop = Field(default_factory=_KSTop)
+
+
+# ---------------------------------------------------------------------------
+# MC drawdown floor schema — mirrors CR-031's `MCDrawdownFloor.from_yaml`.
+# ---------------------------------------------------------------------------
+
+
+class _MCMatrixRow(BaseModel):
+    """One row of `mc_drawdown_floor.matrix`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    phase: str
+    regime: str
+    value: Decimal
+
+    @field_validator("phase")
+    @classmethod
+    def _phase_in_enum(cls, v: str) -> str:
+        if v not in _VALID_PHASE_NAMES:
+            raise ValueError(
+                f"phase {v!r} not in {sorted(_VALID_PHASE_NAMES)}"
+            )
+        return v
+
+    @field_validator("regime")
+    @classmethod
+    def _regime_in_enum(cls, v: str) -> str:
+        if v not in _VALID_MARKET_REGIMES:
+            raise ValueError(
+                f"regime {v!r} not in {sorted(_VALID_MARKET_REGIMES)}"
+            )
+        return v
+
+    @field_validator("value", mode="before")
+    @classmethod
+    def _coerce(cls, v: Any) -> Decimal:
+        try:
+            return Decimal(str(v))
+        except (InvalidOperation, ValueError, TypeError) as e:
+            raise ValueError(f"value not parseable as Decimal: {e}") from e
+
+    @field_validator("value")
+    @classmethod
+    def _non_negative(cls, v: Decimal) -> Decimal:
+        if v < Decimal("0"):
+            raise ValueError(f"value must be >= 0, got {v}")
+        return v
+
+
+class _MCDrawdownTop(BaseModel):
+    """Pydantic mirror of CR-031's `MCDrawdownFloor`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    default: Decimal = Decimal("0.15")
+    matrix: list[_MCMatrixRow] = Field(default_factory=list)
+
+    @field_validator("default", mode="before")
+    @classmethod
+    def _coerce(cls, v: Any) -> Decimal:
+        try:
+            return Decimal(str(v))
+        except (InvalidOperation, ValueError, TypeError) as e:
+            raise ValueError(f"default not parseable as Decimal: {e}") from e
+
+    @field_validator("default")
+    @classmethod
+    def _non_negative(cls, v: Decimal) -> Decimal:
+        if v < Decimal("0"):
+            raise ValueError(f"default must be >= 0, got {v}")
+        return v
+
+
+class MCDrawdownFloorYAML(BaseModel):
+    """Top-level YAML wrapper for `config/mc_drawdown_floor.yaml`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mc_drawdown_floor: _MCDrawdownTop = Field(default_factory=_MCDrawdownTop)
+
+
 # Per-file (filename, model_class, required) trio. Future loaders opt
 # in by adding their own row here.
 RICH_SCHEMAS: tuple[tuple[str, type[BaseModel], bool], ...] = (
     ("notifications.yaml", NotificationsYAML, False),  # absent ⇒ defaults
+    ("risk.yaml", RiskYAML, True),  # required by validate_all
+    ("kill_switch.yaml", KillSwitchYAML, True),  # required by validate_all
+    ("mc_drawdown_floor.yaml", MCDrawdownFloorYAML, False),  # CR-031 optional
 )
 
 
