@@ -322,8 +322,23 @@ Sprint scoreboard at session close (2026-05-26):
       - **C9** ks-incident postmortem CLI — not shipped.
       - **C10** list-backtests search DSL — not shipped.
       - **C12** /metrics Prometheus endpoint — not shipped.
-      - **C13** /reports/compare view route — helper exists
-        (CR-020); view route not shipped.
+      - **C13** /reports/compare view route ✅ DONE 2026-06-01
+        @ `<this commit>`. New `GET /reports/compare?a=<job_a>
+        &b=<job_b>` route in `webapp/routers/views/reports.py`
+        + `templates/reports_compare.html` template. Loads
+        `summary.json` from each bundle to render a KPI
+        comparison table (final equity / max_drawdown /
+        realized_after_tax / dividends_after_tax / trades_count
+        / knockouts); side-by-side iframes of each bundle's
+        `equity-curve.html`. Path-traversal-safe via the
+        existing `_report_dir()` helper. Route declared BEFORE
+        the `/{job_id}` catch-all so FastAPI's first-match
+        ordering picks it up. 7 new tests at
+        `tests/webapp/test_reports_view.py` (9 → 16) covering
+        auth gate / missing query params / 404-on-missing-
+        bundle / path-traversal rejection / happy-path KPI
+        rendering / graceful summary-missing fallback. OpenAPI
+        snapshot regenerated.
       - **C11 / C14** — shipped earlier (yfinance BarSource
         + paper-session metadata).
 

@@ -1,0 +1,130 @@
+{% extends parent_template|default("base.html") %}
+{% set active_nav = 'jobs' %}
+{% block title %}Compare reports &mdash; {{ job_a }} vs {{ job_b }}{% endblock %}
+{% block content %}
+<h1>Compare backtest runs</h1>
+<p class="subhead">
+  Job A <code>{{ job_a }}</code> &mdash; Job B <code>{{ job_b }}</code>
+</p>
+
+<section class="card" aria-labelledby="kpi-heading">
+  <h2 id="kpi-heading">KPIs</h2>
+  {% if summary_a or summary_b %}
+  <table class="data" style="width:100%; margin-top:1em">
+    <thead>
+      <tr>
+        <th>Metric</th>
+        <th class="right">Job A</th>
+        <th class="right">Job B</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Final equity (after tax)</td>
+        <td class="right numeric">
+          {%- if summary_a -%}
+            {{ summary_a.currency or '' }} {{ summary_a.final_equity_after_tax }}
+          {%- else -%}&mdash;{%- endif -%}
+        </td>
+        <td class="right numeric">
+          {%- if summary_b -%}
+            {{ summary_b.currency or '' }} {{ summary_b.final_equity_after_tax }}
+          {%- else -%}&mdash;{%- endif -%}
+        </td>
+      </tr>
+      <tr>
+        <td>Max drawdown</td>
+        <td class="right numeric">
+          {%- if summary_a -%}{{ summary_a.max_drawdown }}{%- else -%}&mdash;{%- endif -%}
+        </td>
+        <td class="right numeric">
+          {%- if summary_b -%}{{ summary_b.max_drawdown }}{%- else -%}&mdash;{%- endif -%}
+        </td>
+      </tr>
+      <tr>
+        <td>Realized (after tax)</td>
+        <td class="right numeric">
+          {%- if summary_a -%}
+            {{ summary_a.currency or '' }} {{ summary_a.realized_after_tax }}
+          {%- else -%}&mdash;{%- endif -%}
+        </td>
+        <td class="right numeric">
+          {%- if summary_b -%}
+            {{ summary_b.currency or '' }} {{ summary_b.realized_after_tax }}
+          {%- else -%}&mdash;{%- endif -%}
+        </td>
+      </tr>
+      <tr>
+        <td>Dividends (after tax)</td>
+        <td class="right numeric">
+          {%- if summary_a -%}
+            {{ summary_a.currency or '' }} {{ summary_a.dividends_after_tax }}
+          {%- else -%}&mdash;{%- endif -%}
+        </td>
+        <td class="right numeric">
+          {%- if summary_b -%}
+            {{ summary_b.currency or '' }} {{ summary_b.dividends_after_tax }}
+          {%- else -%}&mdash;{%- endif -%}
+        </td>
+      </tr>
+      <tr>
+        <td>Trades</td>
+        <td class="right">
+          {%- if summary_a -%}{{ summary_a.trades_count }}{%- else -%}&mdash;{%- endif -%}
+        </td>
+        <td class="right">
+          {%- if summary_b -%}{{ summary_b.trades_count }}{%- else -%}&mdash;{%- endif -%}
+        </td>
+      </tr>
+      <tr>
+        <td>Knockouts</td>
+        <td class="right">
+          {%- if summary_a -%}{{ summary_a.knockouts }}{%- else -%}&mdash;{%- endif -%}
+        </td>
+        <td class="right">
+          {%- if summary_b -%}{{ summary_b.knockouts }}{%- else -%}&mdash;{%- endif -%}
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No summary.json available for either run.</p>
+  {% endif %}
+</section>
+
+<section class="card" aria-labelledby="curves-heading">
+  <h2 id="curves-heading">Equity curves &mdash; side-by-side</h2>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:1em">
+    <div>
+      <h3>Job A &mdash; <code>{{ job_a }}</code></h3>
+      {% if has_html_a %}
+      <iframe src="/reports/{{ job_a }}/files/equity-curve.html"
+              style="width:100%; height:480px; border:0"
+              title="Equity curve — Job A"
+              loading="lazy"></iframe>
+      {% else %}
+      <p class="muted">No equity-curve.html artefact for this run.</p>
+      {% endif %}
+    </div>
+    <div>
+      <h3>Job B &mdash; <code>{{ job_b }}</code></h3>
+      {% if has_html_b %}
+      <iframe src="/reports/{{ job_b }}/files/equity-curve.html"
+              style="width:100%; height:480px; border:0"
+              title="Equity curve — Job B"
+              loading="lazy"></iframe>
+      {% else %}
+      <p class="muted">No equity-curve.html artefact for this run.</p>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<section class="card">
+  <p>
+    <a href="/reports/{{ job_a }}">Open Job A report</a>
+    &nbsp;&middot;&nbsp;
+    <a href="/reports/{{ job_b }}">Open Job B report</a>
+  </p>
+</section>
+{% endblock %}

@@ -212,3 +212,163 @@ def test_reports_file_requires_auth(monkeypatch, tmp_path: Path) -> None:
     # Auth fails with the configured "303 -> /login" redirect for
     # the view-tier surface.
     assert response.status_code in (303, 401)
+
+
+# ---------------------------------------------------------------------------
+# C13 — /reports/compare view route
+# ---------------------------------------------------------------------------
+
+
+def _seed_report_with_summary(tmp_path: Path, job_id: str, *, summary: dict) -> Path:
+    """Same as ``_seed_report`` but with operator-supplied summary
+    contents so the comparison KPIs land on known values."""
+    import json
+
+    report_dir = _seed_report(tmp_path, job_id)
+    (report_dir / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    return report_dir
+
+
+def test_reports_compare_redirects_unauth_to_login(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    _seed_report(tmp_path, "job-a")
+    _seed_report(tmp_path, "job-b")
+    client, _ = _make_client()
+    response = client.get(
+        "/reports/compare?a=job-a&b=job-b", follow_redirects=False
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
+
+
+def test_reports_compare_400_when_query_params_missing(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    client, verifier = _make_client()
+    token = _household_token(verifier)
+    response = client.get(
+        "/reports/compare",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 400
+
+
+def test_reports_compare_400_when_only_one_query_param(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    _seed_report(tmp_path, "job-a")
+    client, verifier = _make_client()
+    token = _household_token(verifier)
+    response = client.get(
+        "/reports/compare?a=job-a",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 400
+
+
+def test_reports_compare_404_when_either_bundle_missing(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    _seed_report(tmp_path, "job-a")
+    # job-b not seeded.
+    client, verifier = _make_client()
+    token = _household_token(verifier)
+    response = client.get(
+        "/reports/compare?a=job-a&b=job-b",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 404
+
+
+def test_reports_compare_rejects_malformed_job_id(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    _seed_report(tmp_path, "job-a")
+    client, verifier = _make_client()
+    token = _household_token(verifier)
+    # Path-traversal attempt in the query param.
+    response = client.get(
+        "/reports/compare?a=job-a&b=../passwd",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 400
+
+
+def test_reports_compare_renders_both_iframes_and_kpi_table(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    _seed_report_with_summary(
+        tmp_path,
+        "job-a",
+        summary={
+            "currency": "EUR",
+            "final_equity_after_tax": "11500.00",
+            "max_drawdown": "0.08",
+            "realized_after_tax": "1200.00",
+            "dividends_after_tax": "150.00",
+            "trades_count": 42,
+            "knockouts": 0,
+        },
+    )
+    _seed_report_with_summary(
+        tmp_path,
+        "job-b",
+        summary={
+            "currency": "EUR",
+            "final_equity_after_tax": "10200.00",
+            "max_drawdown": "0.12",
+            "realized_after_tax": "300.00",
+            "dividends_after_tax": "200.00",
+            "trades_count": 30,
+            "knockouts": 1,
+        },
+    )
+    client, verifier = _make_client()
+    token = _household_token(verifier)
+    response = client.get(
+        "/reports/compare?a=job-a&b=job-b",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.text
+    # Both iframes wired.
+    assert "/reports/job-a/files/equity-curve.html" in body
+    assert "/reports/job-b/files/equity-curve.html" in body
+    # KPI table values from both summaries.
+    assert "11500.00" in body
+    assert "10200.00" in body
+    assert "0.08" in body
+    assert "0.12" in body
+    # Trades + knockouts counts.
+    assert ">42<" in body
+    assert ">30<" in body
+
+
+def test_reports_compare_gracefully_renders_when_summary_missing(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Bundles without summary.json render the table with ``—``
+    placeholders rather than 500ing."""
+    monkeypatch.chdir(tmp_path)
+    _seed_report(tmp_path, "job-a")  # default summary {} (no fields)
+    _seed_report(tmp_path, "job-b")
+    # Remove summary.json from job-b entirely to exercise the
+    # missing-file branch.
+    (tmp_path / "var" / "reports" / "job-b" / "summary.json").unlink()
+    client, verifier = _make_client()
+    token = _household_token(verifier)
+    response = client.get(
+        "/reports/compare?a=job-a&b=job-b",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200, response.text
+    # Page still renders; bundle links present.
+    assert "/reports/job-a/files/equity-curve.html" in response.text
+    assert "/reports/job-b/files/equity-curve.html" in response.text

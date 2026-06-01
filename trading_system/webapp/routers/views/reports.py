@@ -7,6 +7,8 @@ dashboard.
 Routes:
   GET /reports/{job_id}                   -> view page (embeds equity-curve.html)
   GET /reports/{job_id}/files/{file_name} -> raw file (whitelist-only)
+  GET /reports/compare?a=<job_a>&b=<job_b> -> side-by-side compare view
+                                              (C13 — gap-analysis Part C)
 
 The job_queue worker writes every backtest's bundle to
 ``var/reports/<job_id>/`` so this view just streams from disk.
@@ -16,6 +18,7 @@ file names.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request, status
@@ -77,6 +80,78 @@ def _report_dir(job_id: str) -> Path:
             detail="webapp:reports:bad_job_id",
         )
     return _REPORT_ROOT / job_id
+
+
+def _load_summary(dir_path: Path) -> dict | None:
+    """Best-effort summary.json load. Returns ``None`` when the
+    file is absent or unparseable — the comparison view falls
+    back to ``"—"`` placeholders for missing fields."""
+    p = dir_path / "summary.json"
+    if not p.is_file():
+        return None
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+@router.get("/compare", response_class=HTMLResponse, name="reports-compare")
+def get_reports_compare(request: Request, a: str = "", b: str = ""):
+    """C13 — side-by-side comparison of two backtest runs.
+
+    Query params:
+      ``?a=<job_a>&b=<job_b>``  — required; both job_ids must
+      resolve to bundles on disk.
+
+    Renders both ``equity-curve.html`` files in side-by-side
+    iframes + a KPI comparison table reading
+    ``summary.json`` from each bundle.
+    """
+    try:
+        _require_auth(request)
+    except HTTPException as e:
+        if e.status_code == status.HTTP_303_SEE_OTHER:
+            return RedirectResponse(url="/login", status_code=303)
+        raise
+    a = a.strip()
+    b = b.strip()
+    if not a or not b:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="webapp:reports:compare:missing_query_param",
+        )
+    dir_a = _report_dir(a)
+    dir_b = _report_dir(b)
+    missing: list[str] = []
+    if not dir_a.is_dir():
+        missing.append(a)
+    if not dir_b.is_dir():
+        missing.append(b)
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"webapp:reports:compare:not_found:{','.join(missing)}",
+        )
+    summary_a = _load_summary(dir_a)
+    summary_b = _load_summary(dir_b)
+    has_html_a = (dir_a / "equity-curve.html").is_file()
+    has_html_b = (dir_b / "equity-curve.html").is_file()
+    templates = getattr(request.app.state, "templates", None)
+    if templates is None:
+        raise RuntimeError("webapp:templates_missing")
+    return templates.TemplateResponse(
+        request=request,
+        name="reports_compare.html",
+        context={
+            "job_a": a,
+            "job_b": b,
+            "summary_a": summary_a,
+            "summary_b": summary_b,
+            "has_html_a": has_html_a,
+            "has_html_b": has_html_b,
+            **fragment_context(request),
+        },
+    )
 
 
 @router.get("/{job_id}", response_class=HTMLResponse, name="reports-view")

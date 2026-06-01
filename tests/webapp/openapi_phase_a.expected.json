@@ -1590,6 +1590,57 @@
         "summary": "Post Stop"
       }
     },
+    "/reports/compare": {
+      "get": {
+        "description": "C13 \u2014 side-by-side comparison of two backtest runs.\n\nQuery params:\n  ``?a=<job_a>&b=<job_b>``  \u2014 required; both job_ids must\n  resolve to bundles on disk.\n\nRenders both ``equity-curve.html`` files in side-by-side\niframes + a KPI comparison table reading\n``summary.json`` from each bundle.",
+        "operationId": "reports_compare_reports_compare_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "a",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "A",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "b",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "B",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reports-Compare"
+      }
+    },
     "/reports/{job_id}": {
       "get": {
         "description": "View page \u2014 embeds the equity-curve HTML in an iframe +\nlists download links for the other artefacts.",
